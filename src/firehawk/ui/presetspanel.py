@@ -119,7 +119,7 @@ class PresetsPanel(wx.Panel):
             name = dlg.GetValue().strip()
         if not name:
             return
-        path = self.library.save(current, name)
+        self.library.save(current, name)
         self.reload()
         self._announce(f"Saved preset {name}")
 

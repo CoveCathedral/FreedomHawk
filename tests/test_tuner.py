@@ -1,7 +1,5 @@
 """Tests for the by-ear tuner: note frequencies, tone generation, and tuning data."""
 
-import struct
-
 import pytest
 
 from firehawk.tuner import INSTRUMENTS, INSTRUMENTS_BY_NAME, note_frequency, note_to_midi

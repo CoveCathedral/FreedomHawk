@@ -14,7 +14,7 @@ reverb, wah, plus the fixed compressor/eq/gate/volume blocks and the global bloc
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from .valuetypes import ModelSpec, ParamSpec

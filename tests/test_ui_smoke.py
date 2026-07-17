@@ -266,7 +266,6 @@ def test_grid_polymeter_line_length(frame, _silence_audio):
     spoken = _silence_audio
     dlg = _grid_dialog(frame)
     try:
-        kick = dlg.lines[_line_index(dlg, "kick")]
         dlg.grid_list.SetSelection(_line_index(dlg, "kick"))
         base = dlg.pattern.steps
         for _ in range(base - 7):
