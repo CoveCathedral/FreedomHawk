@@ -33,6 +33,12 @@ _UNIT_HINTS = {
 # Integer ranges up to this span use a dropdown; wider ranges use a slider.
 _MAX_CHOICE_SPAN = 32
 
+# Choices offered for editable string params (e.g. the tweak-pedal target block).
+_STRING_CHOICES: dict[str, list[str]] = {
+    "@tweakgroup": ["wah", "compressor", "gate", "amp", "cab", "eq",
+                    "fx1", "fx2", "fx3", "reverb", "volume"],
+}
+
 
 def _unit_for(spec: ParamSpec) -> str:
     return _UNIT_HINTS.get(spec.symbolic_id, "")
@@ -103,10 +109,23 @@ class ParamControl:
         self._kind = "bool"
         return cb
 
-    def _build_string(self, parent, value) -> wx.TextCtrl:
-        tc = wx.TextCtrl(parent, value="" if value is None else str(value), style=wx.TE_READONLY)
+    def _build_string(self, parent, value) -> wx.ComboBox:
+        # Editable combo: pick from known choices or type a value. Commit on select,
+        # Enter, or focus loss (not per keystroke, to avoid spamming the edit buffer).
+        choices = _STRING_CHOICES.get(self.spec.symbolic_id, [])
+        cb = wx.ComboBox(parent, value="" if value is None else str(value),
+                         choices=choices, style=wx.CB_DROPDOWN | wx.TE_PROCESS_ENTER)
+        cb.Bind(wx.EVT_COMBOBOX, lambda e: self._emit(cb.GetValue()))
+        cb.Bind(wx.EVT_TEXT_ENTER, lambda e: self._emit(cb.GetValue()))
+        cb.Bind(wx.EVT_KILL_FOCUS, self._on_string_blur)
         self._kind = "string"
-        return tc
+        return cb
+
+    def _on_string_blur(self, event: wx.FocusEvent) -> None:
+        value = self.control.GetValue()
+        if value != self._current:
+            self._emit(value)
+        event.Skip()
 
     def _build_int(self, parent, value) -> wx.Window:
         lo, hi = int(self.spec.minimum), int(self.spec.maximum)

@@ -67,6 +67,7 @@ SLOT_LAYOUT: tuple[SlotDef, ...] = (
     SlotDef("fx3", "FX 3", "catalog", catalog="fx"),
     SlotDef("reverb", "Reverb", "catalog", catalog="reverb"),
     SlotDef("volume", "Volume Pedal", "fixed", fixed_model="VolumePedal"),
+    SlotDef("variax", "Variax", "fixed", fixed_model="@variax"),
     SlotDef("global", "Global", "global"),
 )
 
