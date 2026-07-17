@@ -26,6 +26,7 @@ import random
 import struct
 import tempfile
 import wave
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -912,14 +913,45 @@ def scale_voice(voice, gain: float):
     return (voice * gain).astype(np.float32)
 
 
+def _truncate_voice(v, max_len: int, rate: int):
+    """A copy of *v* cut to *max_len* samples with a short fade so it doesn't click.
+
+    Used for choke groups: a ringing voice is cut when the next hit in its group fires.
+    """
+    if max_len >= len(v):
+        return v
+    fade = min(max_len, max(1, int(0.004 * rate)))
+    out = v[:max_len].copy()
+    out[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+    return out
+
+
+def _choke_cutoffs(pattern: Pattern, choke_groups: dict, step_s: float, rate: int) -> dict:
+    """Map each choked hit to how many samples it may ring — the gap (in samples) to
+    the next hit anywhere in its choke group, wrapping around the loop's end."""
+    steps_by_group: dict = defaultdict(set)
+    for role, steps_on in pattern.hits.items():
+        g = choke_groups.get(role)
+        if g:
+            steps_by_group[g].update(s for s in steps_on if 0 <= s < pattern.steps)
+    cutoffs: dict = {}
+    for g, sset in steps_by_group.items():
+        ordered = sorted(sset)
+        for i, s in enumerate(ordered):
+            nxt = ordered[i + 1] if i + 1 < len(ordered) else ordered[0] + pattern.steps
+            cutoffs[(g, s)] = max(1, int(round((nxt - s) * step_s * rate)))
+    return cutoffs
+
+
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
-                seed: int | None = None) -> bytes:
+                seed: int | None = None, choke_groups: dict | None = None) -> bytes:
     """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
 
     *volume* (0..1) scales the finished mix.  *swing* (0..1) delays off-beats for a
     shuffle feel.  *humanize* (0..1) adds subtle per-hit timing and level drift so a
-    looped groove doesn't sound stamped out.
+    looped groove doesn't sound stamped out.  *choke_groups* maps a role to a group id;
+    within a group a new hit cuts the previous one's ring (an open hat closed by the hat).
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
@@ -930,6 +962,8 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
     length = max(1, int(round(pattern.steps * step_s * rate)))
     buf = np.zeros(length, dtype=np.float32)
     rng = random.Random(seed) if humanize > 0 else None
+    group_of = choke_groups or {}
+    cutoffs = _choke_cutoffs(pattern, group_of, step_s, rate) if group_of else {}
 
     def hit_offset(step: int) -> int:
         if swing <= 0.0 and rng is None:
@@ -945,6 +979,7 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
         if voice is None or len(voice) == 0:
             continue
         role_levels = pattern.levels.get(role, {})
+        group = group_of.get(role)
         scaled = {None: voice}
         for step in steps_on:
             if not 0 <= step < pattern.steps:
@@ -957,6 +992,10 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 if level not in scaled:
                     scaled[level] = voice * gain
                 v = scaled[level]
+            if group:                    # cut the ring at the next hit in this group
+                cut = cutoffs.get((group, step))
+                if cut is not None:
+                    v = _truncate_voice(v, cut, rate)
             _mix_wrap(buf, v, hit_offset(step))
     peak = float(np.max(np.abs(buf))) if length else 0.0
     if peak > 1.0:                       # prevent clipping without pumping quiet loops up

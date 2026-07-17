@@ -105,15 +105,27 @@ def test_clamp_helpers_bound_tune_and_gain():
     assert ps.clamp_gain_db(999) == ps.MAX_GAIN_DB
     assert ps.clamp_gain_db(-999) == ps.MIN_GAIN_DB
     assert ps.clamp_gain_db(None) == 0
+    assert ps.clamp_choke(99) == ps.MAX_CHOKE_GROUP
+    assert ps.clamp_choke(-1) == 0
+    assert ps.clamp_choke("x") == 0
 
 
-def test_pattern_file_carries_tune_and_gain(tmp_path):
-    line = dict(ps.make_line("kick"), steps=[0, 8], tune=3, gain_db=-4)
+def test_choke_map_skips_ungrouped_lines():
+    lines = [dict(ps.make_line("openhat"), choke=1),
+             dict(ps.make_line("hihat"), choke=1),
+             dict(ps.make_line("kick"))]              # no choke
+    m = ps.choke_map(lines)
+    assert m == {"openhat": 1, "hihat": 1}            # kick omitted
+
+
+def test_pattern_file_carries_tune_gain_and_choke(tmp_path):
+    line = dict(ps.make_line("openhat"), steps=[0, 8], tune=3, gain_db=-4, choke=2)
     pattern = ps.lines_to_pattern([line], 4, 4, 4, 1)
     record = ps.make_record("mix", "Imported", 4, 4, 4, 1, [line], pattern)
     back = ps.record_from_file_dict(ps.record_to_file_dict(record))
     assert back["lines"][0]["tune"] == 3
     assert back["lines"][0]["gain_db"] == -4
+    assert back["lines"][0]["choke"] == 2
 
 
 def test_builtin_category():

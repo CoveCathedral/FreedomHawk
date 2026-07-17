@@ -364,6 +364,29 @@ def test_improvised_loop_unseeded_varies():
     assert a.hits != b.hits  # fresh improvisation every render
 
 
+def test_choke_group_cuts_the_ring():
+    # An open hat that rings a full second, closed off by a closed hat four steps later.
+    openhat = np.ones(int(1.0 * drums.RATE), dtype=np.float32) * 0.5
+    hihat = np.ones(int(0.02 * drums.RATE), dtype=np.float32) * 0.5
+    kit = drums.DrumKit("t", {"openhat": openhat, "hihat": hihat})
+    p = drums.Pattern("t", 16, 4, {"openhat": [0], "hihat": [4]}, 4, 4, 1)
+
+    def energy(lo_s, hi_s, choke):
+        pcm = _frames(drums.render_loop(p, kit, 120, choke_groups=choke))
+        lo, hi = int(lo_s * drums.RATE), int(hi_s * drums.RATE)
+        return float(np.abs(pcm[lo:hi]).mean())
+
+    # step = 0.125 s at 120 BPM, so the closed hat lands at 0.5 s.  After it, the open
+    # hat is silenced only when both share a choke group.
+    grouped = {"openhat": 1, "hihat": 1}
+    assert energy(0.55, 0.70, grouped) < energy(0.55, 0.70, None) * 0.25
+    # Before the closing hit, the open hat rings the same either way.
+    assert energy(0.30, 0.45, grouped) == pytest.approx(energy(0.30, 0.45, None), rel=0.05)
+    # Different groups don't choke each other.
+    assert energy(0.55, 0.70, {"openhat": 1, "hihat": 2}) == pytest.approx(
+        energy(0.55, 0.70, None), rel=0.05)
+
+
 def test_render_volume_scales_output():
     kit = drums.synth_kit()
     p = drums.GENRE_PATTERNS[0]

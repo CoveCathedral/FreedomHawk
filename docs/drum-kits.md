@@ -56,6 +56,7 @@ Beat 3.2, hit"):
 | **Minus / Plus** (`-` / `+`) | Set this line's **loop length** — polymeter (see below). |
 | **Left / Right bracket** (`[` / `]`) | **Tune** this line down / up a semitone; hold **Shift** for a whole octave. Spoken with the resulting note ("Kick tuned +2, A1"). See below. |
 | **Comma / Period** (`,` / `.`) | **Volume** for this line, down / up in decibels (Shift for a 6 dB step). Balance the mix — pull a boomy kick back so it doesn't wash the others out. Spoken ("Kick volume −6 dB"). |
+| **C** | Cycle this line's **choke group** (none → 1 → … → none). Lines in the same group cut each other's ring — see below. |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 
@@ -88,6 +89,17 @@ suddenly boom over everything, so pull its line back a few dB to sit it back in 
 The trim is baked into the sound and saved with the pattern. Full silence isn't the bottom
 of this range — for that, set the line's sample to **None** (Enter). The main tab's **Drum
 volume** still sets the overall level; per-line trims balance the parts underneath it.
+
+### Choke groups (hi-hat behaviour)
+
+On a real kit an open hi-hat stops the instant you clamp the pedal — the closed hat cuts
+it off. Recreate that with **choke groups**: press **C** on a line to put it in a group
+(1–4, cycling back to none). **Any lines sharing a group number cut each other's ring** —
+so put your **open hat and closed hat in the same group**, and each closed-hat hit chokes
+the open hat that's still ringing. The readout names the members ("Open Hat choke group 1,
+choking with Closed Hat"). It also works for cymbal chokes, or any "this sound kills that
+one" pair. The cut lands exactly on the next hit in the group (with a tiny fade so it
+doesn't click), and the setting saves and shares with the pattern.
 
 ### Polymeter (per-line loop lengths)
 

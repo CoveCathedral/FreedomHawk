@@ -361,6 +361,26 @@ def test_line_volume_trims_and_speaks(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_line_choke_group_cycles_and_speaks(frame, _silence_audio):
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(0)
+        line = dlg._current_line()
+        _silence_audio.clear()
+        dlg._cycle_choke()
+        assert line["choke"] == 1
+        assert "choke group 1" in _silence_audio[-1]
+        assert "choke group 1" in dlg._row_label(line)
+        # Cycling past the max wraps back to no group.
+        from firehawk.practice.patternstore import MAX_CHOKE_GROUP
+        for _ in range(MAX_CHOKE_GROUP):
+            dlg._cycle_choke()
+        assert line["choke"] == 0
+        assert "no choke group" in _silence_audio[-1]
+    finally:
+        dlg.Destroy()
+
+
 def test_line_tuning_clamps_to_range(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

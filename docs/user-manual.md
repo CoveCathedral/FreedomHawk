@@ -174,6 +174,10 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   6 dB step), spoken as you go. Balance the parts — pull a boomy or octave-dropped kick
   back so it doesn't wash out the rest. It saves with the pattern; the main tab's **Drum
   volume** still rides the overall level on top.
+- **C** — cycle this line's **choke group** (none → 1–4 → none). Lines in the same group
+  cut each other's ring, like a closed hat choking an open hat: put both hats in group 1
+  and each closed hit silences the open hat's tail. Works for cymbal chokes too. Saved
+  with the pattern.
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).
@@ -233,7 +237,7 @@ Everything else in this manual is fully usable offline, today.
 
 In the Pattern Editor grid: Up/Down lines · Left/Right step · Ctrl+Left/Right beat ·
 Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · minus/plus line length (polymeter) ·
-brackets `[`/`]` tune the line (Shift = octave) · comma/period `,`/`.` line volume · Enter sample options · Delete remove line · P preview (speaks the note).
+brackets `[`/`]` tune the line (Shift = octave) · comma/period `,`/`.` line volume · C choke group · Enter sample options · Delete remove line · P preview (speaks the note).
 
 ## Troubleshooting
 

@@ -47,6 +47,7 @@ from ..practice import (
 )
 from ..practice.drums import RATE, load_sample
 from ..practice.patternstore import (
+    MAX_CHOKE_GROUP,
     MAX_GAIN_DB,
     MAX_LINES,
     MAX_TUNE,
@@ -54,6 +55,8 @@ from ..practice.patternstore import (
     all_categories,
     build_line_kit,
     builtin_category,
+    choke_map,
+    clamp_choke,
     clamp_gain_db,
     clamp_tune,
     delete_pattern,
@@ -207,7 +210,7 @@ class PatternEditorDialog(wx.Dialog):
             "move between lines; Left/Right move by step, Ctrl by beat, Ctrl+Shift "
             "by bar; Space toggles a hit; Enter picks the line's sample (or None); "
             "Left/Right brackets tune the line (Shift for an octave); "
-            "comma and period set its volume; "
+            "comma and period set its volume; C sets a choke group; "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -316,7 +319,9 @@ class PatternEditorDialog(wx.Dialog):
         tuned = f", tuned {tune:+d}{f' to {note}' if note else ''}" if tune else ""
         gain = clamp_gain_db(line.get("gain_db"))
         vol = f", volume {gain:+d} dB" if gain else ""
-        return f"{line['label']}: {hits}{poly}{tuned}{vol}, sample {self._sample_desc(line)}"
+        ch = clamp_choke(line.get("choke"))
+        choke = f", choke group {ch}" if ch else ""
+        return f"{line['label']}: {hits}{poly}{tuned}{vol}{choke}, sample {self._sample_desc(line)}"
 
     def _rebuild_rows(self) -> None:
         keep = max(0, self.grid_list.GetSelection())
@@ -375,11 +380,12 @@ class PatternEditorDialog(wx.Dialog):
     _TUNE_UP_KEYS = frozenset({ord("]"), ord("}")})
     _QUIETER_KEYS = frozenset({ord(","), ord("<")})     # Shift for a bigger step
     _LOUDER_KEYS = frozenset({ord("."), ord(">")})
+    _CHOKE_KEYS = frozenset({ord("C"), ord("c")})       # cycle this line's choke group
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
                             ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
-        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS
+        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS | _CHOKE_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -426,6 +432,8 @@ class PatternEditorDialog(wx.Dialog):
             self._change_gain(-6 if shift else -1)
         elif code in self._LOUDER_KEYS:
             self._change_gain(6 if shift else 1)
+        elif code in self._CHOKE_KEYS and not ctrl:   # plain C; leave Ctrl+C alone
+            self._cycle_choke()
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -438,8 +446,10 @@ class PatternEditorDialog(wx.Dialog):
                 "phase against each other. Left and Right square brackets tune this "
                 "line down and up a semitone; hold Shift for a whole octave, and P "
                 "speaks the note it plays. Comma and period trim this line's volume "
-                "in decibels, Shift for a bigger step, to balance the mix. Enter "
-                "picks this line's sample or None. "
+                "in decibels, Shift for a bigger step, to balance the mix. C cycles "
+                "this line's choke group: lines in the same group cut each other off, "
+                "so put an open hat and a closed hat in one group and the closed hat "
+                "chokes the open one. Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
                 "and Cancel.")
@@ -507,6 +517,25 @@ class PatternEditorDialog(wx.Dialog):
         else:
             level = "unity" if new == 0 else f"{new:+d} dB"
             speech.speak(f"{line['label']} volume {level}")
+        self._reaudition()
+
+    def _cycle_choke(self) -> None:
+        """Cycle the current line's choke group (0=none .. MAX). Lines in the same
+        group cut each other's ring — an open hat closed off by the closed hat."""
+        line = self._current_line()
+        if line is None:
+            return
+        cur = clamp_choke(line.get("choke"))
+        new = 0 if cur >= MAX_CHOKE_GROUP else cur + 1
+        line["choke"] = new
+        self._refresh_row(line)
+        if new == 0:
+            speech.speak(f"{line['label']} no choke group")
+        else:
+            others = [ln["label"] for ln in self.lines
+                      if ln is not line and clamp_choke(ln.get("choke")) == new]
+            who = f", choking with {', '.join(others)}" if others else ", alone so far"
+            speech.speak(f"{line['label']} choke group {new}{who}")
         self._reaudition()
 
     def _toggle_hit(self) -> None:
@@ -790,7 +819,8 @@ class PatternEditorDialog(wx.Dialog):
         # bars, which belongs on the main tab, not while editing a 1-4 bar pattern.
         effective = flatten_polymeter(self._effective_pattern())
         return render_loop(effective, self._line_kit, self._bpm,
-                           swing=self._swing, humanize=self._humanize)
+                           swing=self._swing, humanize=self._humanize,
+                           choke_groups=choke_map(self.lines))
 
     def _reaudition(self) -> None:
         if self._auditioning:
@@ -1440,7 +1470,8 @@ class DrumsPanel(wx.Panel):
         self.player.play(render_loop(effective, kit, self.bpm,
                                      volume=self.volume_slider.GetValue() / 100.0,
                                      swing=self.swing_slider.GetValue() / 100.0,
-                                     humanize=self.humanize_slider.GetValue() / 100.0))
+                                     humanize=self.humanize_slider.GetValue() / 100.0,
+                                     choke_groups=choke_map(self._current_lines())))
 
     def _apply(self) -> None:
         """Re-render and swap the loop if we're currently playing."""
@@ -1503,7 +1534,8 @@ class DrumsPanel(wx.Panel):
             wav = render_loop(self._export_effective_pattern(), kit, self.bpm,
                               volume=self.volume_slider.GetValue() / 100.0,
                               swing=self.swing_slider.GetValue() / 100.0,
-                              humanize=self.humanize_slider.GetValue() / 100.0)
+                              humanize=self.humanize_slider.GetValue() / 100.0,
+                              choke_groups=choke_map(self._current_lines()))
             path.write_bytes(wav)
         except Exception as exc:  # noqa: BLE001
             wx.MessageBox(f"Could not export:\n{exc}", "Export WAV", wx.ICON_ERROR)

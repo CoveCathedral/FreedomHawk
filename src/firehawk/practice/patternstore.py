@@ -45,6 +45,10 @@ MAX_TUNE = 24
 #: for lift; full silence is the sample's "None" option, not the bottom of this range.
 MIN_GAIN_DB, MAX_GAIN_DB = -24, 6
 
+#: Choke groups a line can belong to (0 = none).  Lines sharing a group cut each
+#: other's ring — the classic open-hat-closed-by-the-closed-hat behaviour.
+MAX_CHOKE_GROUP = 4
+
 
 def clamp_tune(value) -> int:
     """A line's tuning in whole semitones, clamped to the allowed range."""
@@ -65,6 +69,20 @@ def clamp_gain_db(value) -> int:
 def gain_from_db(db: float) -> float:
     """Linear amplitude multiplier for a decibel value (0 dB = 1.0)."""
     return 10.0 ** (db / 20.0)
+
+
+def clamp_choke(value) -> int:
+    """A line's choke-group number (0 = none), clamped to the allowed range."""
+    try:
+        return max(0, min(MAX_CHOKE_GROUP, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def choke_map(lines: list[dict]) -> dict:
+    """Role/line-id -> choke group for the lines that belong to one (skips 0/none)."""
+    return {ln["id"]: clamp_choke(ln.get("choke"))
+            for ln in lines if clamp_choke(ln.get("choke"))}
 
 MAX_LINES = 24  # keep the grid navigable
 
@@ -366,7 +384,7 @@ def record_from_file_dict(data: dict) -> dict:
             "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
             "sample": (str(ln["sample"]) if ln.get("sample") else None),
             "steps": steps, "length": length, "tune": clamp_tune(ln.get("tune")),
-            "gain_db": clamp_gain_db(ln.get("gain_db")),
+            "gain_db": clamp_gain_db(ln.get("gain_db")), "choke": clamp_choke(ln.get("choke")),
             "accents": _level_steps("accents"), "ghosts": _level_steps("ghosts"),
         })
     if not lines:
