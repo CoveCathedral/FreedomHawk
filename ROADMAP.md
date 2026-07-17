@@ -143,9 +143,12 @@ All screen-reader-first, native controls only.
   library grooves), **swing/shuffle**, and **humanize** — all through the whole pipeline
   (render, transforms, improviser, saves, MIDI velocities). **Per-line polymeter**
   (`-`/`+` set each line's own loop length; parts phase and realign over the LCM,
-  `flatten_polymeter`; shared pulse; saved + exported).
-  **Planned next (Kaylea approved):** song mode (pattern chaining) · per-line tuning
-  (808 to key) · tempo trainer · count-in · audition-step & speak-rhythm keys · choke
+  `flatten_polymeter`; shared pulse; saved + exported). **Per-line tuning + by-ear pitch
+  detection** (`[`/`]` tune a line, Shift = octave; baked into the voice by resampling;
+  `practice/pitch.py` estimates each sample's note by autocorrelation and speaks it, so an
+  808 or tom can be tuned to the song's key without sight; noise sounds report no key;
+  persists through saves/shares/MIDI).
+  **Planned next (Kaylea approved):** song mode (pattern chaining) · tempo trainer · count-in · audition-step & speak-rhythm keys · choke
   groups · **MIDI controller input** (craft beats from a keyboard). Long-term: spin
   the sequencer out as its own open-source project (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to

@@ -16,6 +16,7 @@ except Exception:  # pragma: no cover - no GUI available
 import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
+from firehawk.practice.patternstore import build_line_kit
 from firehawk.ui.drumspanel import DrumsPanel
 from firehawk.ui.mainframe import MainFrame
 from firehawk.ui.metronomepanel import MetronomePanel
@@ -323,6 +324,37 @@ def test_grid_change_preserves_meter_and_speaks_it(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_line_tuning_shifts_and_speaks(frame, _silence_audio):
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(0)
+        line = dlg._current_line()
+        _silence_audio.clear()
+        dlg._change_tune(2)                      # up a whole step
+        assert line["tune"] == 2
+        assert "tuned +2" in _silence_audio[-1]
+        assert "tuned +2" in dlg._row_label(line)
+        dlg._change_tune(-3)                      # now a semitone below base
+        assert line["tune"] == -1
+        # Tuning bakes into the audio: the line's voice actually changes length.
+        base_kit = build_line_kit([{**line, "tune": 0}], dlg._kits_dir, base_kit=dlg._base_kit)
+        assert len(dlg._line_kit.voice(line["id"])) != len(base_kit.voice(line["id"]))
+    finally:
+        dlg.Destroy()
+
+
+def test_line_tuning_clamps_to_range(frame, _silence_audio):
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(0)
+        line = dlg._current_line()
+        for _ in range(40):                      # push well past the limit
+            dlg._change_tune(1)
+        assert line["tune"] == 24                 # MAX_TUNE, not higher
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_none_silences_part(frame):
     dlg = _grid_dialog(frame)
     try:
@@ -429,7 +461,9 @@ def test_grid_char_hook_routes_enter_and_p(frame, monkeypatch, _silence_audio):
         dlg._on_char_hook(_Key(wx.WXK_RETURN))
         assert opened == [True]
         dlg._on_char_hook(_Key(ord("P")))
-        assert _silence_audio[-1] in ("Kick", "Kick: preview not available")
+        # Preview speaks the line, plus its musical note when the sound is pitched.
+        spoken = _silence_audio[-1]
+        assert spoken.startswith("Kick")
         # Non-grid keys fall through to normal dialog handling.
         tab = _Key(wx.WXK_TAB)
         tab.skipped = False

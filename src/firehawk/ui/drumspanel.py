@@ -45,13 +45,16 @@ from ..practice import (
     synth_kit,
     wav_duration,
 )
-from ..practice.drums import load_sample
+from ..practice.drums import RATE, load_sample
 from ..practice.patternstore import (
     MAX_LINES,
+    MAX_TUNE,
     all_categories,
     build_line_kit,
     builtin_category,
+    clamp_tune,
     delete_pattern,
+    line_pitch,
     lines_for_kit,
     make_line,
     make_record,
@@ -64,6 +67,7 @@ from ..practice.patternstore import (
     set_pattern_category,
     user_patterns,
 )
+from ..practice.pitch import estimate_pitch, note_name_for_semitones
 from ..practice.patternstore import SYNTH_KIT_NAME
 from . import speech, theme
 from .accessibility import set_accessible_name
@@ -191,6 +195,7 @@ class PatternEditorDialog(wx.Dialog):
         self._auditioning = False
         self._cursor = 0
         self._preview = _PreviewPlayer()
+        self._pitch_cache: dict = {}   # (id, kit, sample) -> estimated base Pitch
         self._line_kit = build_line_kit(self.lines, self._kits_dir, base_kit=self._base_kit)
 
         root = wx.BoxSizer(wx.VERTICAL)
@@ -198,6 +203,7 @@ class PatternEditorDialog(wx.Dialog):
             "One line per part; add lines to stack drums or mix libraries. Up/Down "
             "move between lines; Left/Right move by step, Ctrl by beat, Ctrl+Shift "
             "by bar; Space toggles a hit; Enter picks the line's sample (or None); "
+            "Left/Right brackets tune the line (Shift for an octave); "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -301,7 +307,10 @@ class PatternEditorDialog(wx.Dialog):
         hits = "no hits" if n == 0 else ("1 hit" if n == 1 else f"{n} hits")
         length = self.pattern.line_length(line["id"])
         poly = f", length {length} steps" if length != self.pattern.steps else ""
-        return f"{line['label']}: {hits}{poly}, sample {self._sample_desc(line)}"
+        tune = clamp_tune(line.get("tune"))
+        note = self._tuned_note(line) if tune else None
+        tuned = f", tuned {tune:+d}{f' to {note}' if note else ''}" if tune else ""
+        return f"{line['label']}: {hits}{poly}{tuned}, sample {self._sample_desc(line)}"
 
     def _rebuild_rows(self) -> None:
         keep = max(0, self.grid_list.GetSelection())
@@ -356,10 +365,13 @@ class PatternEditorDialog(wx.Dialog):
 
     _LENGTHEN_KEYS = frozenset({ord("="), ord("+"), wx.WXK_NUMPAD_ADD})
     _SHORTEN_KEYS = frozenset({ord("-"), ord("_"), wx.WXK_NUMPAD_SUBTRACT})
+    _TUNE_DOWN_KEYS = frozenset({ord("["), ord("{")})   # Shift for a whole octave
+    _TUNE_UP_KEYS = frozenset({ord("]"), ord("}")})
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
-                            ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS
+                            ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
+        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -398,6 +410,10 @@ class PatternEditorDialog(wx.Dialog):
             self._change_line_length(1)
         elif code in self._SHORTEN_KEYS:
             self._change_line_length(-1)
+        elif code in self._TUNE_DOWN_KEYS:
+            self._change_tune(-12 if shift else -1)
+        elif code in self._TUNE_UP_KEYS:
+            self._change_tune(12 if shift else 1)
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -407,7 +423,9 @@ class PatternEditorDialog(wx.Dialog):
                 "move by bar. Home and End jump to the start and end. Space cycles "
                 "a step: on, accent, ghost, off. Minus and Plus set this line's "
                 "length for polymeter, so lines can loop in different lengths and "
-                "phase against each other. Enter picks this line's sample or None. "
+                "phase against each other. Left and Right square brackets tune this "
+                "line down and up a semitone; hold Shift for a whole octave, and P "
+                "speaks the note it plays. Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
                 "and Cancel.")
@@ -425,6 +443,39 @@ class PatternEditorDialog(wx.Dialog):
         self._refresh_row(line)
         synced = " (synced with the pattern)" if new_len == self.pattern.steps else ""
         speech.speak(f"{line['label']} length {new_len} steps{synced}")
+        self._reaudition()
+
+    def _base_pitch(self, line: dict):
+        """The estimated pitch of a line's source sample (before tuning), cached."""
+        key = (line["id"], line.get("kit"), line.get("sample"))
+        if key not in self._pitch_cache:
+            self._pitch_cache[key] = line_pitch(line, self._kits_dir, self._base_kit)
+        return self._pitch_cache[key]
+
+    def _tuned_note(self, line: dict) -> str | None:
+        """The note this line sounds at now (base pitch shifted by its tuning)."""
+        p = self._base_pitch(line)
+        if p is None or not p.pitched:
+            return None
+        return note_name_for_semitones(p.freq_hz, clamp_tune(line.get("tune")))
+
+    def _change_tune(self, delta: int) -> None:
+        """Tune the current line up or down in semitones (Shift = a whole octave)."""
+        line = self._current_line()
+        if line is None:
+            return
+        cur = clamp_tune(line.get("tune"))
+        new = max(-MAX_TUNE, min(MAX_TUNE, cur + delta))
+        line["tune"] = new
+        self._rebuild_line_kit()
+        self._refresh_row(line)
+        if new == cur:
+            speech.speak(f"{line['label']} tuning at its {'top' if delta > 0 else 'bottom'} limit")
+        else:
+            amount = "no change" if new == 0 else \
+                f"{new:+d} semitone{'s' if abs(new) != 1 else ''}"
+            note = self._tuned_note(line)
+            speech.speak(f"{line['label']} tuned {amount}{f', {note}' if note else ''}")
         self._reaudition()
 
     def _toggle_hit(self) -> None:
@@ -579,7 +630,8 @@ class PatternEditorDialog(wx.Dialog):
         if self._auditioning:
             self._stop_audition()  # the preview needs the audio channel
         if self._preview.play_voice(voice):
-            speech.speak(line["label"])
+            note = self._tuned_note(line)
+            speech.speak(f"{line['label']}{f', {note}' if note else ''}")
         else:
             speech.speak(f"{line['label']}: preview not available")
 
@@ -751,12 +803,14 @@ class KitSoundsDialog(wx.Dialog):
         self._roles = [r for r in ROLES if r in self._files]
         self.choices = dict(choices)  # role -> filename; edited in place, read on Save
         self._player = _PreviewPlayer()
+        self._pitch_cache: dict = {}   # file path -> estimated Pitch (lazy)
 
         root = wx.BoxSizer(wx.VERTICAL)
         intro = wx.StaticText(self, label=(
             "Pick a part, then arrow through its samples — each one plays as you land on "
-            "it (lengths are shown; names are the kit maker's own). Save keeps your "
-            "choices for this kit; Cancel or Escape leaves it unchanged."))
+            "it (lengths are shown; names are the kit maker's own). Tuned sounds speak "
+            "their musical key after the name, so you can match 808s and toms. Save keeps "
+            "your choices for this kit; Cancel or Escape leaves it unchanged."))
         intro.Wrap(520)
         root.Add(intro, 0, wx.ALL, 10)
 
@@ -829,16 +883,27 @@ class KitSoundsDialog(wx.Dialog):
         self._preview()
 
     def _preview(self) -> None:
-        """Play the selected sample once (converted, so float WAVs preview fine)."""
+        """Play the selected sample once, and speak its musical key if it has one."""
         role = self._current_role()
         files = self._files.get(role, [])
         i = self.sample_choice.GetSelection()
         if not NUMPY_AVAILABLE or role is None or not (0 <= i < len(files)):
             return
         try:
-            self._player.play_voice(load_sample(files[i]))
+            voice = load_sample(files[i])
         except Exception:  # noqa: BLE001 - preview is best-effort
-            pass
+            return
+        self._player.play_voice(voice)
+        note = self._sample_note(files[i], voice, role)
+        if note:                        # follow (not interrupt) the sample name NVDA read
+            speech.speak(note, interrupt=False)
+
+    def _sample_note(self, path, voice, role: str) -> str | None:
+        """The sample's detected note, cached; None when it isn't clearly pitched."""
+        if path not in self._pitch_cache:
+            self._pitch_cache[path] = estimate_pitch(voice, RATE, role=role)
+        p = self._pitch_cache[path]
+        return p.note if (p and p.pitched) else None
 
     def _stop_preview(self) -> None:
         self._player.stop()

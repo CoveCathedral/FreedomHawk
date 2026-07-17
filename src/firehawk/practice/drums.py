@@ -887,6 +887,24 @@ def _swung_fraction(frac: float, swing: float) -> float:
     return r + 2 * (frac - 0.5) * (1 - r)
 
 
+def resample_pitch(voice, semitones: float):
+    """Pitch-shift a voice by *semitones* (equal temperament) by resampling.
+
+    Higher pitch plays back faster, so the sample also gets slightly shorter — which
+    is natural for drums (a lower tom rings a touch longer, a higher one tightens up).
+    Linear interpolation is ample for one-shot hits.  Zero semitones is a no-op.
+    """
+    if np is None or voice is None or not semitones or len(voice) == 0:
+        return voice
+    ratio = 2.0 ** (semitones / 12.0)
+    new_len = max(1, int(round(len(voice) / ratio)))
+    idx = np.arange(new_len) * ratio
+    i0 = np.floor(idx).astype(np.int64)
+    frac = (idx - i0).astype(np.float32)
+    i1 = np.minimum(i0 + 1, len(voice) - 1)
+    return ((1.0 - frac) * voice[i0] + frac * voice[i1]).astype(np.float32)
+
+
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
                 seed: int | None = None) -> bytes:

@@ -54,8 +54,30 @@ Beat 3.2, hit"):
 | **Enter** | Sample options for this line: any sample from its kit folder, the automatic default, or **None** (silence the line). |
 | **Delete** | Remove the selected line. |
 | **Minus / Plus** (`-` / `+`) | Set this line's **loop length** — polymeter (see below). |
-| **P** | Preview this line's sound. |
+| **Left / Right bracket** (`[` / `]`) | **Tune** this line down / up a semitone; hold **Shift** for a whole octave. Spoken with the resulting note ("Kick tuned +2, A1"). See below. |
+| **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
+
+### Tuning drums & reading their key
+
+Drums that carry a pitch — 808s, kicks, toms, tuned percussion — can be **tuned per
+line** with the `[` and `]` keys (Shift for octaves), so an 808 line sits in the key of
+your song. Tuning is baked into the sound and travels with the pattern when you save,
+share, or export it.
+
+To make that usable without seeing a screen, FreedomHawk **estimates each sample's
+musical note** and speaks it:
+
+- **In the Pattern Editor**, `P` previews a line and speaks the note it now sounds
+  ("808, G1"). The line's row also reads its tuning ("tuned +2 to A1"), and every `[` / `]`
+  press speaks the new note. The note reflects the tuning, so you can dial a line to a
+  target pitch by ear and confirmation.
+- **In Kit Sounds**, as you arrow through a part's samples, a tuned sample speaks its key
+  right after its name — so you can pick the 808 or tom that matches your key.
+
+Noise-based sounds (snares, hats, cymbals) have no clear pitch, so they simply stay
+silent on the key readout rather than guess. Detection is automatic and needs no tags —
+it listens to the sample the way a tuner would, past the attack, to the note that rings.
 
 ### Polymeter (per-line loop lengths)
 

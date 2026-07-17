@@ -25,14 +25,20 @@ from .drums import (
     LEVEL_GHOST,
     ROLE_LABELS,
     ROLES,
+    RATE,
     DrumKit,
     Pattern,
     default_sample_for,
     list_role_files,
     load_sample,
+    resample_pitch,
     steps_per_bar,
     synth_kit,
 )
+from .pitch import Pitch, estimate_pitch
+
+#: Per-line pitch tuning is clamped to +/- two octaves.
+MAX_TUNE = 24
 
 MAX_LINES = 24  # keep the grid navigable
 
@@ -103,13 +109,58 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
     return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths)
 
 
+def clamp_tune(value) -> int:
+    """A line's tuning in whole semitones, clamped to the allowed range."""
+    try:
+        return max(-MAX_TUNE, min(MAX_TUNE, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def resolve_line_voice(line: dict, kits_dir, base_kit: DrumKit | None,
+                       synth: DrumKit | None = None, cache: dict | None = None):
+    """The raw (untuned) voice a single line resolves to — its own kit/sample, else
+    the global kit, else synth.  Shared by :func:`build_line_kit` and pitch readouts."""
+    synth = synth or synth_kit()
+    cache = cache if cache is not None else {}
+    kit_name, role, sample = line.get("kit"), line.get("role"), line.get("sample")
+
+    def global_voice(r):
+        v = base_kit.voice(r) if base_kit else None
+        return v if v is not None else synth.voice(r)
+
+    if kit_name is None:                      # follow the globally selected kit
+        return global_voice(role)
+    if kit_name == SYNTH_KIT_NAME:            # explicitly synth
+        return synth.voice(role)
+    if kit_name not in cache:                 # an explicit sample kit folder
+        cache[kit_name] = list_role_files(Path(kits_dir) / kit_name)
+    files = cache[kit_name].get(role, [])
+    path = next((f for f in files if f.name == sample), None) or default_sample_for(role, files)
+    if path is not None:
+        try:
+            return load_sample(path)
+        except Exception:  # noqa: BLE001
+            pass
+    return global_voice(role)                 # unreadable/missing -> fall back
+
+
+def line_pitch(line: dict, kits_dir, base_kit: DrumKit | None = None) -> Pitch | None:
+    """Estimate the musical pitch of a line's source sample (before any tuning)."""
+    voice = resolve_line_voice(line, kits_dir, base_kit)
+    if voice is None or len(voice) == 0:
+        return None
+    return estimate_pitch(voice, RATE, role=line.get("role"))
+
+
 def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None) -> DrumKit:
     """Voices for a line pattern: one per line id.
 
     Each line's source: ``kit=None`` follows *base_kit* (the globally selected kit),
     ``kit=SYNTH_KIT_NAME`` is the synth, any other name is that kit folder (with the
-    line's own sample choice).  Canonical roles missing from the lines fall back to
-    the base kit (then synth), so generated fills always sound.
+    line's own sample choice).  Each voice is pitch-shifted by the line's ``tune``
+    (semitones).  Canonical roles missing from the lines fall back to the base kit
+    (then synth), so generated fills always sound.
     """
     synth = synth_kit()
     cache: dict = {}
@@ -118,27 +169,11 @@ def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None)
         v = base_kit.voice(role) if base_kit else None
         return v if v is not None else synth.voice(role)
 
-    def line_voice(kit_name, role, sample):
-        if kit_name is None:                 # follow the globally selected kit
-            return global_voice(role)
-        if kit_name == SYNTH_KIT_NAME:        # explicitly synth
-            return synth.voice(role)
-        if kit_name not in cache:             # an explicit sample kit folder
-            cache[kit_name] = list_role_files(Path(kits_dir) / kit_name)
-        files = cache[kit_name].get(role, [])
-        path = next((f for f in files if f.name == sample), None) or default_sample_for(role, files)
-        if path is not None:
-            try:
-                return load_sample(path)
-            except Exception:  # noqa: BLE001
-                pass
-        return global_voice(role)             # unreadable/missing -> fall back
-
     voices: dict = {}
     for ln in lines:
-        v = line_voice(ln.get("kit"), ln.get("role"), ln.get("sample"))
+        v = resolve_line_voice(ln, kits_dir, base_kit, synth, cache)
         if v is not None:
-            voices[ln["id"]] = v
+            voices[ln["id"]] = resample_pitch(v, clamp_tune(ln.get("tune")))
     for role in ROLES:  # fill/audition fallbacks for roles no line covers
         if role not in voices:
             voices[role] = global_voice(role)
@@ -311,7 +346,7 @@ def record_from_file_dict(data: dict) -> dict:
             "id": str(ln["id"]), "label": str(ln.get("label") or ln["id"]),
             "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
             "sample": (str(ln["sample"]) if ln.get("sample") else None),
-            "steps": steps, "length": length,
+            "steps": steps, "length": length, "tune": clamp_tune(ln.get("tune")),
             "accents": _level_steps("accents"), "ghosts": _level_steps("ghosts"),
         })
     if not lines:

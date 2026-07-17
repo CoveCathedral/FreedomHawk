@@ -165,6 +165,11 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   give the kick 7 steps while the hats stay at 16 and the parts phase against each
   other and realign — the stacked-meter prog/djent feel. The pulse stays shared, and
   each line is edited as its own loop.
+- **Brackets** (`[` / `]`) — **tune** this line down / up a semitone (Shift for a whole
+  octave), so an 808 or tom sits in your key. The resulting **note is spoken** ("Kick
+  tuned +2, A1"), `P` speaks the note a line plays, and the row shows its tuning.
+  FreedomHawk estimates each sample's key by ear, so you can tune to a target pitch
+  without seeing anything; noise sounds (hats, cymbals) simply report no key.
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).
@@ -223,8 +228,8 @@ Everything else in this manual is fully usable offline, today.
 | Alt+Up / Alt+Down | Move a tab (in Settings → Arrange Tabs) |
 
 In the Pattern Editor grid: Up/Down lines · Left/Right step · Ctrl+Left/Right beat ·
-Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · minus/plus line length (polymeter) · Enter sample options · Delete
-remove line · P preview.
+Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · minus/plus line length (polymeter) ·
+brackets `[`/`]` tune the line (Shift = octave) · Enter sample options · Delete remove line · P preview (speaks the note).
 
 ## Troubleshooting
 
