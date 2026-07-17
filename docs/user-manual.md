@@ -196,6 +196,12 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 - **Play/Pause** auditions while you edit; **Save** applies; **Save as Preset…** stores
   the pattern under a category (pick one or type a new one); **Load Groove…** pulls any
   built-in or saved pattern into the editor; **Cancel**/Escape discards.
+- **Show visual track** — a checkbox that reveals a large, high-contrast picture of the
+  grid for usable vision: one row per line, bright cells for hits, **yellow for accents**,
+  **dim blue for ghosts**, gridlines on the beats and bars, and a **red box on the
+  cursor** with the current line highlighted. It's display-only — the list above stays the
+  thing you operate, so the screen-reader workflow is unchanged — and the setting is
+  remembered between sessions.
 
 ### Managing and sharing (the Tools menu)
 

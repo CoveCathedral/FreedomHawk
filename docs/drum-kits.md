@@ -121,6 +121,18 @@ choking with Closed Hat"). It also works for cymbal chokes, or any "this sound k
 one" pair. The cut lands exactly on the next hit in the group (with a tiny fade so it
 doesn't click), and the setting saves and shares with the pattern.
 
+### Visual track (low-vision grid view)
+
+Tick **Show visual track** for a large, high-contrast picture of the pattern beneath the
+list: one row per line, with **bright cyan cells for hits, yellow for accents, dim blue for
+ghosts**, thin gridlines on each beat and bolder ones on each bar, the **current line
+highlighted**, and a **red box around the cursor**. It mirrors the grid live as you edit.
+
+It's **display-only and never takes keyboard focus** — the list is still the surface you
+operate, so nothing about the screen-reader workflow changes; the picture is an extra for
+usable vision (and for anyone who leans on sight more than the primary user does). The
+checkbox state is remembered between sessions.
+
 ### Polymeter (per-line loop lengths)
 
 Every line normally loops with the whole pattern. But you can give a line **its own

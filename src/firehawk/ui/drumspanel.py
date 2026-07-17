@@ -156,6 +156,120 @@ class _PreviewPlayer:
             self._path = None
 
 
+class _VisualTrack(wx.ScrolledWindow):
+    """A large, high-contrast visual mirror of the pattern grid, for low-vision use.
+
+    **Display-only.** It never takes focus and is not in the tab order — the ListBox
+    stays the operable, screen-reader surface (per the project's accessibility rule that
+    nothing you *operate* is custom-painted). This just paints what the grid already holds,
+    with big cells and strong colour/intensity contrast so a low-vision user can see the
+    beat at a glance. Others who rely more on sight than the primary user benefit too.
+    """
+
+    CELL = 30           # step-cell width (large, for low vision)
+    ROW_H = 34
+    GUTTER = 110        # left column holding each line's name
+
+    BG = wx.Colour(0x10, 0x10, 0x10)
+    EMPTY = wx.Colour(0x30, 0x30, 0x30)
+    BEAT = wx.Colour(0x60, 0x60, 0x60)
+    BAR = wx.Colour(0xB0, 0xB0, 0xB0)
+    HIT = wx.Colour(0x22, 0xC8, 0xFF)       # bright cyan — a normal hit
+    ACCENT = wx.Colour(0xFF, 0xD4, 0x00)    # bright yellow — accent (loudest)
+    GHOST = wx.Colour(0x0E, 0x63, 0x86)     # dim cyan — ghost (quietest)
+    CURSOR = wx.Colour(0xFF, 0x3B, 0x30)    # red outline — the cursor
+    ROW_HL = wx.Colour(0x20, 0x3A, 0x48)    # current line's row background
+    TEXT = wx.Colour(0xFF, 0xFF, 0xFF)
+    MUTED = wx.Colour(0x70, 0x70, 0x70)
+
+    def __init__(self, parent: wx.Window, editor: "PatternEditorDialog"):
+        super().__init__(parent, style=wx.BORDER_SIMPLE)
+        self._editor = editor
+        self.SetScrollRate(15, 15)
+        self.SetBackgroundColour(self.BG)
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)   # for AutoBufferedPaintDC
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+
+    # Keep it out of keyboard focus / tab order — it is a visual aid, not a control.
+    def AcceptsFocus(self) -> bool:
+        return False
+
+    def AcceptsFocusFromKeyboard(self) -> bool:
+        return False
+
+    def refresh_view(self) -> None:
+        if not self.IsShown():
+            return
+        p = self._editor.pattern
+        steps = max(1, p.steps)
+        self.SetVirtualSize(self.GUTTER + steps * self.CELL + 4,
+                            max(1, len(self._editor.lines)) * self.ROW_H + 4)
+        self.Refresh()
+
+    def _cell_colour(self, on: bool, level, silenced: bool) -> wx.Colour:
+        if not on:
+            return self.EMPTY
+        if silenced:
+            return self.MUTED
+        if level == LEVEL_ACCENT:
+            return self.ACCENT
+        if level == LEVEL_GHOST:
+            return self.GHOST
+        return self.HIT
+
+    def _on_paint(self, event: wx.PaintEvent) -> None:
+        dc = wx.AutoBufferedPaintDC(self)
+        self.DoPrepareDC(dc)
+        self._paint(dc)
+
+    def _paint(self, dc: wx.DC) -> None:
+        dc.SetBackground(wx.Brush(self.BG))
+        dc.Clear()
+        ed = self._editor
+        p = ed.pattern
+        steps = max(1, p.steps)
+        spb = max(1, p.steps_per_beat)
+        per_bar = max(1, p.steps // max(1, p.bars))
+        sel = ed.grid_list.GetSelection()
+        cursor = ed._cursor
+        dc.SetFont(wx.Font(wx.FontInfo(11).Bold()))
+        grid_right = self.GUTTER + steps * self.CELL
+
+        for r, line in enumerate(ed.lines):
+            y = r * self.ROW_H + 2
+            lid = line["id"]
+            silenced = lid in ed.silenced
+            if r == sel:                                  # highlight the current line's row
+                dc.SetPen(wx.TRANSPARENT_PEN)
+                dc.SetBrush(wx.Brush(self.ROW_HL))
+                dc.DrawRectangle(0, y - 2, grid_right, self.ROW_H)
+
+            dc.SetTextForeground(self.MUTED if silenced else self.TEXT)
+            dc.DrawText(str(line.get("label", lid))[:14], 6, y + (self.ROW_H - 18) // 2)
+
+            hits = set(p.hits.get(lid, []))
+            levels = p.levels.get(lid, {})
+            line_len = p.line_length(lid)
+            for s in range(steps):
+                x = self.GUTTER + s * self.CELL
+                on = s in hits and s < line_len
+                dc.SetPen(wx.Pen(self.BG))
+                dc.SetBrush(wx.Brush(self._cell_colour(on, levels.get(s), silenced)))
+                dc.DrawRectangle(x + 1, y + 1, self.CELL - 2, self.ROW_H - 6)
+                if s % per_bar == 0:                      # bar / beat separators
+                    dc.SetPen(wx.Pen(self.BAR, 2))
+                    dc.DrawLine(x, y - 2, x, y + self.ROW_H - 2)
+                elif s % spb == 0:
+                    dc.SetPen(wx.Pen(self.BEAT, 1))
+                    dc.DrawLine(x, y, x, y + self.ROW_H - 4)
+
+            if r == sel and 0 <= cursor < steps:          # the time cursor
+                cx = self.GUTTER + cursor * self.CELL
+                dc.SetPen(wx.Pen(self.CURSOR, 3))
+                dc.SetBrush(wx.TRANSPARENT_BRUSH)
+                dc.DrawRectangle(cx, y, self.CELL, self.ROW_H - 4)
+
+
 class PatternEditorDialog(wx.Dialog):
     """Tracker-style accessible pattern grid (designed with/for its blind NVDA user).
 
@@ -218,6 +332,18 @@ class PatternEditorDialog(wx.Dialog):
         self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.grid_list, "Pattern grid")
         root.Add(self.grid_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        # Optional high-contrast visual mirror of the grid (display-only; low-vision aid).
+        # The preference persists — a low-vision user who wants it will want it every time.
+        show_visual = bool(settings.get("show_visual_track")) if settings is not None else False
+        self.visual_cb = wx.CheckBox(self, label="Show &visual track (high-contrast grid)")
+        self.visual_cb.SetValue(show_visual)
+        self.visual_cb.Bind(wx.EVT_CHECKBOX, self._on_toggle_visual)
+        root.Add(self.visual_cb, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        self.visual_track = _VisualTrack(self, self)
+        self.visual_track.SetMinSize((-1, 200))
+        self.visual_track.Show(show_visual)
+        root.Add(self.visual_track, 0, wx.EXPAND | wx.ALL, 10)
 
         meter = wx.FlexGridSizer(cols=4, vgap=6, hgap=8)
         meter.Add(wx.StaticText(self, label="Beats per bar:"), 0, wx.ALIGN_CENTER_VERTICAL)
@@ -328,12 +454,29 @@ class PatternEditorDialog(wx.Dialog):
         self.grid_list.Set([self._row_label(ln) for ln in self.lines])
         if self.lines:
             self.grid_list.SetSelection(min(keep, len(self.lines) - 1))
+        self._refresh_visual()
 
     def _refresh_row(self, line: dict) -> None:
         for i, ln in enumerate(self.lines):
             if ln is line:
                 self.grid_list.SetString(i, self._row_label(line))
-                return
+                break
+        self._refresh_visual()
+
+    def _refresh_visual(self) -> None:
+        """Repaint the visual track if it's showing (a no-op otherwise)."""
+        track = getattr(self, "visual_track", None)
+        if track is not None:
+            track.refresh_view()
+
+    def _on_toggle_visual(self, event: wx.CommandEvent) -> None:
+        show = self.visual_cb.GetValue()
+        self.visual_track.Show(show)
+        self.visual_track.refresh_view()
+        self.Layout()
+        if self._settings is not None:
+            self._settings.set("show_visual_track", show)
+        speech.speak("Visual track shown." if show else "Visual track hidden.")
 
     def _rebuild_line_kit(self) -> None:
         self._line_kit = build_line_kit(self.lines, self._kits_dir, base_kit=self._base_kit)
@@ -354,6 +497,7 @@ class PatternEditorDialog(wx.Dialog):
         line = self._current_line()
         state = self._state_at(line["id"], self._cursor) if line else "empty"
         speech.speak(f"{step_label(self.pattern, self._cursor)}, {state}")
+        self._refresh_visual()
 
     def _move_cursor(self, delta: int) -> None:
         # The cursor lives within the current line's own cycle (polymeter).
@@ -373,6 +517,7 @@ class PatternEditorDialog(wx.Dialog):
         state = self._state_at(line["id"], self._cursor)
         speech.speak(f"{self._row_label(line)}. Cursor: "
                      f"{step_label(self.pattern, self._cursor)}, {state}")
+        self._refresh_visual()
 
     _LENGTHEN_KEYS = frozenset({ord("="), ord("+"), wx.WXK_NUMPAD_ADD})
     _SHORTEN_KEYS = frozenset({ord("-"), ord("_"), wx.WXK_NUMPAD_SUBTRACT})

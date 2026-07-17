@@ -160,6 +160,11 @@ All screen-reader-first, native controls only.
   spin the sequencer out as its own open-source project (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
+- **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully
+  blind; additive to the NVDA-first design). Enlarged + widened tab sidebar (15pt bold);
+  navigable **HTML user manual** (`scripts/build_manual.py` → TOC + anchored headings,
+  opened from Help); toggleable **high-contrast visual track** in the Pattern Editor
+  (display-only, never focusable — the list stays the operable surface; remembered).
 - **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;
   later drives footswitch recall) · A/B tone compare · full signal-chain readout hotkey.
 

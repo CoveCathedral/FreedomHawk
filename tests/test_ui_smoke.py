@@ -424,6 +424,40 @@ def test_tempo_trainer_continuous_passes_target(frame, _silence_audio):
     assert not d._playing and d._trainer_timer is None
 
 
+def test_visual_track_toggles_paints_and_persists(frame, _silence_audio):
+    dlg = _grid_dialog(frame)
+    try:
+        vt = dlg.visual_track
+        assert not vt.IsShown()                       # off by default
+        assert not vt.AcceptsFocus()                  # display-only, never in tab order
+        dlg.visual_cb.SetValue(True)
+        dlg._on_toggle_visual(None)
+        assert vt.IsShown()
+        assert dlg._settings.get("show_visual_track") is True   # preference persisted
+        vt.refresh_view()
+        w, h = vt.GetVirtualSize()
+        assert w > vt.GUTTER and h > 0                # sized to the pattern
+        # It paints to a DC without error (proves the draw path is sound headless).
+        import wx
+        bmp = wx.Bitmap(max(1, w), max(1, h))
+        mdc = wx.MemoryDC(bmp)
+        vt._paint(mdc)
+        mdc.SelectObject(wx.NullBitmap)
+    finally:
+        dlg.Destroy()
+
+
+def test_visual_track_opens_shown_when_remembered(frame, _silence_audio):
+    d = frame.drums_page
+    d._settings.set("show_visual_track", True)
+    dlg = _grid_dialog(frame)
+    try:
+        assert dlg.visual_cb.GetValue() and dlg.visual_track.IsShown()
+    finally:
+        dlg.Destroy()
+        d._settings.set("show_visual_track", False)
+
+
 def test_line_choke_group_cycles_and_speaks(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:
