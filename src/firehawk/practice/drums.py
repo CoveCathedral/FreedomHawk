@@ -591,6 +591,79 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
                    p.beats_per_bar, p.beat_unit, total_bars)
 
 
+# -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
+
+_FILL_CLEAR_ROLES = ("snare", "hihat", "openhat", "clap", "tom", "perc")
+
+
+def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int):
+    """One generated fill: (length in grid steps, hits keyed by offset-in-zone).
+
+    Length varies — usually one or two beats, occasionally a whole bar — and the
+    run is a snare/tom mix with varying density and an occasional kick pickup, so
+    consecutive fills rarely feel the same.  Everything is measured in grid steps,
+    so it lands on the meter whatever the time signature.
+    """
+    fill_len = min(per_bar, beat_len * rng.choice((1, 1, 1, 2, 2, per_bar // max(1, beat_len))))
+    fill_len = max(1, fill_len)
+    hits: dict = {}
+    density = rng.uniform(0.6, 0.95)
+    for s in range(fill_len):
+        if rng.random() < density:
+            hits.setdefault(rng.choice(("snare", "tom", "tom", "snare", "perc")), []).append(s)
+    if fill_len >= beat_len and rng.random() < 0.4:  # kick pickup into the fill
+        hits.setdefault("kick", []).append(0)
+    return fill_len, hits
+
+
+def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
+                    seed: int | None = None) -> Pattern:
+    """A long loop of *cycles* passes of the groove, each ending in a *different*
+    generated fill — programmatic improvisation.
+
+    Each cycle is *cycle_bars* long: the plain groove (the pattern minus its own
+    final-bar fill, if it has one) fills the cycle, then a freshly generated fill
+    is carved into the cycle's last beats, with a crash on each cycle's downbeat.
+    With ``seed=None`` every render improvises anew.
+    """
+    rng = random.Random(seed)
+    per_bar = max(1, p.steps // max(1, p.bars))
+    beat_len = _metrical_beat_len(p)
+    body_bars = list(range(p.bars - 1)) if p.bars >= 2 else [0]
+    cycle_bars = max(1, cycle_bars)
+    total_bars = cycle_bars * max(1, cycles)
+    total_steps = per_bar * total_bars
+    hits: dict = {}
+
+    def copy_bar(src: int, dst: int) -> None:
+        lo, hi = src * per_bar, (src + 1) * per_bar
+        for role, steps in p.hits.items():
+            if role == "crash":
+                continue  # crashes are re-placed on cycle downbeats below
+            sel = [s - lo + dst * per_bar for s in steps if lo <= s < hi]
+            if sel:
+                hits.setdefault(role, []).extend(sel)
+
+    for c in range(max(1, cycles)):
+        base = c * cycle_bars
+        for b in range(cycle_bars):
+            copy_bar(body_bars[b % len(body_bars)], base + b)
+        fill_len, fill_hits = _generate_fill_zone(rng, beat_len, per_bar)
+        zone_start = (base + cycle_bars) * per_bar - fill_len
+        for role in _FILL_CLEAR_ROLES:
+            if role in hits:
+                hits[role] = [s for s in hits[role] if not (zone_start <= s)
+                              or s >= zone_start + fill_len]
+        for role, offsets in fill_hits.items():
+            hits.setdefault(role, []).extend(zone_start + o for o in offsets)
+        # Crash lands on the downbeat after each fill (wrapping at the loop end).
+        hits.setdefault("crash", []).append(((base + cycle_bars) * per_bar) % total_steps)
+
+    hits = {r: sorted(set(s)) for r, s in hits.items() if s}
+    return Pattern(f"{p.name} improv", total_steps, p.steps_per_beat, hits,
+                   p.beats_per_bar, p.beat_unit, total_bars)
+
+
 # -- rendering (the compensator) -------------------------------------------------
 
 def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
@@ -609,8 +682,12 @@ def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
         buf[: len(v) - first] += v[first:]
 
 
-def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE) -> bytes:
-    """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV."""
+def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
+                volume: float = 1.0) -> bytes:
+    """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
+
+    *volume* (0..1) scales the finished mix — the drums' master volume.
+    """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     step_s = pattern.step_seconds(bpm)
@@ -626,6 +703,7 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE) ->
     peak = float(np.max(np.abs(buf))) if length else 0.0
     if peak > 1.0:                       # prevent clipping without pumping quiet loops up
         buf = buf / peak
+    buf = buf * max(0.0, min(1.0, volume))
     pcm = (np.clip(buf, -1.0, 1.0) * 32767.0).astype("<i2")
     out = io.BytesIO()
     w = wave.open(out, "wb")

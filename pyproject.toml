@@ -15,9 +15,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# numpy powers the Drum Looper's audio mixing; the core (protocol/model) needs neither.
-ui = ["wxPython>=4.2", "numpy>=1.24"]
-dev = ["pytest>=8.0", "pytest-timeout>=2.1", "numpy>=1.24"]
+# numpy powers the Drum Looper's audio mixing; accessible_output2 speaks the pattern
+# grid's cursor through the screen reader. The core (protocol/model) needs none of these.
+ui = ["wxPython>=4.2", "numpy>=1.24", "accessible_output2>=0.17"]
+dev = ["pytest>=8.0", "pytest-timeout>=2.1", "numpy>=1.24", "accessible_output2>=0.17"]
 
 [project.scripts]
 firehawk = "firehawk.__main__:main"

@@ -1,9 +1,11 @@
 """The Drum Looper page — a customizable, screen-reader-first drum machine.
 
-The main tab stays lean: pick a kit and one of 200 grooves, set the tempo, Start.
-Deeper editing lives in the **Pattern Editor** dialog (Edit Pattern...), where a Step
-dropdown selects any step by its beat name and checkboxes set which parts hit there —
-no tabbing through dozens of step controls.  Odd/prog meters are set in the editor.
+The main tab stays lean: kit, groove (200 built in), fill cadence and style, tempo,
+drum volume, Start.  Deeper editing lives in the **Pattern Editor** — a tracker-style
+grid designed with its blind user: one list row per part, a time cursor on the arrow
+keys (step / Ctrl=beat / Ctrl+Shift=bar) with positions spoken directly through the
+screen reader, Space to toggle hits, Enter for the part's sample options, P to
+preview.  Odd/prog meters are set in the editor.
 
 Like the metronome, the loop keeps playing when you switch tabs, so you can jam over
 it while editing a tone; Stop or closing the app ends it.  The loop is pre-mixed so
@@ -30,6 +32,7 @@ from ..practice import (
     Pattern,
     default_sample_for,
     expand_with_fill,
+    improvised_loop,
     list_role_files,
     load_kit_from_folder,
     render_loop,
@@ -39,7 +42,7 @@ from ..practice import (
     wav_duration,
 )
 from ..practice.drums import load_sample
-from . import theme
+from . import speech, theme
 from .accessibility import set_accessible_name
 
 try:
@@ -67,77 +70,82 @@ def step_label(pattern: Pattern, i: int) -> str:
 
 
 class PatternEditorDialog(wx.Dialog):
-    """Accessible pattern editor: Step dropdown -> per-part checkboxes for that step.
+    """Tracker-style accessible pattern grid (designed with/for a blind NVDA user).
 
-    Works on its own copy of the pattern; Save returns it, Cancel (or Escape)
-    discards.  Play auditions the edited loop while you work.
+    One list row per drum part.  A shared *time cursor* moves with the arrow keys
+    and speaks its position and state directly through the screen reader:
+
+    - Up/Down          part lines (the list itself)
+    - Left/Right       one grid step        (the smallest increment)
+    - Ctrl+Left/Right  one beat
+    - Ctrl+Shift+L/R   one bar              (Home/End: start / last step)
+    - Space            toggle a hit for this part at the cursor
+    - Enter            sample options for this part (choose a sample, or None)
+    - P                preview this part's sound
+    - F1               speak this key list
+
+    Works on its own copies; Save returns them, Cancel (or Escape) discards.  Play
+    auditions the edited loop while you work.
     """
 
-    def __init__(self, parent: wx.Window, pattern: Pattern, kit, player: DrumLoopPlayer,
-                 bpm: int, dark: bool = True):
+    AUTO = "(automatic default)"
+
+    def __init__(self, parent: wx.Window, pattern: Pattern, kit, kit_dir,
+                 sample_choices: dict[str, str] | None, silenced: set[str] | None,
+                 player: DrumLoopPlayer, bpm: int, dark: bool = True):
         super().__init__(parent, title="Pattern Editor",
-                         size=(560, 640), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                         size=(620, 560), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.pattern = pattern
         self._kit = kit
+        self._kit_dir = Path(kit_dir) if kit_dir else None
+        self.sample_choices = dict(sample_choices or {})
+        self.silenced: set[str] = set(silenced or ())
         self._player = player
         self._bpm = bpm
         self._auditioning = False
+        self._cursor = 0
+        self._preview_data: bytes | None = None
+        self._role_files = list_role_files(self._kit_dir) if self._kit_dir else {}
 
         kit_roles = kit.roles() if kit else []
         self._roles = [r for r in ROLES if r in kit_roles or r in pattern.hits]
 
         root = wx.BoxSizer(wx.VERTICAL)
         intro = wx.StaticText(self, label=(
-            "Pick a step with the Step dropdown (arrow keys move through it), then check "
-            "which parts hit on that step. Play auditions the loop while you edit. "
-            "Save keeps your changes; Cancel or Escape discards them."))
-        intro.Wrap(520)
+            "One line per part. Left/Right move by step, Ctrl+Left/Right by beat, "
+            "Ctrl+Shift by bar; Space toggles a hit; Enter picks this part's sample "
+            "(or None); P previews it; F1 speaks this list. Play auditions while you "
+            "edit; Save keeps changes, Cancel or Escape discards."))
+        intro.Wrap(580)
         root.Add(intro, 0, wx.ALL, 10)
 
-        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
-        grid.AddGrowableCol(1, 1)
+        self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        set_accessible_name(self.grid_list, "Pattern grid")
+        self.grid_list.Bind(wx.EVT_KEY_DOWN, self._on_grid_key)
+        root.Add(self.grid_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
-        grid.Add(wx.StaticText(self, label="Beats per bar:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        meter = wx.FlexGridSizer(cols=4, vgap=6, hgap=8)
+        meter.Add(wx.StaticText(self, label="Beats per bar:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.beats_choice = wx.Choice(self, choices=[str(n) for n in range(1, 17)])
         set_accessible_name(self.beats_choice, "Beats per bar")
         self.beats_choice.Bind(wx.EVT_CHOICE, self._on_meter)
-        grid.Add(self.beats_choice, 0, wx.EXPAND)
-
-        grid.Add(wx.StaticText(self, label="Beat unit (note value):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        meter.Add(self.beats_choice, 0)
+        meter.Add(wx.StaticText(self, label="Beat unit:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.unit_choice = wx.Choice(self, choices=[str(n) for n in DRUM_BEAT_UNITS])
         set_accessible_name(self.unit_choice, "Beat unit, note value")
         self.unit_choice.Bind(wx.EVT_CHOICE, self._on_meter)
-        grid.Add(self.unit_choice, 0, wx.EXPAND)
-
-        grid.Add(wx.StaticText(self, label="Grid (steps per beat):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        meter.Add(self.unit_choice, 0)
+        meter.Add(wx.StaticText(self, label="Grid (steps per beat):"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.grid_choice = wx.Choice(self, choices=[label for label, _ in GRID_CHOICES])
         set_accessible_name(self.grid_choice, "Grid resolution")
         self.grid_choice.Bind(wx.EVT_CHOICE, self._on_meter)
-        grid.Add(self.grid_choice, 0, wx.EXPAND)
-
-        grid.Add(wx.StaticText(self, label="Bars in loop:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        meter.Add(self.grid_choice, 0)
+        meter.Add(wx.StaticText(self, label="Bars in loop:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.bars_choice = wx.Choice(self, choices=["1", "2", "3", "4"])
         set_accessible_name(self.bars_choice, "Bars in the loop")
         self.bars_choice.Bind(wx.EVT_CHOICE, self._on_meter)
-        grid.Add(self.bars_choice, 0, wx.EXPAND)
-
-        grid.Add(wx.StaticText(self, label="Step:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.step_choice = wx.Choice(self)
-        set_accessible_name(self.step_choice, "Step")
-        self.step_choice.Bind(wx.EVT_CHOICE, lambda e: self._refresh_part_boxes())
-        grid.Add(self.step_choice, 0, wx.EXPAND)
-
-        root.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
-
-        root.Add(wx.StaticText(self, label="Parts on this step:"), 0, wx.LEFT | wx.TOP, 10)
-        self._part_boxes: dict[str, wx.CheckBox] = {}
-        parts = wx.WrapSizer(wx.HORIZONTAL)
-        for role in self._roles:
-            cb = wx.CheckBox(self, label=ROLE_LABELS.get(role, role))
-            cb.Bind(wx.EVT_CHECKBOX, lambda e, r=role: self._on_part_toggle(r, e.IsChecked()))
-            parts.Add(cb, 0, wx.RIGHT | wx.BOTTOM, 8)
-            self._part_boxes[role] = cb
-        root.Add(parts, 1, wx.EXPAND | wx.ALL, 10)
+        meter.Add(self.bars_choice, 0)
+        root.Add(meter, 0, wx.ALL, 10)
 
         btns = wx.BoxSizer(wx.HORIZONTAL)
         self.play_btn = wx.Button(self, label="&Play")
@@ -152,18 +160,53 @@ class PatternEditorDialog(wx.Dialog):
         root.Add(btns, 0, wx.ALL, 10)
 
         self.SetSizer(root)
-        save_btn.SetDefault()
         self.Bind(wx.EVT_CLOSE, self._on_close)
         theme.apply(self, dark)
 
         self._sync_meter_controls()
-        self._rebuild_step_choice()
-        self._refresh_part_boxes()
-        # Land focus on the Step dropdown so a screen reader announces the dialog
-        # and its primary control the moment it opens.
-        wx.CallAfter(self.step_choice.SetFocus)
+        self._rebuild_rows()
+        if self._roles:
+            self.grid_list.SetSelection(0)
+        wx.CallAfter(self.grid_list.SetFocus)
 
-    # -- state <-> controls ---------------------------------------------------
+    # -- state ----------------------------------------------------------------
+
+    def _current_role(self) -> str | None:
+        sel = self.grid_list.GetSelection()
+        return self._roles[sel] if 0 <= sel < len(self._roles) else None
+
+    def _per_bar(self) -> int:
+        return max(1, self.pattern.steps // max(1, self.pattern.bars))
+
+    def _beat_len(self) -> int:
+        p = self.pattern
+        return max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
+
+    def _sample_desc(self, role: str) -> str:
+        if role in self.silenced:
+            return "silent"
+        if self._kit_dir is not None and role in self._role_files:
+            chosen = self.sample_choices.get(role)
+            if chosen:
+                return Path(chosen).stem
+            pick = default_sample_for(role, self._role_files[role])
+            return pick.stem if pick else "none"
+        return "synth sound"
+
+    def _row_label(self, role: str) -> str:
+        n = len(self.pattern.hits.get(role, []))
+        hits = "no hits" if n == 0 else ("1 hit" if n == 1 else f"{n} hits")
+        return f"{ROLE_LABELS.get(role, role)}: {hits}, sample {self._sample_desc(role)}"
+
+    def _rebuild_rows(self) -> None:
+        keep = max(0, self.grid_list.GetSelection())
+        self.grid_list.Set([self._row_label(r) for r in self._roles])
+        if self._roles:
+            self.grid_list.SetSelection(min(keep, len(self._roles) - 1))
+
+    def _refresh_row(self, role: str) -> None:
+        if role in self._roles:
+            self.grid_list.SetString(self._roles.index(role), self._row_label(role))
 
     def _sync_meter_controls(self) -> None:
         p = self.pattern
@@ -175,20 +218,135 @@ class PatternEditorDialog(wx.Dialog):
             self.grid_choice.SetSelection(grids.index(p.steps_per_beat))
         self.bars_choice.SetSelection(max(0, min(3, p.bars - 1)))
 
-    def _rebuild_step_choice(self) -> None:
-        keep = max(0, self.step_choice.GetSelection())
-        self.step_choice.Set([step_label(self.pattern, i) for i in range(self.pattern.steps)])
-        self.step_choice.SetSelection(min(keep, self.pattern.steps - 1))
+    # -- the grid keys ---------------------------------------------------------
 
-    def _current_step(self) -> int:
-        return max(0, self.step_choice.GetSelection())
+    def _speak_cursor(self) -> None:
+        role = self._current_role()
+        state = "hit" if role and self._cursor in self.pattern.hits.get(role, []) else "empty"
+        speech.speak(f"{step_label(self.pattern, self._cursor)}, {state}")
 
-    def _refresh_part_boxes(self) -> None:
-        step = self._current_step()
-        for role, cb in self._part_boxes.items():
-            cb.SetValue(step in self.pattern.hits.get(role, []))
+    def _move_cursor(self, delta: int) -> None:
+        self._cursor = max(0, min(self.pattern.steps - 1, self._cursor + delta))
+        self._speak_cursor()
 
-    # -- events ---------------------------------------------------------------
+    def _on_grid_key(self, event: wx.KeyEvent) -> None:
+        code = event.GetKeyCode()
+        ctrl, shift = event.ControlDown(), event.ShiftDown()
+        if code in (wx.WXK_LEFT, wx.WXK_RIGHT):
+            sign = 1 if code == wx.WXK_RIGHT else -1
+            if ctrl and shift:
+                self._move_cursor(sign * self._per_bar())
+            elif ctrl:
+                self._move_cursor(sign * self._beat_len())
+            else:
+                self._move_cursor(sign)
+        elif code == wx.WXK_HOME:
+            self._cursor = 0
+            self._speak_cursor()
+        elif code == wx.WXK_END:
+            self._cursor = self.pattern.steps - 1
+            self._speak_cursor()
+        elif code == wx.WXK_SPACE:
+            self._toggle_hit()
+        elif code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            self._sample_options()
+        elif code in (ord("P"), ord("p")):
+            self._preview_part()
+        elif code == wx.WXK_F1:
+            speech.speak(
+                "Left and Right move by step. Control Left and Right move by beat. "
+                "Control Shift Left and Right move by bar. Home and End jump to the "
+                "start and end. Space toggles a hit. Enter picks this part's sample "
+                "or None. P previews the part. Tab reaches the meter controls and "
+                "the Play, Save and Cancel buttons.")
+        else:
+            event.Skip()
+
+    def _toggle_hit(self) -> None:
+        role = self._current_role()
+        if role is None:
+            return
+        steps = set(self.pattern.hits.get(role, []))
+        if self._cursor in steps:
+            steps.discard(self._cursor)
+            spoken = "off"
+        else:
+            steps.add(self._cursor)
+            spoken = "on"
+        if steps:
+            self.pattern.hits[role] = sorted(steps)
+        else:
+            self.pattern.hits.pop(role, None)
+        self._refresh_row(role)
+        speech.speak(f"{ROLE_LABELS.get(role, role)} {spoken}, "
+                     f"{step_label(self.pattern, self._cursor)}")
+        self._reaudition()
+
+    def _sample_options(self) -> None:
+        role = self._current_role()
+        if role is None:
+            return
+        label = ROLE_LABELS.get(role, role)
+        if self._kit_dir is not None and role in self._role_files:
+            files = self._role_files[role]
+            options = [self.AUTO] + [f.stem for f in files] + ["None (silence this part)"]
+        else:
+            options = ["Synth sound", "None (silence this part)"]
+        dlg = wx.SingleChoiceDialog(self, f"Sound for {label}:", f"{label} sample", options)
+        theme.apply(dlg, True)
+        if dlg.ShowModal() == wx.ID_OK:
+            sel = dlg.GetSelection()
+            if options[sel].startswith("None"):
+                self.silenced.add(role)
+            else:
+                self.silenced.discard(role)
+                if self._kit_dir is not None and role in self._role_files:
+                    if sel == 0:
+                        self.sample_choices.pop(role, None)
+                    else:
+                        self.sample_choices[role] = self._role_files[role][sel - 1].name
+                    self._reload_kit()
+            self._refresh_row(role)
+            speech.speak(f"{label}: {self._sample_desc(role)}")
+            self._reaudition()
+        dlg.Destroy()
+
+    def _reload_kit(self) -> None:
+        if self._kit_dir is not None:
+            try:
+                self._kit = load_kit_from_folder(self._kit_dir, choices=self.sample_choices)
+            except Exception:  # noqa: BLE001 - keep the previous kit on failure
+                pass
+
+    def _preview_part(self) -> None:
+        role = self._current_role()
+        if role is None or winsound is None or not NUMPY_AVAILABLE:
+            return
+        if role in self.silenced:
+            speech.speak(f"{ROLE_LABELS.get(role, role)} is silent")
+            return
+        voice = self._kit.voice(role) if self._kit else None
+        if voice is None or len(voice) == 0:
+            speech.speak("No sound for this part")
+            return
+        try:
+            import io
+            import wave as wave_mod
+            import numpy as np
+            pcm = (np.clip(voice, -1.0, 1.0) * 32767.0).astype("<i2")
+            buf = io.BytesIO()
+            w = wave_mod.open(buf, "wb")
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(pcm.tobytes())
+            w.close()
+            self._preview_data = buf.getvalue()  # must outlive the async playback
+            winsound.PlaySound(self._preview_data, winsound.SND_MEMORY | winsound.SND_ASYNC)
+        except Exception:  # noqa: BLE001 - preview is best-effort
+            pass
+
+    # -- meter / transport -----------------------------------------------------
 
     def _on_meter(self, event: wx.CommandEvent) -> None:
         beats = self.beats_choice.GetSelection() + 1
@@ -196,28 +354,21 @@ class PatternEditorDialog(wx.Dialog):
         grid = GRID_CHOICES[self.grid_choice.GetSelection()][1]
         bars = self.bars_choice.GetSelection() + 1
         per_bar = steps_per_bar(beats, unit, grid)
-        while bars > 1 and per_bar * bars > MAX_STEPS:  # keep the step list navigable
+        while bars > 1 and per_bar * bars > MAX_STEPS:  # keep the grid navigable
             bars -= 1
         self.bars_choice.SetSelection(bars - 1)
         # Growing the bar count repeats the existing bars (no silent gaps); shrinking
         # keeps the first bars. See retime_pattern.
         self.pattern = retime_pattern(self.pattern, beats, unit, grid, bars)
-        self._rebuild_step_choice()
-        self._refresh_part_boxes()
+        self._cursor = min(self._cursor, self.pattern.steps - 1)
+        self._rebuild_rows()
         self._reaudition()
 
-    def _on_part_toggle(self, role: str, checked: bool) -> None:
-        step = self._current_step()
-        steps = set(self.pattern.hits.get(role, []))
-        if checked:
-            steps.add(step)
-        else:
-            steps.discard(step)
-        if steps:
-            self.pattern.hits[role] = sorted(steps)
-        else:
-            self.pattern.hits.pop(role, None)
-        self._reaudition()
+    def _effective_pattern(self) -> Pattern:
+        p = self.pattern
+        return Pattern(p.name, p.steps, p.steps_per_beat,
+                       {r: s for r, s in p.hits.items() if r not in self.silenced},
+                       p.beats_per_bar, p.beat_unit, p.bars)
 
     def _on_play(self, event: wx.CommandEvent) -> None:
         if self._auditioning:
@@ -226,12 +377,12 @@ class PatternEditorDialog(wx.Dialog):
         if self._kit is None or not self._player.available:
             return
         self._auditioning = True
-        self._player.play(render_loop(self.pattern, self._kit, self._bpm))
+        self._player.play(render_loop(self._effective_pattern(), self._kit, self._bpm))
         self.play_btn.SetLabel("&Pause")
 
     def _reaudition(self) -> None:
         if self._auditioning and self._kit is not None:
-            self._player.play(render_loop(self.pattern, self._kit, self._bpm))
+            self._player.play(render_loop(self._effective_pattern(), self._kit, self._bpm))
 
     def _stop_audition(self) -> None:
         if self._auditioning:
@@ -444,6 +595,16 @@ class DrumsPanel(wx.Panel):
         self.fill_choice.Bind(wx.EVT_CHOICE, self._on_fill_every)
         grid.Add(self.fill_choice, 0, wx.EXPAND)
 
+        # Fixed fills as written, or rule-bound improvisation (a fresh set of fills
+        # is generated on every render, so the groove rarely repeats itself exactly).
+        grid.Add(wx.StaticText(self, label="Fill style:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fillstyle_choice = wx.Choice(self, choices=[
+            "As written", "Improvised (varies every time)"])
+        self.fillstyle_choice.SetSelection(0)
+        set_accessible_name(self.fillstyle_choice, "Fill style")
+        self.fillstyle_choice.Bind(wx.EVT_CHOICE, self._on_fill_style)
+        grid.Add(self.fillstyle_choice, 0, wx.EXPAND)
+
         self.tempo_label = wx.StaticText(self, label="Tempo: 90 BPM")
         grid.Add(self.tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.tempo_slider = wx.Slider(self, value=90, minValue=TEMPO_MIN, maxValue=TEMPO_MAX)
@@ -452,6 +613,15 @@ class DrumsPanel(wx.Panel):
                             value_fn=lambda: f"{self.tempo_slider.GetValue()} BPM")
         self.tempo_slider.Bind(wx.EVT_SLIDER, self._on_tempo)
         grid.Add(self.tempo_slider, 0, wx.EXPAND)
+
+        # Master volume for the drums, so they sit right against the guitar.
+        self.volume_label = wx.StaticText(self, label="Drum volume: 80%")
+        grid.Add(self.volume_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.volume_slider = wx.Slider(self, value=80, minValue=0, maxValue=100)
+        set_accessible_name(self.volume_slider, "Drum volume",
+                            value_fn=lambda: f"{self.volume_slider.GetValue()} percent")
+        self.volume_slider.Bind(wx.EVT_SLIDER, self._on_volume)
+        grid.Add(self.volume_slider, 0, wx.EXPAND)
 
         grid.Add(wx.StaticText(self, label="Part:"), 0, wx.ALIGN_CENTER_VERTICAL)
         part_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -644,6 +814,16 @@ class DrumsPanel(wx.Panel):
         self._apply()
         self._announce(f"Fill every {n} bars." if n else "Playing the pattern as written.")
 
+    def _on_fill_style(self, event: wx.CommandEvent) -> None:
+        improv = self.fillstyle_choice.GetSelection() == 1
+        self._apply()
+        self._announce("Improvised fills: a fresh set every time." if improv
+                       else "Fills as written.")
+
+    def _on_volume(self, event: wx.CommandEvent) -> None:
+        self.volume_label.SetLabel(f"Drum volume: {self.volume_slider.GetValue()}%")
+        self._apply()
+
     def _on_part(self, event: wx.CommandEvent) -> None:
         role = self._current_part()
         self.mute_cb.SetValue(role in self._muted)
@@ -666,9 +846,10 @@ class DrumsPanel(wx.Panel):
         if was_playing:
             self.player.stop()  # the editor auditions on the same player
         dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
+        saved = self._saved_choices(self._kit_dir.name) if self._kit_dir else {}
         try:
-            dlg = PatternEditorDialog(self, self._pattern.copy(), self._kit, self.player,
-                                      self.bpm, dark)
+            dlg = PatternEditorDialog(self, self._pattern.copy(), self._kit, self._kit_dir,
+                                      saved, set(self._muted), self.player, self.bpm, dark)
         except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
             wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
                           "Pattern Editor", wx.ICON_ERROR)
@@ -677,6 +858,17 @@ class DrumsPanel(wx.Panel):
             return
         if dlg.ShowModal() == wx.ID_OK:
             self._pattern = dlg.pattern
+            self._muted = set(dlg.silenced)  # "None" sample choices = muted parts
+            if self._kit_dir is not None and dlg.sample_choices != saved:
+                if self._settings is not None:
+                    all_choices = dict(self._settings.get("drum_kit_sounds") or {})
+                    all_choices[self._kit_dir.name] = dlg.sample_choices
+                    self._settings.set("drum_kit_sounds", all_choices)
+                try:
+                    self._kit = load_kit_from_folder(self._kit_dir,
+                                                     choices=dlg.sample_choices)
+                except Exception:  # noqa: BLE001 - keep the current kit on failure
+                    pass
             self._rebuild_parts()
             self._announce(
                 f"Pattern saved: {self._pattern.meter_label()}, {self._pattern.steps} steps.")
@@ -700,9 +892,15 @@ class DrumsPanel(wx.Panel):
             {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
             self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars)
         fill_bars = self._fill_every_bars()
-        if fill_bars:
+        if self.fillstyle_choice.GetSelection() == 1:
+            # Improvised: several passes, each ending in a different generated fill.
+            cycle = fill_bars or max(1, effective.bars)
+            cycles = 2 if cycle >= 12 else 4
+            effective = improvised_loop(effective, cycle, cycles)
+        elif fill_bars:
             effective = expand_with_fill(effective, fill_bars)
-        self.player.play(render_loop(effective, self._kit, self.bpm))
+        self.player.play(render_loop(effective, self._kit, self.bpm,
+                                     volume=self.volume_slider.GetValue() / 100.0))
 
     def _apply(self) -> None:
         """Re-render and swap the loop if we're currently playing."""

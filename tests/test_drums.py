@@ -303,6 +303,57 @@ def test_expand_with_fill_noop_when_not_longer():
     assert drums.expand_with_fill(p, 2) is p
 
 
+def test_improvised_loop_structure():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
+    loop = drums.improvised_loop(p, cycle_bars=4, cycles=4, seed=1)
+    per = loop.steps // loop.bars
+    assert loop.bars == 16 and per == 16
+    # A crash lands on every cycle downbeat (wrapping at the loop end).
+    assert sorted({s // per for s in loop.hits["crash"]}) == [0, 4, 8, 12]
+    assert all(0 <= s < loop.steps for ss in loop.hits.values() for s in ss)
+
+
+def test_improvised_loop_fills_differ_between_cycles():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12],
+                                   "hihat": list(range(0, 16, 2))}, 4, 4, 1)
+    loop = drums.improvised_loop(p, cycle_bars=2, cycles=4, seed=9)
+    per = loop.steps // loop.bars
+
+    def fill_zone(c):  # contents of each cycle's final bar
+        lo, hi = (c * 2 + 1) * per, (c * 2 + 2) * per
+        return tuple(sorted((r, s - lo) for r, ss in loop.hits.items()
+                            for s in ss if lo <= s < hi))
+    zones = {fill_zone(c) for c in range(4)}
+    assert len(zones) >= 3  # the fills vary (improvised, not copies)
+
+
+def test_improvised_loop_respects_odd_meter():
+    seven = drums.Pattern("7/8", 7, 2, {"kick": [0, 4], "hihat": list(range(7))}, 7, 8, 1)
+    loop = drums.improvised_loop(seven, cycle_bars=4, cycles=2, seed=3)
+    assert loop.steps == 7 * 8 and loop.beats_per_bar == 7 and loop.beat_unit == 8
+    assert all(0 <= s < loop.steps for ss in loop.hits.values() for s in ss)
+
+
+def test_improvised_loop_unseeded_varies():
+    p = drums.Pattern("t", 16, 4, {"kick": [0], "snare": [8]}, 4, 4, 1)
+    a = drums.improvised_loop(p, 4, 4)
+    b = drums.improvised_loop(p, 4, 4)
+    assert a.hits != b.hits  # fresh improvisation every render
+
+
+def test_render_volume_scales_output():
+    kit = drums.synth_kit()
+    p = drums.GENRE_PATTERNS[0]
+
+    def peak(vol):
+        pcm = _frames(drums.render_loop(p, kit, 120, volume=vol))
+        return int(np.abs(pcm).max())
+    full, half, silent = peak(1.0), peak(0.5), peak(0.0)
+    assert silent == 0
+    assert 0 < half < full
+    assert abs(half * 2 - full) <= 2
+
+
 def test_load_kit_honors_choices(tmp_path):
     d = tmp_path / "KICK"
     d.mkdir()

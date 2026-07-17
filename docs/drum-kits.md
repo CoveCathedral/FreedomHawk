@@ -23,7 +23,9 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
 | **Groove** | One of 200 built-in patterns: the classic bases (Rock, Funk, Trap, 5/4, 7/8…) plus numbered variations. Names ending in "fill" include a drum fill sized to the meter, with a crash landing back on the one. First-letter navigation works in the list. |
 | **Fill every** | For jamming: stretches the groove so the fill only comes around every 2, 4, 8, 12, or 16 bars — plain groove until then, fill as the turnaround, crash on the restart. "Pattern length" plays the groove exactly as written. |
+| **Fill style** | "As written" plays the groove's own fill. **"Improvised"** generates fresh fills on every render — varying length (short, long, occasionally a whole bar) and density, Diablo-style rule-bound randomness — so the groove rarely repeats itself exactly. Always lands on the meter, odd time signatures included. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
+| **Drum volume** | Master volume for the drums (0–100%), so they sit right against your guitar. |
 | **Part** + **Mute this part** | Pick a part and mute/unmute it live, without touching its steps. |
 | **Edit Pattern…** | Opens the Pattern Editor dialog. |
 | **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |
@@ -31,22 +33,36 @@ a tone. Press **Stop** (or close the app) to end it.
 
 ## The Pattern Editor (Edit Pattern…)
 
-Built for keyboard-and-ears editing — no tabbing through dozens of step checkboxes:
+A tracker-style grid built for keyboard-and-ears editing. One list line per drum part
+("Kick: 4 hits, sample Kick ;P"), and a shared **time cursor** you move with the arrow
+keys — every move is **spoken directly through your screen reader** ("Bar 2, Beat 3.2,
+hit"):
 
-1. **Step** dropdown: every step, named by its place in the bar ("Beat 3", "Beat 3.2",
-   "Bar 2, Beat 1"). **Arrow through it** to move around the pattern — focus stays put.
-2. **Parts on this step**: a checkbox per part (Kick, Snare, Hi-hat…). Check what should
-   hit on the selected step.
-3. **Play/Pause** auditions the loop while you edit — changes are heard on the next loop.
-4. **Save** keeps your edits; **Cancel** (or Escape) discards them and returns to the
-   groove as it was.
+| Key | Action |
+|-----|--------|
+| **Up / Down** | Move between part lines (Kick, Snare, …). |
+| **Left / Right** | Move the cursor by one grid step — the smallest increment. |
+| **Ctrl + Left / Right** | Move by one beat. |
+| **Ctrl + Shift + Left / Right** | Move by one bar. |
+| **Home / End** | Jump to the start / last step. |
+| **Space** | Toggle a hit for this part at the cursor ("Kick on, Beat 2"). |
+| **Enter** | Sample options for this part: pick any sample from its folder, the automatic default, or **None** (silence the part). |
+| **P** | Preview this part's sound. |
+| **F1** | Speak this key list. |
+
+**Play/Pause** auditions the loop while you edit (changes heard on the next loop);
+**Save** keeps everything — pattern, sample choices, silenced parts; **Cancel** or Escape
+discards.
 
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
 each beat divides), and **Bars in loop** (1–4). **Growing the bar count repeats the
 existing music across the new bars** (no silent gaps — edit the copies afterwards if you
 want them to differ); shrinking keeps the first bars. Changing the meter itself keeps any
 hits that still fit. For loops longer than 4 bars, use **Fill every** on the main tab —
-it stretches playback to up to 16 bars without making the step list unwieldy.
+it stretches playback to up to 16 bars without making the grid unwieldy.
+
+Spoken navigation uses the `accessible_output2` library (speaks through NVDA when it is
+running, Windows speech otherwise). It installs with the app's UI dependencies.
 
 ## Odd & prog time signatures
 

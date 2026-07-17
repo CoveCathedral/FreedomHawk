@@ -24,9 +24,13 @@ from firehawk.ui.tunerpanel import TunerPanel
 
 
 @pytest.fixture(autouse=True)
-def _silence_audio():
-    """Stop any looping/async sound after each test (no event loop runs to do it)."""
-    yield
+def _silence_audio(monkeypatch):
+    """No spoken output during tests, and stop any looping sound afterwards."""
+    from firehawk.ui import speech
+    spoken: list[str] = []
+    monkeypatch.setattr(speech, "speak",
+                        lambda text, interrupt=True: spoken.append(text))
+    yield spoken
     try:
         import winsound
         winsound.PlaySound(None, 0)
@@ -131,32 +135,73 @@ def test_drums_panel_layout(frame):
     assert d.import_button.GetLabel() == "&Import Drum Kit..."
 
 
-def test_pattern_editor_dialog_edits_steps(frame):
+def _grid_dialog(frame):
     from firehawk.ui.drumspanel import PatternEditorDialog
     d = frame.drums_page
-    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    return PatternEditorDialog(d, d._pattern.copy(), d._kit, None, {}, set(),
+                               d.player, d.bpm, dark=True)
+
+
+class _Key:
+    def __init__(self, code, ctrl=False, shift=False):
+        self._code, self._ctrl, self._shift = code, ctrl, shift
+
+    def GetKeyCode(self):
+        return self._code
+
+    def ControlDown(self):
+        return self._ctrl
+
+    def ShiftDown(self):
+        return self._shift
+
+    def Skip(self):
+        pass
+
+
+def test_grid_rows_one_per_part(frame):
+    dlg = _grid_dialog(frame)
     try:
-        # One step-dropdown entry per step, labelled by beat.
-        assert dlg.step_choice.GetCount() == dlg.pattern.steps
-        assert dlg.step_choice.GetString(0) == "Beat 1"
-        # Checking a part on a step updates the pattern; unchecking removes it.
-        dlg.step_choice.SetSelection(2)
-        dlg._on_part_toggle("kick", True)
-        assert 2 in dlg.pattern.hits["kick"]
-        dlg._on_part_toggle("kick", False)
-        assert 2 not in dlg.pattern.hits.get("kick", [])
-        # The part boxes reflect the selected step's contents.
-        dlg.step_choice.SetSelection(0)
-        dlg._refresh_part_boxes()
-        assert dlg._part_boxes["kick"].GetValue() == (0 in dlg.pattern.hits.get("kick", []))
+        assert dlg.grid_list.GetCount() == len(dlg._roles)
+        assert dlg.grid_list.GetString(0).startswith("Kick:")
+        assert "sample" in dlg.grid_list.GetString(0)
     finally:
         dlg.Destroy()
 
 
-def test_pattern_editor_dialog_meter_change(frame):
-    from firehawk.ui.drumspanel import PatternEditorDialog
-    d = frame.drums_page
-    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+def test_grid_cursor_speaks_positions(frame, _silence_audio):
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        dlg._on_grid_key(_Key(wx.WXK_RIGHT))                          # +1 step
+        dlg._on_grid_key(_Key(wx.WXK_RIGHT, ctrl=True))               # +1 beat
+        dlg._on_grid_key(_Key(wx.WXK_RIGHT, ctrl=True, shift=True))   # +1 bar (clamped)
+        assert dlg._cursor == dlg.pattern.steps - 1
+        assert spoken[-3:] == ["Beat 1.2, empty", "Beat 2.2, empty", "Beat 4.4, empty"]
+        dlg._on_grid_key(_Key(wx.WXK_HOME))
+        assert dlg._cursor == 0 and spoken[-1].startswith("Beat 1")
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_space_toggles_hits(frame, _silence_audio):
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(dlg._roles.index("kick"))
+        dlg._cursor = 2
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert 2 in dlg.pattern.hits["kick"] and "Kick on" in spoken[-1]
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert 2 not in dlg.pattern.hits.get("kick", []) and "Kick off" in spoken[-1]
+        # The row label reflects the new hit count.
+        assert dlg.grid_list.GetString(dlg._roles.index("kick")).startswith("Kick: 2 hits")
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_meter_change(frame):
+    dlg = _grid_dialog(frame)
     try:
         dlg.beats_choice.SetSelection(6)   # 7 beats
         dlg.unit_choice.SetSelection(2)    # /8
@@ -165,19 +210,29 @@ def test_pattern_editor_dialog_meter_change(frame):
         dlg._on_meter(None)
         assert dlg.pattern.meter_label() == "7/8"
         assert dlg.pattern.steps == 7
-        assert dlg.step_choice.GetCount() == 7
+        assert dlg._cursor < dlg.pattern.steps  # cursor clamped into range
     finally:
         dlg.Destroy()
 
 
-def test_pattern_editor_save_flow(frame):
-    # Simulate the panel's save path without ShowModal.
-    from firehawk.ui.drumspanel import PatternEditorDialog
-    d = frame.drums_page
-    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+def test_grid_none_silences_part(frame):
+    dlg = _grid_dialog(frame)
     try:
-        dlg.step_choice.SetSelection(1)
-        dlg._on_part_toggle("tom", True)
+        dlg.silenced.add("kick")
+        assert "kick" not in dlg._effective_pattern().hits  # silenced parts don't render
+        assert dlg._sample_desc("kick") == "silent"
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_save_flow(frame):
+    # Simulate the panel's save path without ShowModal.
+    dlg = _grid_dialog(frame)
+    d = frame.drums_page
+    try:
+        dlg.grid_list.SetSelection(dlg._roles.index("tom"))
+        dlg._cursor = 1
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
         edited = dlg.pattern
     finally:
         dlg.Destroy()
@@ -185,6 +240,15 @@ def test_pattern_editor_save_flow(frame):
     d._rebuild_parts()
     assert 1 in d._pattern.hits["tom"]
     assert "Tom" in d.part_choice.GetItems()
+
+
+def test_drum_volume_and_fill_style_controls(frame):
+    d = frame.drums_page
+    assert d.volume_slider.GetValue() == 80
+    d.volume_slider.SetValue(40)
+    d._on_volume(None)
+    assert d.volume_label.GetLabel() == "Drum volume: 40%"
+    assert d.fillstyle_choice.GetStringSelection() == "As written"
 
 
 def test_kit_sounds_dialog(frame, tmp_path):
@@ -225,9 +289,7 @@ def test_fill_every_selector(frame):
 
 
 def test_editor_growing_bars_repeats_pattern(frame):
-    from firehawk.ui.drumspanel import PatternEditorDialog
-    d = frame.drums_page
-    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    dlg = _grid_dialog(frame)
     try:
         kicks_before = list(dlg.pattern.hits["kick"])
         dlg.bars_choice.SetSelection(3)  # 4 bars
