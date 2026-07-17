@@ -441,19 +441,25 @@ def test_kit_change_revoices_saved_pattern(frame):
     assert not np.array_equal(before, after)
 
 
-def test_editor_audition_applies_fills(frame):
-    # Regression (issue A): the editor's Play applies the panel's fill/improv and swing.
+def test_editor_audition_has_feel_but_stays_short(frame):
+    # Regression: the editor auditions with swing/humanize (feel) but does NOT apply
+    # the Improvised arrangement, which would balloon a 1-bar groove into a ~16-bar,
+    # 40-second loop that reads as "slow / feel gone".
+    import io
+    import wave
     from firehawk.ui.drumspanel import PatternEditorDialog
     d = frame.drums_page
-    d.fillstyle_choice.SetSelection(1)  # improvised
+    d.fillstyle_choice.SetSelection(1)  # improvised on the main tab
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
                               set(), d.player, d.bpm, dark=True, settings=d._settings,
-                              swing=0.4, base_kit=d._kit, apply_fills=d._apply_fills)
+                              swing=0.4, base_kit=d._kit)
     try:
-        assert dlg._apply_fills is not None and dlg._swing == 0.4
-        base_crashes = len(dlg._effective_pattern().hits.get("crash", []))
-        withfills = dlg._apply_fills(dlg._effective_pattern())
-        assert len(withfills.hits.get("crash", [])) >= base_crashes
+        assert dlg._swing == 0.4                       # feel carried into the editor
+        wav = dlg._render()
+        w = wave.open(io.BytesIO(wav))
+        secs = w.getnframes() / w.getframerate()
+        assert secs == pytest.approx(dlg.pattern.loop_seconds(dlg._bpm), rel=0.05)
+        assert secs < 10                               # the pattern's own length, not 40+
     finally:
         dlg.Destroy()
 

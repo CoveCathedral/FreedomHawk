@@ -174,8 +174,7 @@ class PatternEditorDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, pattern: Pattern, lines: list[dict],
                  kits_dir, silenced: set[str] | None, player: DrumLoopPlayer,
                  bpm: int, dark: bool = True, settings=None,
-                 swing: float = 0.0, humanize: float = 0.0, base_kit=None,
-                 apply_fills=None):
+                 swing: float = 0.0, humanize: float = 0.0, base_kit=None):
         super().__init__(parent, title="Pattern Editor",
                          size=(660, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.pattern = pattern
@@ -188,7 +187,6 @@ class PatternEditorDialog(wx.Dialog):
         self._swing = swing        # match the main tab's feel while auditioning
         self._humanize = humanize
         self._base_kit = base_kit  # the globally selected kit (follow-global lines use it)
-        self._apply_fills = apply_fills  # panel's fill/improv transform, so audition matches
         self._dark = dark
         self._auditioning = False
         self._cursor = 0
@@ -697,9 +695,10 @@ class PatternEditorDialog(wx.Dialog):
         self.play_btn.SetLabel("&Pause")
 
     def _render(self):
+        # Audition the pattern you're editing, with its FEEL (swing + humanize), but not
+        # the arrangement (Fill every / Improvised) — those multiply the loop over many
+        # bars, which belongs on the main tab, not while editing a 1-4 bar pattern.
         effective = flatten_polymeter(self._effective_pattern())
-        if self._apply_fills is not None:  # match the main tab's fill cadence / improv
-            effective = self._apply_fills(effective)
         return render_loop(effective, self._line_kit, self._bpm,
                            swing=self._swing, humanize=self._humanize)
 
@@ -1274,7 +1273,7 @@ class DrumsPanel(wx.Panel):
                                       self.player, self.bpm, dark, settings=self._settings,
                                       swing=self.swing_slider.GetValue() / 100.0,
                                       humanize=self.humanize_slider.GetValue() / 100.0,
-                                      base_kit=self._kit, apply_fills=self._apply_fills)
+                                      base_kit=self._kit)
         except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
             wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
                           "Pattern Editor", wx.ICON_ERROR)

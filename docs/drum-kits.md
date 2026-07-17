@@ -84,8 +84,10 @@ Buttons (all a Tab away):
 - **Load Groove…** — replace the editor contents with any built-in or saved pattern.
 - **Save as Preset…** — name the pattern, put it in a category (existing or a **new one
   you type**), and it appears in the main tab's Groove list permanently.
-- **Play/Pause** auditions the loop while you edit (changes heard on the next loop);
-  **Save** keeps everything; **Cancel** or Escape discards.
+- **Play/Pause** auditions the pattern you're editing — with its **feel** (swing and
+  humanize) so it sounds musical, but at its own length. The **Fill every** / **Improvised**
+  arrangement (which spans many bars) plays on the main tab, not here, so the editor loop
+  stays short and easy to work in. **Save** keeps everything; **Cancel** or Escape discards.
 
 **Ctrl+D** anywhere in the app opens a fresh, empty editor on the Drum Looper tab —
 build a pattern from scratch mid-session, save it as a preset, jam on.
