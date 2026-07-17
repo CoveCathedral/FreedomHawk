@@ -251,6 +251,47 @@ def test_drum_volume_and_fill_style_controls(frame):
     assert d.fillstyle_choice.GetStringSelection() == "As written"
 
 
+def test_grid_char_hook_routes_enter_and_p(frame, monkeypatch, _silence_audio):
+    # A dialog steals Enter (default button) before a list's key handler runs, so
+    # grid keys route via the dialog char hook (live-tested regression: Enter and P
+    # were dead in the grid).
+    dlg = _grid_dialog(frame)
+    try:
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dlg.grid_list))
+        opened = []
+        monkeypatch.setattr(dlg, "_sample_options", lambda: opened.append(True))
+        dlg._on_char_hook(_Key(wx.WXK_RETURN))
+        assert opened == [True]
+        dlg._on_char_hook(_Key(ord("P")))
+        assert _silence_audio[-1] in ("Kick", "Kick: preview not available")
+        # Non-grid keys fall through to normal dialog handling.
+        tab = _Key(wx.WXK_TAB)
+        tab.skipped = False
+        tab.Skip = lambda: setattr(tab, "skipped", True)
+        dlg._on_char_hook(tab)
+        assert tab.skipped
+    finally:
+        dlg.Destroy()
+
+
+def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
+    # A 1-bar cycle would put a fill in every bar and wreck the meter (live-tested
+    # regression); with Fill every unset, improv must run on a 4-bar cycle.
+    import firehawk.ui.drumspanel as dp
+    captured = {}
+
+    def fake_improv(p, cycle, cycles, seed=None):
+        captured["cycle"], captured["cycles"] = cycle, cycles
+        return p
+
+    d = frame.drums_page
+    monkeypatch.setattr(dp, "improvised_loop", fake_improv)
+    monkeypatch.setattr(d.player, "play", lambda wav: None)
+    d.fillstyle_choice.SetSelection(1)  # Improvised
+    d._render_and_play()
+    assert captured["cycle"] == 4 and captured["cycles"] == 4
+
+
 def test_kit_sounds_dialog(frame, tmp_path):
     import numpy as np
     import wave as wave_mod

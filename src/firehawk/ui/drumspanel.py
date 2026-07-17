@@ -69,6 +69,59 @@ def step_label(pattern: Pattern, i: int) -> str:
     return label
 
 
+class _PreviewPlayer:
+    """One-shot sample preview via a temp WAV file.
+
+    winsound's memory-based playback proved unreliable on real hardware (the tuner
+    had the same class of bug), so previews write a temp file and play that —
+    the path the tuner and the loop player already use successfully.
+    """
+
+    def __init__(self) -> None:
+        self._path: str | None = None
+        if winsound is not None:
+            import os
+            import tempfile
+            fd, self._path = tempfile.mkstemp(prefix="firehawk_preview_", suffix=".wav")
+            os.close(fd)
+
+    def play_voice(self, voice) -> bool:
+        """Play a float32 sample array once; True if playback was started."""
+        if winsound is None or self._path is None or not NUMPY_AVAILABLE:
+            return False
+        try:
+            import wave as wave_mod
+            import numpy as np
+            pcm = (np.clip(voice, -1.0, 1.0) * 32767.0).astype("<i2")
+            w = wave_mod.open(self._path, "wb")
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(pcm.tobytes())
+            w.close()
+            winsound.PlaySound(self._path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+            return True
+        except Exception:  # noqa: BLE001 - preview is best-effort
+            return False
+
+    def stop(self) -> None:
+        if winsound is not None:
+            try:
+                winsound.PlaySound(None, 0)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def dispose(self) -> None:
+        self.stop()
+        if self._path:
+            import os
+            try:
+                os.remove(self._path)
+            except OSError:
+                pass
+            self._path = None
+
+
 class PatternEditorDialog(wx.Dialog):
     """Tracker-style accessible pattern grid (designed with/for a blind NVDA user).
 
@@ -104,7 +157,7 @@ class PatternEditorDialog(wx.Dialog):
         self._bpm = bpm
         self._auditioning = False
         self._cursor = 0
-        self._preview_data: bytes | None = None
+        self._preview = _PreviewPlayer()
         self._role_files = list_role_files(self._kit_dir) if self._kit_dir else {}
 
         kit_roles = kit.roles() if kit else []
@@ -121,7 +174,6 @@ class PatternEditorDialog(wx.Dialog):
 
         self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.grid_list, "Pattern grid")
-        self.grid_list.Bind(wx.EVT_KEY_DOWN, self._on_grid_key)
         root.Add(self.grid_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         meter = wx.FlexGridSizer(cols=4, vgap=6, hgap=8)
@@ -161,6 +213,10 @@ class PatternEditorDialog(wx.Dialog):
 
         self.SetSizer(root)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        # Grid keys arrive via the dialog's char hook: a dialog preprocesses Enter
+        # (default button) and Space before a list's own key handler ever runs, so
+        # binding EVT_KEY_DOWN on the list silently loses those keys.
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         theme.apply(self, dark)
 
         self._sync_meter_controls()
@@ -228,6 +284,18 @@ class PatternEditorDialog(wx.Dialog):
     def _move_cursor(self, delta: int) -> None:
         self._cursor = max(0, min(self.pattern.steps - 1, self._cursor + delta))
         self._speak_cursor()
+
+    _GRID_KEYS = frozenset({wx.WXK_LEFT, wx.WXK_RIGHT, wx.WXK_HOME, wx.WXK_END,
+                            wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER,
+                            wx.WXK_F1, ord("P"), ord("p")})
+
+    def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        # Route grid keys only while the grid list has focus; everything else (Tab,
+        # Escape, arrows inside the meter dropdowns, button activation) stays native.
+        if wx.Window.FindFocus() is self.grid_list and event.GetKeyCode() in self._GRID_KEYS:
+            self._on_grid_key(event)
+            return
+        event.Skip()
 
     def _on_grid_key(self, event: wx.KeyEvent) -> None:
         code = event.GetKeyCode()
@@ -320,31 +388,22 @@ class PatternEditorDialog(wx.Dialog):
 
     def _preview_part(self) -> None:
         role = self._current_role()
-        if role is None or winsound is None or not NUMPY_AVAILABLE:
+        if role is None:
             return
+        label = ROLE_LABELS.get(role, role)
         if role in self.silenced:
-            speech.speak(f"{ROLE_LABELS.get(role, role)} is silent")
+            speech.speak(f"{label} is silent")
             return
         voice = self._kit.voice(role) if self._kit else None
         if voice is None or len(voice) == 0:
-            speech.speak("No sound for this part")
+            speech.speak(f"No sound for {label}")
             return
-        try:
-            import io
-            import wave as wave_mod
-            import numpy as np
-            pcm = (np.clip(voice, -1.0, 1.0) * 32767.0).astype("<i2")
-            buf = io.BytesIO()
-            w = wave_mod.open(buf, "wb")
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(44100)
-            w.writeframes(pcm.tobytes())
-            w.close()
-            self._preview_data = buf.getvalue()  # must outlive the async playback
-            winsound.PlaySound(self._preview_data, winsound.SND_MEMORY | winsound.SND_ASYNC)
-        except Exception:  # noqa: BLE001 - preview is best-effort
-            pass
+        if self._auditioning:
+            self._stop_audition()  # the preview needs the audio channel
+        if self._preview.play_voice(voice):
+            speech.speak(label)
+        else:
+            speech.speak(f"{label}: preview not available")
 
     # -- meter / transport -----------------------------------------------------
 
@@ -392,14 +451,17 @@ class PatternEditorDialog(wx.Dialog):
 
     def _on_save(self, event: wx.CommandEvent) -> None:
         self._stop_audition()
+        self._preview.dispose()
         self.EndModal(wx.ID_OK)
 
     def _on_cancel(self, event: wx.CommandEvent) -> None:
         self._stop_audition()
+        self._preview.dispose()
         self.EndModal(wx.ID_CANCEL)
 
     def _on_close(self, event) -> None:
         self._stop_audition()
+        self._preview.dispose()
         self.EndModal(wx.ID_CANCEL)
 
 
@@ -418,7 +480,7 @@ class KitSoundsDialog(wx.Dialog):
         self._files = list_role_files(kit_dir)
         self._roles = [r for r in ROLES if r in self._files]
         self.choices = dict(choices)  # role -> filename; edited in place, read on Save
-        self._preview_data: bytes | None = None  # keep alive while playing
+        self._player = _PreviewPlayer()
 
         root = wx.BoxSizer(wx.VERTICAL)
         intro = wx.StaticText(self, label=(
@@ -501,43 +563,26 @@ class KitSoundsDialog(wx.Dialog):
         role = self._current_role()
         files = self._files.get(role, [])
         i = self.sample_choice.GetSelection()
-        if winsound is None or not NUMPY_AVAILABLE or role is None or not (0 <= i < len(files)):
+        if not NUMPY_AVAILABLE or role is None or not (0 <= i < len(files)):
             return
         try:
-            import io
-            import wave as wave_mod
-            import numpy as np
-            x = load_sample(files[i])
-            pcm = (np.clip(x, -1.0, 1.0) * 32767.0).astype("<i2")
-            buf = io.BytesIO()
-            w = wave_mod.open(buf, "wb")
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(44100)
-            w.writeframes(pcm.tobytes())
-            w.close()
-            self._preview_data = buf.getvalue()  # must outlive the async playback
-            winsound.PlaySound(self._preview_data, winsound.SND_MEMORY | winsound.SND_ASYNC)
+            self._player.play_voice(load_sample(files[i]))
         except Exception:  # noqa: BLE001 - preview is best-effort
             pass
 
     def _stop_preview(self) -> None:
-        if winsound is not None:
-            try:
-                winsound.PlaySound(None, 0)
-            except Exception:  # noqa: BLE001
-                pass
+        self._player.stop()
 
     def _on_save(self, event: wx.CommandEvent) -> None:
-        self._stop_preview()
+        self._player.dispose()
         self.EndModal(wx.ID_OK)
 
     def _on_cancel(self, event: wx.CommandEvent) -> None:
-        self._stop_preview()
+        self._player.dispose()
         self.EndModal(wx.ID_CANCEL)
 
     def _on_close(self, event) -> None:
-        self._stop_preview()
+        self._player.dispose()
         self.EndModal(wx.ID_CANCEL)
 
 
@@ -894,7 +939,9 @@ class DrumsPanel(wx.Panel):
         fill_bars = self._fill_every_bars()
         if self.fillstyle_choice.GetSelection() == 1:
             # Improvised: several passes, each ending in a different generated fill.
-            cycle = fill_bars or max(1, effective.bars)
+            # With no explicit cadence, improvise on a 4-bar cycle — a 1-bar cycle
+            # would put a fill in every single bar and wreck the meter's feel.
+            cycle = fill_bars or max(4, effective.bars)
             cycles = 2 if cycle >= 12 else 4
             effective = improvised_loop(effective, cycle, cycles)
         elif fill_bars:
