@@ -13,7 +13,9 @@ from pathlib import Path
 
 import wx
 
+from ..device import DeviceSession
 from ..model import EditBuffer, ModelCatalog, Preset, PresetLibrary, SLOT_LAYOUT
+from ..transport import SerialTransport
 from ..transport.serialport import find_firehawk_ports, list_serial_ports
 from . import theme
 from .accessibility import set_accessible_name
@@ -43,6 +45,12 @@ class MainFrame(wx.Frame):
         self.library = PresetLibrary(self.catalog.data_dir)
         self._dirty = False
         self.buffer.add_listener(self._on_buffer_change)
+
+        # The gated bridge to the pedal. It encodes and logs every edit; it only
+        # transmits when the user explicitly enables it (off by default).
+        self.session = DeviceSession(self.catalog)
+        self.session.attach(self.buffer)
+        self.session.on_log = self._on_encoded_edit
 
         self.status = self.CreateStatusBar()
         self.status.SetStatusText("Ready — editing offline. Presets load and save locally.")
@@ -176,6 +184,11 @@ class MainFrame(wx.Frame):
         if event.CanVeto() and not self._confirm_discard():
             event.Veto()
             return
+        if self.session.transport is not None:
+            try:
+                self.session.transport.close()
+            except Exception:  # noqa: BLE001
+                pass
         self.Destroy()
 
     # -- menu -----------------------------------------------------------------
@@ -213,7 +226,12 @@ class MainFrame(wx.Frame):
         menubar.Append(settings_menu, "&Settings")
 
         device_menu = wx.Menu()
+        connect_item = device_menu.Append(wx.ID_ANY, "&Connect to Pedal...")
         ports_item = device_menu.Append(wx.ID_ANY, "Detect &Ports...")
+        device_menu.AppendSeparator()
+        self.transmit_item = device_menu.AppendCheckItem(
+            wx.ID_ANY, "&Transmit Edits to Pedal (unvalidated!)")
+        messages_item = device_menu.Append(wx.ID_ANY, "View &Outgoing Messages...")
         menubar.Append(device_menu, "De&vice")
 
         help_menu = wx.Menu()
@@ -232,7 +250,10 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_toggle_dark, self.dark_item)
         self.Bind(wx.EVT_MENU, self._on_presets_folder, folder_item)
         self.Bind(wx.EVT_MENU, self._on_device_settings, device_item)
+        self.Bind(wx.EVT_MENU, self._on_connect, connect_item)
         self.Bind(wx.EVT_MENU, self._on_ports, ports_item)
+        self.Bind(wx.EVT_MENU, self._on_toggle_transmit, self.transmit_item)
+        self.Bind(wx.EVT_MENU, self._on_view_messages, messages_item)
         self.Bind(wx.EVT_MENU, self._on_keys, keys_item)
         self.Bind(wx.EVT_MENU, self._on_about, about_item)
 
@@ -346,6 +367,78 @@ class MainFrame(wx.Frame):
             "(see docs/protocol.md).",
             "Device settings and modes", wx.ICON_INFORMATION,
         )
+
+    # -- device session (staged, gated) ---------------------------------------
+
+    def _on_encoded_edit(self, entry) -> None:
+        """Status feedback as edits are encoded (and, if enabled, transmitted)."""
+        if entry.edit is None:
+            self.status.SetStatusText(f"{entry.group}/{entry.param}: no device mapping yet")
+            return
+        verb = "Sent" if entry.transmitted else "Staged"
+        self.status.SetStatusText(f"{verb}: {entry.edit.kind} — {entry.edit.detail}")
+
+    def _on_connect(self, event) -> None:
+        ports = list_serial_ports()
+        if not ports:
+            wx.MessageBox(
+                "No serial ports found. Pair the Firehawk over Bluetooth so it appears as a\n"
+                "COM port, then try again.",
+                "Connect to pedal", wx.ICON_INFORMATION)
+            return
+        likely = {p for p, _ in find_firehawk_ports()}
+        labels = [f"{dev}  —  {desc}" + ("  (likely Firehawk)" if dev in likely else "")
+                  for dev, desc in ports]
+        dlg = wx.SingleChoiceDialog(self, "Choose the pedal's serial port:", "Connect to pedal", labels)
+        if dlg.ShowModal() == wx.ID_OK:
+            dev = ports[dlg.GetSelection()][0]
+            try:
+                transport = SerialTransport(dev)
+                transport.open()
+            except Exception as exc:  # noqa: BLE001
+                wx.MessageBox(f"Could not open {dev}:\n{exc}", "Connect", wx.ICON_ERROR)
+                dlg.Destroy()
+                return
+            self.session.transport = transport
+            self.status.SetStatusText(f"Connected to {dev} (transmit still off — see Device menu).")
+        dlg.Destroy()
+
+    def _on_toggle_transmit(self, event) -> None:
+        if self.transmit_item.IsChecked():
+            ok = wx.MessageBox(
+                "Enable transmitting your edits to the pedal?\n\n"
+                "The on-wire format is reverse-engineered but NOT yet validated against a real\n"
+                "capture, so this could send unexpected data to your hardware. Only enable this\n"
+                "for testing once the protocol has been confirmed.\n\nEnable anyway?",
+                "Transmit to pedal", wx.YES_NO | wx.ICON_WARNING) == wx.YES
+            if not ok:
+                self.transmit_item.Check(False)
+                return
+        self.session.transmit_enabled = self.transmit_item.IsChecked()
+        self.status.SetStatusText(
+            "Transmitting edits to the pedal." if self.session.transmit_enabled
+            else "Transmit off — edits are staged only.")
+
+    def _on_view_messages(self, event) -> None:
+        lines = []
+        for i, e in enumerate(self.session.outbox[-200:]):
+            if e.edit is None:
+                lines.append(f"{i:3}  {e.group}/{e.param} = {e.value}   (unmapped)")
+            else:
+                tag = "SENT" if e.transmitted else "staged"
+                lines.append(f"{i:3}  [{tag}] {e.edit.kind:<12} {e.edit.detail}\n"
+                             f"        payload: {e.edit.message.hex(' ')}")
+        body = "\n".join(lines) or "No edits yet. Move a control to stage a message."
+        dlg = wx.Dialog(self, title="Outgoing messages (staged)", size=(760, 480))
+        text = wx.TextCtrl(dlg, value=body, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_DONTWRAP)
+        set_accessible_name(text, "Outgoing messages")
+        theme.apply(dlg, self.dark_mode)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 1, wx.EXPAND | wx.ALL, 8)
+        sizer.Add(dlg.CreateButtonSizer(wx.OK), 0, wx.ALIGN_RIGHT | wx.ALL, 8)
+        dlg.SetSizer(sizer)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def _on_ports(self, event) -> None:
         ports = list_serial_ports()

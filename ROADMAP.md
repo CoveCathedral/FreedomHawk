@@ -52,6 +52,19 @@ PSKey↔(group,param) numbering — both confirmable from **one Bluetooth HCI ca
 known edit (now trivial to interpret), or by decompiling the type jump table. Needs the
 pedal + an Android device for the capture — a step Kaylea helps with.
 
+### Phase 2.5 — UI ↔ protocol wiring — STAGED (gated, no transmission yet)
+
+- `firehawk.device.DeviceSession` subscribes to edit-buffer changes and routes each one
+  to the right ToneMatch command via `protocol.addressing.encode_edit`, mirroring the
+  pedal's own `sendParamToDevice`: model knobs, structural (@) params, tempo, model load,
+  and global psKey params each have a corresponding path.
+- Every edit is encoded and logged to an outbox (viewable in **Device → View Outgoing
+  Messages**), so you can see the exact bytes each control *would* send — ready to diff
+  against a real capture.
+- **Safety gate:** `transmit_enabled` is off by default; enabling it requires confirming a
+  warning. Device menu adds Connect, the transmit toggle, and the message viewer.
+- 87 passing tests, incl. dispatch-per-type, the safety gate, and frame round-trip.
+
 ### Phase 3 — Transport layer — DONE (offline path)
 
 - `SerialTransport`: opens the paired pedal's Windows COM port with `pyserial`, with a
