@@ -8,7 +8,10 @@ from firehawk.practice import (
     TapTempo,
     beat_interval,
     click_kind,
+    click_kind_grouped,
     click_wav,
+    group_start_beats,
+    parse_grouping,
 )
 
 
@@ -59,3 +62,24 @@ def test_tap_tempo_resets_after_long_gap():
 def test_subdivision_and_unit_tables():
     assert [ticks for _, ticks in SUBDIVISIONS] == [1, 2, 3, 4]
     assert BEAT_UNITS == [2, 4, 8, 16]
+
+
+def test_parse_grouping():
+    assert parse_grouping("2+2+3", 7) == [2, 2, 3]
+    assert parse_grouping(" 3 + 2 ", 5) == [3, 2]
+    assert parse_grouping("2+2+2", 7) is None   # doesn't add up to 7
+    assert parse_grouping("", 7) is None         # empty
+    assert parse_grouping("abc", 7) is None       # non-numeric
+
+
+def test_group_start_beats():
+    assert group_start_beats(7, [2, 2, 3]) == {0, 2, 4}
+    assert group_start_beats(5, [3, 2]) == {0, 3}
+    assert group_start_beats(7, None) == {0}      # default: only the downbeat
+
+
+def test_click_kind_grouped_odd_meter():
+    # 7/8 grouped 2+2+3, one click per eighth (subdivision 1): accents on beats 1, 3, 5.
+    starts = group_start_beats(7, [2, 2, 3])
+    kinds = [click_kind_grouped(t, 7, 1, starts) for t in range(7)]
+    assert kinds == ["accent", "beat", "accent", "beat", "accent", "beat", "beat"]

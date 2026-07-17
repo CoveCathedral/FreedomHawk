@@ -23,13 +23,31 @@ from firehawk.ui.presetspanel import PresetsPanel
 from firehawk.ui.tunerpanel import TunerPanel
 
 
+@pytest.fixture(autouse=True)
+def _silence_audio():
+    """Stop any looping/async sound after each test (no event loop runs to do it)."""
+    yield
+    try:
+        import winsound
+        winsound.PlaySound(None, 0)
+    except Exception:  # pragma: no cover - non-Windows / no audio
+        pass
+
+
 @pytest.fixture()
 def frame(tmp_path, monkeypatch):
     # Isolate the tab-order settings file so tests never touch the real one.
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
     f = MainFrame()
     yield f
+    # Deterministic teardown: stop audio/timers on the practice pages, then flush the
+    # deferred Destroy so native resources are freed between tests (there is no running
+    # event loop to process pending deletes otherwise).
+    for page in (f.tuner_page, f.metronome_page, f.drums_page):
+        if page is not None:
+            page.dispose()
     f.Destroy()
+    wx.SafeYield()
 
 
 def _block_pages(frame):

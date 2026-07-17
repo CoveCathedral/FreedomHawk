@@ -139,3 +139,33 @@ def test_pattern_copy_is_independent():
     pat = drums.GENRE_PATTERNS[0].copy()
     pat.hits["kick"].append(15)
     assert 15 not in drums.GENRE_PATTERNS[0].hits["kick"]  # original untouched
+
+
+def test_steps_per_bar_for_meters():
+    assert drums.steps_per_bar(4, 4, 4) == 16   # 4/4 sixteenths
+    assert drums.steps_per_bar(7, 8, 2) == 7    # 7/8 eighth grid
+    assert drums.steps_per_bar(5, 4, 4) == 20   # 5/4 sixteenths
+    assert drums.steps_per_bar(6, 8, 2) == 6    # 6/8 eighth grid
+
+
+def test_blank_pattern_meter_and_length():
+    p = drums.blank_pattern(7, 8, 2, bars=2)
+    assert p.beats_per_bar == 7 and p.beat_unit == 8 and p.bars == 2
+    assert p.steps == 14 and p.hits == {}
+    assert p.meter_label() == "7/8"
+
+
+def test_odd_meter_pattern_renders_correct_length():
+    kit = drums.synth_kit()
+    seven_eight = next(p for p in drums.GENRE_PATTERNS if p.name.startswith("7/8"))
+    assert seven_eight.steps == 7
+    wav = drums.render_loop(seven_eight, kit, bpm=120)
+    w = wave.open(io.BytesIO(wav))
+    # 7 eighth-note steps at 120 BPM (quarter) = 3.5 beats = 1.75 s
+    assert w.getnframes() == pytest.approx(seven_eight.loop_seconds(120) * 44100, rel=0.01)
+
+
+def test_all_genre_patterns_hits_in_range():
+    for p in drums.GENRE_PATTERNS:
+        for role, steps in p.hits.items():
+            assert all(0 <= s < p.steps for s in steps), f"{p.name}/{role} out of range"

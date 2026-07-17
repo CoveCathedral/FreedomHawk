@@ -22,7 +22,7 @@ except ImportError:  # non-Windows (tests still exercise the pure functions)
 
 TEMPO_MIN = 30.0
 TEMPO_MAX = 300.0
-BEATS_PER_MEASURE_MAX = 12
+BEATS_PER_MEASURE_MAX = 16
 
 #: Selectable subdivisions as (label, ticks-per-beat).
 SUBDIVISIONS = [
@@ -59,6 +59,44 @@ def click_kind(tick: int, beats_per_measure: int, subdivision: int) -> str:
     if pos % max(1, subdivision) == 0:
         return "beat"
     return "sub"
+
+
+def parse_grouping(text: str, beats: int) -> list[int] | None:
+    """Parse an accent grouping like '2+2+3' into group sizes, or None if it doesn't fit.
+
+    For odd meters (prog: 5/8, 7/8, 9/8, ...) this places a secondary accent at the start
+    of each group, so 7 grouped as 2+2+3 accents beats 1, 3 and 5.
+    """
+    try:
+        parts = [int(p) for p in text.replace(" ", "").split("+") if p]
+    except ValueError:
+        return None
+    if not parts or any(p <= 0 for p in parts) or sum(parts) != beats:
+        return None
+    return parts
+
+
+def group_start_beats(beats: int, grouping: list[int] | None) -> set[int]:
+    """The 0-based beat indices that begin an accent group (just the downbeat by default)."""
+    if not grouping:
+        return {0}
+    starts, idx = set(), 0
+    for size in grouping:
+        if idx >= beats:
+            break
+        starts.add(idx)
+        idx += size
+    return starts or {0}
+
+
+def click_kind_grouped(tick: int, beats: int, subdivision: int, group_starts: set[int]) -> str:
+    """Like click_kind, but every group start (not only beat 1) gets the 'accent' voice."""
+    per_measure = max(1, beats) * max(1, subdivision)
+    pos = tick % per_measure
+    if pos % max(1, subdivision) != 0:
+        return "sub"
+    beat_index = pos // max(1, subdivision)
+    return "accent" if beat_index in group_starts else "beat"
 
 
 def click_wav(freq: float, ms: float = 35.0, volume: float = 0.6, rate: int = 44100) -> bytes:

@@ -3,15 +3,20 @@ a drum looper).  Pure-Python audio and timing helpers, kept free of any UI toolk
 so they can be unit-tested headlessly."""
 
 from .drums import (
+    BEAT_UNITS as DRUM_BEAT_UNITS,
     GENRE_PATTERNS,
+    GRID_CHOICES,
+    MAX_STEPS,
     NUMPY_AVAILABLE,
     ROLE_LABELS,
     ROLES,
     DrumKit,
     DrumLoopPlayer,
     Pattern,
+    blank_pattern,
     load_kit_from_folder,
     render_loop,
+    steps_per_bar,
     synth_kit,
 )
 from .metronome import (
@@ -22,7 +27,10 @@ from .metronome import (
     TapTempo,
     beat_interval,
     click_kind,
+    click_kind_grouped,
     click_wav,
+    group_start_beats,
+    parse_grouping,
 )
 
 __all__ = [
@@ -33,15 +41,23 @@ __all__ = [
     "TapTempo",
     "beat_interval",
     "click_kind",
+    "click_kind_grouped",
     "click_wav",
+    "group_start_beats",
+    "parse_grouping",
     "GENRE_PATTERNS",
+    "GRID_CHOICES",
+    "DRUM_BEAT_UNITS",
+    "MAX_STEPS",
     "NUMPY_AVAILABLE",
     "ROLE_LABELS",
     "ROLES",
     "DrumKit",
     "DrumLoopPlayer",
     "Pattern",
+    "blank_pattern",
     "load_kit_from_folder",
     "render_loop",
+    "steps_per_bar",
     "synth_kit",
 ]

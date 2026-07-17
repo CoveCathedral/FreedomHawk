@@ -262,9 +262,12 @@ def load_kit_from_folder(path, rate: int = RATE) -> DrumKit:
 @dataclass
 class Pattern:
     name: str
-    steps: int                 # total steps in one loop (e.g. 16)
-    steps_per_beat: int        # e.g. 4 for sixteenth notes
+    steps: int                 # total grid steps in one loop
+    steps_per_beat: int        # grid steps per quarter note
     hits: dict                 # role -> list of step indices it fires on
+    beats_per_bar: int = 4     # time-signature numerator
+    beat_unit: int = 4         # time-signature denominator (2/4/8/16)
+    bars: int = 1
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -272,16 +275,38 @@ class Pattern:
     def loop_seconds(self, bpm: float) -> float:
         return self.steps * self.step_seconds(bpm)
 
+    def meter_label(self) -> str:
+        return f"{self.beats_per_bar}/{self.beat_unit}"
+
     def copy(self) -> "Pattern":
         return Pattern(self.name, self.steps, self.steps_per_beat,
-                       {r: list(s) for r, s in self.hits.items()})
+                       {r: list(s) for r, s in self.hits.items()},
+                       self.beats_per_bar, self.beat_unit, self.bars)
 
 
-def _p(name: str, hits: dict) -> Pattern:
-    return Pattern(name, 16, 4, hits)
+#: Grid resolutions as (label, steps-per-quarter-note).
+GRID_CHOICES = [("Quarter", 1), ("Eighth", 2), ("Triplet", 3), ("Sixteenth", 4)]
+BEAT_UNITS = [2, 4, 8, 16]
+MAX_STEPS = 64  # keep the step grid navigable
 
 
-#: Built-in grooves (16 steps of sixteenth notes in 4/4).
+def steps_per_bar(beats_per_bar: int, beat_unit: int, grid: int) -> int:
+    """Grid steps in one bar of beats/unit at *grid* steps per quarter note."""
+    return max(1, round(beats_per_bar * (4.0 / max(1, beat_unit)) * grid))
+
+
+def blank_pattern(beats_per_bar: int, beat_unit: int, grid: int, bars: int = 1) -> Pattern:
+    """An empty pattern for a given time signature, grid, and bar count."""
+    total = steps_per_bar(beats_per_bar, beat_unit, grid) * max(1, bars)
+    return Pattern(f"{beats_per_bar}/{beat_unit}", total, grid, {},
+                   beats_per_bar, beat_unit, bars)
+
+
+def _p(name: str, hits: dict, beats: int = 4, unit: int = 4, grid: int = 4, bars: int = 1) -> Pattern:
+    return Pattern(name, steps_per_bar(beats, unit, grid) * bars, grid, hits, beats, unit, bars)
+
+
+#: Built-in grooves. 4/4 ones are 16 sixteenth-note steps; odd meters set their own grid.
 GENRE_PATTERNS = [
     _p("Rock", {"kick": [0, 8], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
     _p("Pop", {"kick": [0, 8, 11], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
@@ -292,6 +317,17 @@ GENRE_PATTERNS = [
                 "hihat": [0, 2, 3, 4, 6, 8, 10, 11, 12, 14]}),
     _p("Metal", {"kick": [0, 2, 4, 6, 8, 10, 12, 14], "snare": [4, 12], "crash": [0]}),
     _p("Half-Time", {"kick": [0, 10], "snare": [8], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    # --- odd / prog meters ---
+    _p("5/4", {"kick": [0, 10, 16], "snare": [4, 12], "hihat": list(range(0, 20, 2))},
+       beats=5, unit=4),
+    _p("7/8 (2+2+3)", {"kick": [0, 4], "snare": [2], "hihat": [0, 1, 2, 3, 4, 5, 6]},
+       beats=7, unit=8, grid=2),
+    _p("6/8", {"kick": [0, 3], "snare": [3], "hihat": [0, 1, 2, 3, 4, 5]},
+       beats=6, unit=8, grid=2),
+    _p("5/8 (3+2)", {"kick": [0, 3], "snare": [3], "hihat": [0, 1, 2, 3, 4]},
+       beats=5, unit=8, grid=2),
+    _p("Djent 7/16 (poly)", {"kick": [0, 1, 2, 4, 5], "808": [0, 4], "snare": [3]},
+       beats=7, unit=16, grid=4),
 ]
 
 

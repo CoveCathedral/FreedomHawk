@@ -22,7 +22,9 @@ from ..practice import (
     ClickPlayer,
     TapTempo,
     beat_interval,
-    click_kind,
+    click_kind_grouped,
+    group_start_beats,
+    parse_grouping,
 )
 from .accessibility import set_accessible_name
 
@@ -40,11 +42,14 @@ class MetronomePanel(wx.Panel):
         self._timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_timer, self._timer)
 
+        self._group_starts = {0}
+
         root = wx.BoxSizer(wx.VERTICAL)
         hint = wx.StaticText(
-            self, label="Set the tempo and time signature, then Start. The first beat of "
-                        "each measure is accented. The metronome keeps playing while you "
-                        "work on other tabs; press Stop or close the app to end it.")
+            self, label="Set the tempo and time signature, then Start. Odd meters work too "
+                        "(5/8, 7/8, ...); use Accent grouping to place the accents (e.g. 2+2+3 "
+                        "for a 7). The metronome keeps playing while you work on other tabs; "
+                        "press Stop or close the app to end it.")
         root.Add(hint, 0, wx.ALL, 8)
 
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
@@ -56,7 +61,10 @@ class MetronomePanel(wx.Panel):
         self.tempo_slider = wx.Slider(
             self, value=120, minValue=TEMPO_MIN, maxValue=TEMPO_MAX,
             style=wx.SL_HORIZONTAL)
-        set_accessible_name(self.tempo_slider, "Tempo, beats per minute")
+        # A screen reader would otherwise read a slider as a percent of its range;
+        # value_fn makes it announce the real BPM instead.
+        set_accessible_name(self.tempo_slider, "Tempo",
+                            value_fn=lambda: f"{self.tempo_slider.GetValue()} BPM")
         self.tempo_slider.Bind(wx.EVT_SLIDER, self._on_tempo)
         grid.Add(self.tempo_slider, 0, wx.EXPAND)
 
@@ -85,9 +93,17 @@ class MetronomePanel(wx.Panel):
         self.subdiv_choice.Bind(wx.EVT_CHOICE, self._on_structure)
         grid.Add(self.subdiv_choice, 0, wx.EXPAND)
 
+        # Accent grouping for odd meters (e.g. 2+2+3 for a 7)
+        grid.Add(wx.StaticText(self, label="Accent grouping (e.g. 2+2+3):"),
+                 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grouping_text = wx.TextCtrl(self)
+        set_accessible_name(self.grouping_text, "Accent grouping, for example 2 plus 2 plus 3")
+        self.grouping_text.Bind(wx.EVT_TEXT, self._on_grouping)
+        grid.Add(self.grouping_text, 0, wx.EXPAND)
+
         root.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
 
-        self.accent_cb = wx.CheckBox(self, label="Accent the first beat of each measure")
+        self.accent_cb = wx.CheckBox(self, label="Accent the downbeat and grouped beats")
         self.accent_cb.SetValue(True)
         root.Add(self.accent_cb, 0, wx.ALL, 8)
 
@@ -134,8 +150,21 @@ class MetronomePanel(wx.Panel):
 
     def _on_structure(self, event: wx.CommandEvent) -> None:
         # Changing the time signature or subdivision realigns to a fresh downbeat.
+        self._update_groups()
         if self.is_running():
             self._start()
+
+    def _on_grouping(self, event: wx.CommandEvent) -> None:
+        # Accent grouping only changes which beats accent, so it applies live (no restart).
+        self._update_groups()
+
+    def _update_groups(self) -> None:
+        text = self.grouping_text.GetValue().strip()
+        grouping = parse_grouping(text, self.beats_per_measure)
+        self._group_starts = group_start_beats(self.beats_per_measure, grouping)
+        if text and grouping is None:
+            self._announce(
+                f"Grouping must be numbers adding up to {self.beats_per_measure} (e.g. 2+2+3).")
 
     def _on_tap(self, event: wx.CommandEvent) -> None:
         bpm = self._tap.tap(time.monotonic())
@@ -158,7 +187,8 @@ class MetronomePanel(wx.Panel):
     # -- transport ------------------------------------------------------------
 
     def _emit(self) -> None:
-        kind = click_kind(self._tick, self.beats_per_measure, self.subdivision)
+        kind = click_kind_grouped(
+            self._tick, self.beats_per_measure, self.subdivision, self._group_starts)
         if kind == "accent" and not self.accent_cb.GetValue():
             kind = "beat"
         self.player.play(kind)

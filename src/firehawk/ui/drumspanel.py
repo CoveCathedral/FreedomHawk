@@ -2,7 +2,8 @@
 
 Pick a kit (the built-in synth kit, or your own drum library), pick a groove, set
 the tempo, and press Start.  Edit any groove step by step: choose a part (kick,
-snare, ...) and toggle its 16 steps.  Every control is a labelled native widget.
+snare, ...) and toggle its steps.  Odd/prog meters are supported (5/4, 7/8, ...) via
+the time-signature controls.  Every control is a labelled native widget.
 
 Like the metronome, the loop keeps playing when you switch tabs, so you can jam over
 it while editing a tone; Stop or closing the app ends it.  The loop is pre-mixed so
@@ -18,12 +19,17 @@ import wx
 
 from .. import config
 from ..practice import (
+    DRUM_BEAT_UNITS,
     GENRE_PATTERNS,
+    GRID_CHOICES,
+    MAX_STEPS,
     NUMPY_AVAILABLE,
     ROLE_LABELS,
     DrumLoopPlayer,
+    Pattern,
     load_kit_from_folder,
     render_loop,
+    steps_per_bar,
     synth_kit,
 )
 from .accessibility import set_accessible_name
@@ -48,9 +54,10 @@ class DrumsPanel(wx.Panel):
 
         root = wx.BoxSizer(wx.VERTICAL)
         hint = wx.StaticText(
-            self, label="Pick a kit and a groove, then Start. To customize a groove, choose "
-                        "a part below and toggle its steps. The loop keeps playing while you "
-                        "work on other tabs; Stop or close the app to end it.")
+            self, label="Pick a kit and a groove, then Start. To customize, choose a part and "
+                        "toggle its steps. Odd meters work too — set Beats per bar / Beat unit "
+                        "(e.g. 7 and 8 for 7/8). The loop keeps playing while you work on other "
+                        "tabs; Stop or close the app to end it.")
         root.Add(hint, 0, wx.ALL, 8)
 
         grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
@@ -70,10 +77,41 @@ class DrumsPanel(wx.Panel):
         self.groove_choice.Bind(wx.EVT_CHOICE, self._on_groove)
         grid.Add(self.groove_choice, 0, wx.EXPAND)
 
+        # Time signature / grid — enables odd & prog meters and multi-bar loops.
+        grid.Add(wx.StaticText(self, label="Beats per bar:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.beats_choice = wx.Choice(self, choices=[str(n) for n in range(1, 17)])
+        self.beats_choice.SetSelection(3)  # 4
+        set_accessible_name(self.beats_choice, "Beats per bar")
+        self.beats_choice.Bind(wx.EVT_CHOICE, self._on_meter)
+        grid.Add(self.beats_choice, 0, wx.EXPAND)
+
+        grid.Add(wx.StaticText(self, label="Beat unit (note value):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.unit_choice = wx.Choice(self, choices=[str(n) for n in DRUM_BEAT_UNITS])
+        self.unit_choice.SetSelection(DRUM_BEAT_UNITS.index(4))
+        set_accessible_name(self.unit_choice, "Beat unit, note value")
+        self.unit_choice.Bind(wx.EVT_CHOICE, self._on_meter)
+        grid.Add(self.unit_choice, 0, wx.EXPAND)
+
+        grid.Add(wx.StaticText(self, label="Grid (steps per beat):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.grid_choice = wx.Choice(self, choices=[label for label, _ in GRID_CHOICES])
+        self.grid_choice.SetSelection(3)  # Sixteenth
+        set_accessible_name(self.grid_choice, "Grid resolution")
+        self.grid_choice.Bind(wx.EVT_CHOICE, self._on_meter)
+        grid.Add(self.grid_choice, 0, wx.EXPAND)
+
+        grid.Add(wx.StaticText(self, label="Bars in loop:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.bars_choice = wx.Choice(self, choices=["1", "2", "3", "4"])
+        self.bars_choice.SetSelection(0)
+        set_accessible_name(self.bars_choice, "Bars in the loop")
+        self.bars_choice.Bind(wx.EVT_CHOICE, self._on_meter)
+        grid.Add(self.bars_choice, 0, wx.EXPAND)
+
         self.tempo_label = wx.StaticText(self, label="Tempo: 90 BPM")
         grid.Add(self.tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.tempo_slider = wx.Slider(self, value=90, minValue=TEMPO_MIN, maxValue=TEMPO_MAX)
-        set_accessible_name(self.tempo_slider, "Tempo, beats per minute")
+        # Announce real BPM, not the slider's percent-of-range (see metronomepanel).
+        set_accessible_name(self.tempo_slider, "Tempo",
+                            value_fn=lambda: f"{self.tempo_slider.GetValue()} BPM")
         self.tempo_slider.Bind(wx.EVT_SLIDER, self._on_tempo)
         grid.Add(self.tempo_slider, 0, wx.EXPAND)
 
@@ -103,6 +141,7 @@ class DrumsPanel(wx.Panel):
         self.SetSizer(root)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
+        self._sync_meter_controls(self._pattern)
         self._rebuild_parts()
         if not NUMPY_AVAILABLE:
             self.start_button.Disable()
@@ -138,9 +177,48 @@ class DrumsPanel(wx.Panel):
     def bpm(self) -> int:
         return self.tempo_slider.GetValue()
 
+    @property
+    def beats_per_bar(self) -> int:
+        return self.beats_choice.GetSelection() + 1
+
+    @property
+    def beat_unit(self) -> int:
+        return DRUM_BEAT_UNITS[self.unit_choice.GetSelection()]
+
+    @property
+    def grid_steps(self) -> int:
+        return GRID_CHOICES[self.grid_choice.GetSelection()][1]
+
+    @property
+    def bars(self) -> int:
+        return self.bars_choice.GetSelection() + 1
+
+    def _sync_meter_controls(self, pattern: Pattern) -> None:
+        """Set the time-signature controls to match a pattern (e.g. after loading a groove)."""
+        self.beats_choice.SetSelection(max(0, min(15, pattern.beats_per_bar - 1)))
+        if pattern.beat_unit in DRUM_BEAT_UNITS:
+            self.unit_choice.SetSelection(DRUM_BEAT_UNITS.index(pattern.beat_unit))
+        grids = [g for _, g in GRID_CHOICES]
+        if pattern.steps_per_beat in grids:
+            self.grid_choice.SetSelection(grids.index(pattern.steps_per_beat))
+        self.bars_choice.SetSelection(max(0, min(3, pattern.bars - 1)))
+
     def _current_part(self) -> str | None:
         sel = self.part_choice.GetSelection()
         return self._part_roles[sel] if 0 <= sel < len(self._part_roles) else None
+
+    def _step_label(self, i: int) -> str:
+        """Beat-aware label for a step, so odd meters stay navigable (e.g. 'Bar 2 Beat 3.2')."""
+        p = self._pattern
+        per_bar = max(1, steps_per_bar(p.beats_per_bar, p.beat_unit, p.steps_per_beat))
+        steps_per_metrical_beat = max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
+        within = i % per_bar
+        beat = within // steps_per_metrical_beat + 1
+        sub = within % steps_per_metrical_beat
+        label = f"Beat {beat}" if sub == 0 else f"Beat {beat}.{sub + 1}"
+        if p.bars > 1:
+            label = f"Bar {i // per_bar + 1} {label}"
+        return label
 
     # -- part / step editor ---------------------------------------------------
 
@@ -159,13 +237,13 @@ class DrumsPanel(wx.Panel):
         role = self._current_part()
         on = set(self._pattern.hits.get(role, [])) if role else set()
         for i in range(self._pattern.steps):
-            cb = wx.CheckBox(self.steps_panel, label=f"Step {i + 1}")
+            cb = wx.CheckBox(self.steps_panel, label=self._step_label(i))
             cb.SetValue(i in on)
             cb.Bind(wx.EVT_CHECKBOX, lambda e, idx=i: self._on_step(idx, e))
             self.steps_sizer.Add(cb, 0, wx.RIGHT | wx.BOTTOM, 6)
             self._step_boxes.append(cb)
         role_label = ROLE_LABELS.get(role, role) if role else "part"
-        self.steps_label.SetLabel(f"Steps for {role_label}:")
+        self.steps_label.SetLabel(f"Steps for {role_label} ({self._pattern.meter_label()}):")
         self.mute_cb.SetValue(role in self._muted)
         self.steps_panel.Layout()
         self.Layout()
@@ -221,9 +299,28 @@ class DrumsPanel(wx.Panel):
 
     def _on_groove(self, event: wx.CommandEvent) -> None:
         self._pattern = GENRE_PATTERNS[self.groove_choice.GetSelection()].copy()
+        self._sync_meter_controls(self._pattern)  # match the groove's meter
         self._rebuild_parts()
         self._apply()
-        self._announce(f"Groove: {self._pattern.name}.")
+        self._announce(f"Groove: {self._pattern.name} ({self._pattern.meter_label()}).")
+
+    def _on_meter(self, event: wx.CommandEvent) -> None:
+        per_bar = steps_per_bar(self.beats_per_bar, self.beat_unit, self.grid_steps)
+        bars = self.bars
+        while bars > 1 and per_bar * bars > MAX_STEPS:  # keep the grid navigable
+            bars -= 1
+        if bars != self.bars:
+            self.bars_choice.SetSelection(bars - 1)
+            self._announce(f"Limited to {bars} bar(s) to keep the step grid manageable.")
+        total = per_bar * bars
+        # Keep any programmed hits that still fit the new step count.
+        new_hits = {r: [s for s in steps if s < total] for r, steps in self._pattern.hits.items()}
+        self._pattern = Pattern(
+            f"{self.beats_per_bar}/{self.beat_unit}", total, self.grid_steps, new_hits,
+            self.beats_per_bar, self.beat_unit, bars)
+        self._rebuild_parts()
+        self._apply()
+        self._announce(f"Meter: {self._pattern.meter_label()}, {total} steps.")
 
     def _on_tempo(self, event: wx.CommandEvent) -> None:
         self.tempo_label.SetLabel(f"Tempo: {self.bpm} BPM")

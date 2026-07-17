@@ -327,6 +327,8 @@ class MainFrame(wx.Frame):
 
         help_menu = wx.Menu()
         keys_item = help_menu.Append(wx.ID_ANY, "&Keyboard Commands\tF1")
+        metronome_help_item = help_menu.Append(wx.ID_ANY, "Using the Me&tronome...")
+        drums_help_item = help_menu.Append(wx.ID_ANY, "Using the &Drum Looper...")
         music_item = help_menu.Append(wx.ID_ANY, "Playing Along with &Music...")
         about_item = help_menu.Append(wx.ID_ABOUT, "&About")
         menubar.Append(help_menu, "&Help")
@@ -350,6 +352,8 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_toggle_transmit, self.transmit_item)
         self.Bind(wx.EVT_MENU, self._on_view_messages, messages_item)
         self.Bind(wx.EVT_MENU, self._on_keys, keys_item)
+        self.Bind(wx.EVT_MENU, self._on_metronome_help, metronome_help_item)
+        self.Bind(wx.EVT_MENU, self._on_drums_help, drums_help_item)
         self.Bind(wx.EVT_MENU, self._on_music, music_item)
         self.Bind(wx.EVT_MENU, self._on_about, about_item)
 
@@ -646,6 +650,34 @@ class MainFrame(wx.Frame):
         dlg.SetSizer(sizer)
         dlg.ShowModal()
         dlg.Destroy()
+
+    def _on_metronome_help(self, event) -> None:
+        wx.MessageBox(
+            "Using the Metronome\n\n"
+            "1. Set the Tempo (30-300 BPM). A screen reader announces the real BPM.\n"
+            "2. Set the time signature: Beats per measure and Beat unit (e.g. 7 and 8\n"
+            "   for 7/8). Subdivision adds eighth/triplet/sixteenth clicks between beats.\n"
+            "3. Odd meters: type an Accent grouping like 2+2+3 (for a 7) to place the\n"
+            "   accents on the groups. The numbers must add up to the beats per measure.\n"
+            "4. Tap Tempo sets the speed from your taps. Start/Stop begins and ends it.\n\n"
+            "The metronome keeps playing while you switch to other tabs, so you can keep\n"
+            "time while editing a tone. Press Stop or close the app to end it.",
+            "Using the Metronome", wx.ICON_INFORMATION)
+
+    def _on_drums_help(self, event) -> None:
+        wx.MessageBox(
+            "Using the Drum Looper\n\n"
+            "1. Kit: 'Synth (built-in)' works with no files. Kit folders in your Samples\n"
+            "   folder appear here too, or pick 'Browse for a kit folder...'.\n"
+            "2. Groove: choose a starting pattern (Rock, Funk, Trap, 5/4, 7/8, ...).\n"
+            "3. Time signature: set Beats per bar / Beat unit for odd meters (7/8, 5/4).\n"
+            "   Grid sets how finely each beat divides; Bars makes longer loops.\n"
+            "4. Edit part: pick a part (Kick, Snare, ...) and toggle its step checkboxes\n"
+            "   (labelled by beat). Mute this part silences it without erasing its steps.\n"
+            "5. Set the Tempo and press Start. Edits while playing apply on the next loop.\n\n"
+            "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
+            "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
+            "Using the Drum Looper", wx.ICON_INFORMATION)
 
     def _on_music(self, event) -> None:
         wx.MessageBox(

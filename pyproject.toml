@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 # numpy powers the Drum Looper's audio mixing; the core (protocol/model) needs neither.
 ui = ["wxPython>=4.2", "numpy>=1.24"]
-dev = ["pytest>=8.0", "numpy>=1.24"]
+dev = ["pytest>=8.0", "pytest-timeout>=2.1", "numpy>=1.24"]
 
 [project.scripts]
 firehawk = "firehawk.__main__:main"
@@ -31,3 +31,8 @@ firehawk = ["data/*.json", "data/*.models", "data/*.bin", "presets/*.json"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Safety net: the headless GUI tests drive real audio/timers with no event loop, which
+# can very occasionally wedge. A per-test timeout turns any hang into a fast failure with
+# a stack trace instead of blocking the whole run. 'thread' method works on Windows.
+timeout = 60
+timeout_method = "thread"

@@ -120,13 +120,15 @@ All screen-reader-first, native controls only.
 - **By-ear tuner** — DONE. Sustained reference tone per string; instrument (6/7/8-string
   guitar, 4/5/6-string bass) + full tuning library. Far more useful to a blind player than
   the pedal's light-based tuner.
-- **Metronome** — DONE. Tempo 30–300 BPM, time signature, subdivision, accented downbeat,
+- **Metronome** — DONE. Tempo 30–300 BPM (announced as real BPM, not a percentage), time
+  signature incl. **odd/prog meters** with accent grouping (e.g. 2+2+3 for 7/8), subdivision,
   tap-tempo. Synthesized clicks; keeps running across tabs.
-- **Drum Looper** — DONE (v1). Built-in synth kit or user-imported drum libraries; genre
-  grooves + accessible step editing (part chooser + 16 step toggles + per-part mute). Loop
-  is pre-mixed so any-length sample lands exactly on the beat (`practice/drums.py`); numpy
-  for audio. See `docs/drum-kits.md`. Next: per-role sample choice, save custom grooves,
-  swing/shuffle.
+- **Drum Looper** — DONE. Built-in synth kit or user-imported drum libraries; genre +
+  **odd/prog grooves** (5/4, 7/8, 6/8, djent 7/16 polymeter); variable time signature / grid
+  / bars; accessible step editing (part chooser + beat-labelled step toggles + per-part
+  mute). Loop is pre-mixed so any-length sample lands exactly on the beat
+  (`practice/drums.py`); numpy for audio. See `docs/drum-kits.md`. Next: per-role sample
+  choice, save custom grooves, swing/shuffle.
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;
