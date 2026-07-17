@@ -126,6 +126,25 @@ def test_pattern_file_round_trip_and_validation():
     assert clean["lines"][0]["steps"] == [0]
 
 
+def test_polymeter_length_round_trips():
+    import json
+    lines = [ps.make_line("kick"), ps.make_line("hihat")]
+    lines[0]["steps"] = [0, 3, 5]
+    lines[1]["steps"] = [0, 4, 8, 12]
+    p = ps.lines_to_pattern(lines, 4, 4, 4, 1, name="poly")
+    p.set_line_length(lines[0]["id"], 7)
+    rec = ps.make_record("poly", "Prog", 4, 4, 4, 1, lines, p)
+    assert rec["lines"][0]["length"] == 7 and rec["lines"][1]["length"] is None
+    back = ps.record_to_pattern(rec)
+    assert back.line_length("kick") == 7 and back.is_polymetric()
+    # File round trip and validation.
+    doc = ps.record_to_file_dict(rec)
+    rt = ps.record_from_file_dict(json.loads(json.dumps(doc)))
+    assert ps.record_to_pattern(rt).line_length("kick") == 7
+    weird = dict(doc, lines=[dict(doc["lines"][0], length=999)])  # out of range
+    assert ps.record_from_file_dict(weird)["lines"][0]["length"] is None
+
+
 def test_lines_for_kit_covers_pattern_and_kit():
     from firehawk.practice import synth_kit
     p = Pattern("t", 16, 4, {"kick": [0], "fx": [4]}, 4, 4, 1)

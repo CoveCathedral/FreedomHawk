@@ -141,10 +141,12 @@ All screen-reader-first, native controls only.
   meter-aware, dependency-free SMF in `practice/midifile.py`). See `docs/drum-kits.md`.
   **Feel:** per-hit dynamics (accent/ghost, Space-cycled and spoken; baked into all 200
   library grooves), **swing/shuffle**, and **humanize** — all through the whole pipeline
-  (render, transforms, improviser, saves, MIDI velocities).
-  **Planned next (Kaylea approved, in order):** song mode (pattern chaining) · per-line
-  tuning (808 to key) · tempo trainer · count-in · audition-step & speak-rhythm keys ·
-  choke groups · **MIDI controller input** (craft beats from a keyboard). Long-term: spin
+  (render, transforms, improviser, saves, MIDI velocities). **Per-line polymeter**
+  (`-`/`+` set each line's own loop length; parts phase and realign over the LCM,
+  `flatten_polymeter`; shared pulse; saved + exported).
+  **Planned next (Kaylea approved):** song mode (pattern chaining) · per-line tuning
+  (808 to key) · tempo trainer · count-in · audition-step & speak-rhythm keys · choke
+  groups · **MIDI controller input** (craft beats from a keyboard). Long-term: spin
   the sequencer out as its own open-source project (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.

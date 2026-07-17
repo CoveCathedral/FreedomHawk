@@ -20,6 +20,7 @@ folder of ``ROLE`` subfolders (KICK, SNARE, HIHAT, ...) of ``.wav`` files.  See
 from __future__ import annotations
 
 import io
+import math
 import os
 import random
 import struct
@@ -379,7 +380,8 @@ class Pattern:
     beats_per_bar: int = 4     # time-signature numerator
     beat_unit: int = 4         # time-signature denominator (2/4/8/16)
     bars: int = 1
-    levels: dict = field(default_factory=dict)  # role -> {step: "accent"|"ghost"}
+    levels: dict = field(default_factory=dict)   # role -> {step: "accent"|"ghost"}
+    lengths: dict = field(default_factory=dict)  # role -> per-line loop length (polymeter)
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -402,17 +404,82 @@ class Pattern:
         else:
             self.levels.setdefault(role, {})[step] = level
 
+    def line_length(self, role: str) -> int:
+        """A line's own loop length in steps (defaults to the full pattern length)."""
+        return self.lengths.get(role, self.steps)
+
+    def set_line_length(self, role: str, length: int) -> None:
+        """Set a line's loop length; equal to the pattern length means 'default'.
+
+        Hits and levels beyond the new length are dropped.
+        """
+        length = max(1, min(POLY_MAX_LINE, length))
+        if length == self.steps:
+            self.lengths.pop(role, None)
+        else:
+            self.lengths[role] = length
+        if role in self.hits:
+            self.hits[role] = [s for s in self.hits[role] if s < length]
+        if role in self.levels:
+            self.levels[role] = {s: lv for s, lv in self.levels[role].items() if s < length}
+            if not self.levels[role]:
+                del self.levels[role]
+
+    def is_polymetric(self) -> bool:
+        return any(L != self.steps for L in self.lengths.values())
+
     def copy(self) -> "Pattern":
         return Pattern(self.name, self.steps, self.steps_per_beat,
                        {r: list(s) for r, s in self.hits.items()},
                        self.beats_per_bar, self.beat_unit, self.bars,
-                       {r: dict(m) for r, m in self.levels.items()})
+                       {r: dict(m) for r, m in self.levels.items()},
+                       dict(self.lengths))
 
 
 #: Grid resolutions as (label, steps-per-quarter-note).
 GRID_CHOICES = [("Quarter", 1), ("Eighth", 2), ("Triplet", 3), ("Sixteenth", 4)]
 BEAT_UNITS = [2, 4, 8, 16]
-MAX_STEPS = 64  # keep the step grid navigable
+MAX_STEPS = 64            # keep the step grid navigable
+POLY_MAX_LINE = 64       # longest a single polymetric line may be
+POLY_MAX_RENDER = 512    # cap the phased (LCM) loop so it stays a sane length
+
+
+def flatten_polymeter(p: Pattern) -> Pattern:
+    """Expand a polymetric pattern into a plain one by tiling each line over the loop.
+
+    Lines with their own lengths repeat independently; the flattened loop runs for the
+    least common multiple of every line length (and the base), so all parts realign —
+    capped at POLY_MAX_RENDER whole bars.  A pattern without custom lengths is returned
+    unchanged.
+    """
+    if not p.is_polymetric():
+        return p
+    per_bar = max(1, p.steps // max(1, p.bars))
+    render_len = p.steps
+    for role in p.hits:
+        render_len = math.lcm(render_len, p.line_length(role))
+    render_len = min(render_len, POLY_MAX_RENDER)
+    render_len = max(per_bar, (render_len // per_bar) * per_bar)  # keep whole bars
+    hits: dict = {}
+    levels: dict = {}
+    for role, steps in p.hits.items():
+        length = p.line_length(role)
+        base = [s for s in steps if 0 <= s < length]
+        line_levels = p.levels.get(role, {})
+        tiled, tiled_levels = [], {}
+        for cycle in range(0, render_len, length):
+            for s in base:
+                pos = cycle + s
+                if pos < render_len:
+                    tiled.append(pos)
+                    if s in line_levels:
+                        tiled_levels[pos] = line_levels[s]
+        if tiled:
+            hits[role] = sorted(tiled)
+            if tiled_levels:
+                levels[role] = tiled_levels
+    return Pattern(p.name, render_len, p.steps_per_beat, hits, p.beats_per_bar,
+                   p.beat_unit, max(1, render_len // per_bar), levels)
 
 
 def steps_per_bar(beats_per_bar: int, beat_unit: int, grid: int) -> int:
@@ -814,6 +881,7 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
+    pattern = flatten_polymeter(pattern)  # per-line lengths -> one tiled loop
     step_s = pattern.step_seconds(bpm)
     beat_dur = 60.0 / max(1.0, bpm)      # a quarter note, the swing reference
     spb = max(1, pattern.steps_per_beat)

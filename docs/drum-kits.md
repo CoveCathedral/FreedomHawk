@@ -53,8 +53,25 @@ Beat 3.2, hit"):
 | **Space** | Cycle the step's state: **on → accent → ghost → off**, each spoken ("Kick accent, Beat 2"). Accents hit harder, ghosts whisper — real drummer dynamics. Dynamics survive saving, sharing, and MIDI (as note velocities) in both directions. |
 | **Enter** | Sample options for this line: any sample from its kit folder, the automatic default, or **None** (silence the line). |
 | **Delete** | Remove the selected line. |
+| **Minus / Plus** (`-` / `+`) | Set this line's **loop length** — polymeter (see below). |
 | **P** | Preview this line's sound. |
 | **F1** | Speak this key list. |
+
+### Polymeter (per-line loop lengths)
+
+Every line normally loops with the whole pattern. But you can give a line **its own
+length** with **Minus** (shorter) and **Plus** (longer): set the kick to 7 steps while the
+hats stay at 16 and they phase against each other, realigning after a while — the
+"time + time + time" stacked-meter feel of prog and djent (Meshuggah, Tool, Soen).
+
+- The pulse is shared — only the cycle *lengths* differ (true polymeter, not different
+  tempos), so it stays locked and playable.
+- Each line is edited as its **own loop**: the cursor moves within the current line's
+  length, and the row announces it ("Kick: 3 hits, length 7 steps, …").
+- Playback tiles every line over the least common multiple of all the lengths so they
+  resolve; very odd combinations are capped to a sane loop length.
+- Saved patterns, WAV, and MIDI export the fully phased loop. (Changing the time
+  signature resets per-line lengths, since they're relative to the grid.)
 
 Buttons (all a Tab away):
 

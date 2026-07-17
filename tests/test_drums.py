@@ -423,6 +423,59 @@ def test_humanize_varies_but_seeds_reproduce():
     assert (drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120))
 
 
+def test_polymeter_flatten_tiles_lines():
+    # Kick loops every 7, hats every 16 -> flattened over LCM(7,16)=112.
+    p = drums.Pattern("poly", 16, 4, {"kick": [0, 3, 5],
+                                      "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}, 4, 4, 1)
+    p.set_line_length("kick", 7)
+    assert p.is_polymetric() and p.line_length("kick") == 7
+    flat = drums.flatten_polymeter(p)
+    assert flat.steps == 112 and flat.bars == 7
+    assert flat.hits["kick"][:6] == [0, 3, 5, 7, 10, 12]  # tiled every 7 steps
+    assert len(flat.hits["kick"]) == 112 // 7 * 3
+    assert len(flat.hits["hihat"]) == 112 // 16 * 8
+
+
+def test_polymeter_render_length():
+    kit = drums.synth_kit()
+    p = drums.Pattern("poly", 16, 4, {"kick": [0], "hihat": [0, 4, 8, 12]}, 4, 4, 1)
+    p.set_line_length("kick", 7)
+    frames = len(_frames(drums.render_loop(p, kit, 120)))
+    assert frames == pytest.approx(112 * (60 / 120 / 4) * 44100, rel=0.01)
+
+
+def test_polymeter_flatten_caps_pathological_lcm():
+    p = drums.Pattern("x", 16, 4, {"a": [0], "b": [0], "c": [0]}, 4, 4, 1)
+    p.set_line_length("a", 7)
+    p.set_line_length("b", 11)
+    p.set_line_length("c", 13)
+    flat = drums.flatten_polymeter(p)
+    assert flat.steps <= drums.POLY_MAX_RENDER
+    assert flat.steps % 16 == 0            # still whole base bars
+
+
+def test_set_line_length_drops_out_of_range_hits():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8, 12]}, 4, 4, 1,
+                      {"kick": {12: drums.LEVEL_ACCENT}})
+    p.set_line_length("kick", 7)
+    assert p.hits["kick"] == [0]           # 8 and 12 fall outside the 7-step cycle
+    assert "kick" not in p.levels          # the level on step 12 went with it
+
+
+def test_flatten_non_polymetric_is_identity():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8]}, 4, 4, 1)
+    assert drums.flatten_polymeter(p) is p
+
+
+def test_polymeter_length_defaults_and_reset():
+    p = drums.Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1)
+    assert p.line_length("kick") == 16 and not p.is_polymetric()
+    p.set_line_length("kick", 7)
+    assert p.is_polymetric()
+    p.set_line_length("kick", 16)          # back to the pattern length = synced again
+    assert not p.is_polymetric() and "kick" not in p.lengths
+
+
 def test_pattern_copy_copies_levels():
     p = drums.Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1,
                       {"kick": {0: drums.LEVEL_ACCENT}})

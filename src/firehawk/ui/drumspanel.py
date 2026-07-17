@@ -28,12 +28,14 @@ from ..practice import (
     MAX_STEPS,
     NUMPY_AVAILABLE,
     PATTERN_LIBRARY,
+    POLY_MAX_LINE,
     ROLE_LABELS,
     ROLES,
     DrumLoopPlayer,
     Pattern,
     default_sample_for,
     expand_with_fill,
+    flatten_polymeter,
     improvised_loop,
     list_role_files,
     load_kit_from_folder,
@@ -84,7 +86,7 @@ def step_label(pattern: Pattern, i: int) -> str:
     beat = within // per_beat + 1
     sub = within % per_beat
     label = f"Beat {beat}" if sub == 0 else f"Beat {beat}.{sub + 1}"
-    if pattern.bars > 1:
+    if pattern.bars > 1 or i >= per_bar:  # multi-bar, or a polymetric line past bar 1
         label = f"Bar {i // per_bar + 1}, {label}"
     return label
 
@@ -271,6 +273,11 @@ class PatternEditorDialog(wx.Dialog):
         p = self.pattern
         return max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
 
+    def _line_len(self) -> int:
+        """The current line's own loop length (its polymeter cycle), else the full pattern."""
+        line = self._current_line()
+        return self.pattern.line_length(line["id"]) if line else self.pattern.steps
+
     def _sample_desc(self, line: dict) -> str:
         if line["id"] in self.silenced:
             return "silent"
@@ -285,7 +292,9 @@ class PatternEditorDialog(wx.Dialog):
     def _row_label(self, line: dict) -> str:
         n = len(self.pattern.hits.get(line["id"], []))
         hits = "no hits" if n == 0 else ("1 hit" if n == 1 else f"{n} hits")
-        return f"{line['label']}: {hits}, sample {self._sample_desc(line)}"
+        length = self.pattern.line_length(line["id"])
+        poly = f", length {length} steps" if length != self.pattern.steps else ""
+        return f"{line['label']}: {hits}{poly}, sample {self._sample_desc(line)}"
 
     def _rebuild_rows(self) -> None:
         keep = max(0, self.grid_list.GetSelection())
@@ -320,7 +329,8 @@ class PatternEditorDialog(wx.Dialog):
         speech.speak(f"{step_label(self.pattern, self._cursor)}, {state}")
 
     def _move_cursor(self, delta: int) -> None:
-        self._cursor = max(0, min(self.pattern.steps - 1, self._cursor + delta))
+        # The cursor lives within the current line's own cycle (polymeter).
+        self._cursor = max(0, min(self._line_len() - 1, self._cursor + delta))
         self._speak_cursor()
 
     def _move_line(self, delta: int) -> None:
@@ -332,14 +342,17 @@ class PatternEditorDialog(wx.Dialog):
         new = max(0, min(len(self.lines) - 1, sel + delta))
         self.grid_list.SetSelection(new)
         line = self.lines[new]
+        self._cursor = min(self._cursor, self._line_len() - 1)  # clamp into the new cycle
         state = self._state_at(line["id"], self._cursor)
         speech.speak(f"{self._row_label(line)}. Cursor: "
                      f"{step_label(self.pattern, self._cursor)}, {state}")
 
+    _LENGTHEN_KEYS = frozenset({ord("="), ord("+"), wx.WXK_NUMPAD_ADD})
+    _SHORTEN_KEYS = frozenset({ord("-"), ord("_"), wx.WXK_NUMPAD_SUBTRACT})
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
-                            ord("P"), ord("p")})
+                            ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -366,7 +379,7 @@ class PatternEditorDialog(wx.Dialog):
             self._cursor = 0
             self._speak_cursor()
         elif code == wx.WXK_END:
-            self._cursor = self.pattern.steps - 1
+            self._cursor = self._line_len() - 1
             self._speak_cursor()
         elif code == wx.WXK_SPACE:
             self._toggle_hit()
@@ -374,6 +387,10 @@ class PatternEditorDialog(wx.Dialog):
             self._sample_options()
         elif code == wx.WXK_DELETE:
             self._delete_line()
+        elif code in self._LENGTHEN_KEYS:
+            self._change_line_length(1)
+        elif code in self._SHORTEN_KEYS:
+            self._change_line_length(-1)
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -381,12 +398,27 @@ class PatternEditorDialog(wx.Dialog):
                 "Up and Down move between lines. Left and Right move by step. "
                 "Control Left and Right move by beat. Control Shift Left and Right "
                 "move by bar. Home and End jump to the start and end. Space cycles "
-                "a step: on, accent, ghost, off. Enter picks this line's sample or "
-                "None. Delete removes a line. P previews the line. Tab reaches Add "
-                "Line, Load Groove, Save as Preset, the meter controls, and Play, "
-                "Save and Cancel.")
+                "a step: on, accent, ghost, off. Minus and Plus set this line's "
+                "length for polymeter, so lines can loop in different lengths and "
+                "phase against each other. Enter picks this line's sample or None. "
+                "Delete removes a line. P previews the line. Tab reaches Add Line, "
+                "Load Groove, Save as Preset, the meter controls, and Play, Save "
+                "and Cancel.")
         else:
             event.Skip()
+
+    def _change_line_length(self, delta: int) -> None:
+        """Grow or shrink the current line's loop length (per-line polymeter)."""
+        line = self._current_line()
+        if line is None:
+            return
+        new_len = max(1, min(POLY_MAX_LINE, self._line_len() + delta))
+        self.pattern.set_line_length(line["id"], new_len)
+        self._cursor = min(self._cursor, new_len - 1)
+        self._refresh_row(line)
+        synced = " (synced with the pattern)" if new_len == self.pattern.steps else ""
+        speech.speak(f"{line['label']} length {new_len} steps{synced}")
+        self._reaudition()
 
     def _toggle_hit(self) -> None:
         """Space cycles a step's state: off -> on -> accent -> ghost -> off."""
@@ -482,6 +514,8 @@ class PatternEditorDialog(wx.Dialog):
             return
         self.lines.remove(line)
         self.pattern.hits.pop(line["id"], None)
+        self.pattern.levels.pop(line["id"], None)
+        self.pattern.lengths.pop(line["id"], None)
         self.silenced.discard(line["id"])
         self._rebuild_line_kit()
         self._rebuild_rows()
@@ -623,7 +657,8 @@ class PatternEditorDialog(wx.Dialog):
         return Pattern(p.name, p.steps, p.steps_per_beat,
                        {r: s for r, s in p.hits.items() if r not in self.silenced},
                        p.beats_per_bar, p.beat_unit, p.bars,
-                       {r: dict(m) for r, m in p.levels.items() if r not in self.silenced})
+                       {r: dict(m) for r, m in p.levels.items() if r not in self.silenced},
+                       {r: L for r, L in p.lengths.items() if r not in self.silenced})
 
     def _on_play(self, event: wx.CommandEvent) -> None:
         if self._auditioning:
@@ -1239,12 +1274,19 @@ class DrumsPanel(wx.Panel):
 
     # -- transport ------------------------------------------------------------
 
-    def _render_and_play(self) -> None:
+    def _muted_pattern(self) -> Pattern:
+        """The current pattern with muted lines removed, polymeter flattened to a plain
+        loop so the fill/improv transforms (which are meter-based) can work on it."""
+        p = self._pattern
         effective = Pattern(
-            self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
-            {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
-            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars,
-            {r: dict(m) for r, m in self._pattern.levels.items() if r not in self._muted})
+            p.name, p.steps, p.steps_per_beat,
+            {r: s for r, s in p.hits.items() if r not in self._muted},
+            p.beats_per_bar, p.beat_unit, p.bars,
+            {r: dict(m) for r, m in p.levels.items() if r not in self._muted},
+            {r: L for r, L in p.lengths.items() if r not in self._muted})
+        return flatten_polymeter(effective)
+
+    def _apply_fills(self, effective: Pattern) -> Pattern:
         fill_bars = self._fill_every_bars()
         if self.fillstyle_choice.GetSelection() == 1:
             # Improvised: several passes, each ending in a different generated fill.
@@ -1252,9 +1294,13 @@ class DrumsPanel(wx.Panel):
             # would put a fill in every single bar and wreck the meter's feel.
             cycle = fill_bars or max(4, effective.bars)
             cycles = 2 if cycle >= 12 else 4
-            effective = improvised_loop(effective, cycle, cycles)
-        elif fill_bars:
-            effective = expand_with_fill(effective, fill_bars)
+            return improvised_loop(effective, cycle, cycles)
+        if fill_bars:
+            return expand_with_fill(effective, fill_bars)
+        return effective
+
+    def _render_and_play(self) -> None:
+        effective = self._apply_fills(self._muted_pattern())
         kit = self._pattern_voices or self._kit  # composite voices for line patterns
         self.player.play(render_loop(effective, kit, self.bpm,
                                      volume=self.volume_slider.GetValue() / 100.0,
@@ -1301,19 +1347,8 @@ class DrumsPanel(wx.Panel):
         return getattr(wx.GetTopLevelParent(self), "dark_mode", True)
 
     def _export_effective_pattern(self) -> Pattern:
-        """The pattern exactly as it would play: mutes, fill cadence, fill style."""
-        effective = Pattern(
-            self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
-            {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
-            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars,
-            {r: dict(m) for r, m in self._pattern.levels.items() if r not in self._muted})
-        fill_bars = self._fill_every_bars()
-        if self.fillstyle_choice.GetSelection() == 1:
-            cycle = fill_bars or max(4, effective.bars)
-            effective = improvised_loop(effective, cycle, 2 if cycle >= 12 else 4)
-        elif fill_bars:
-            effective = expand_with_fill(effective, fill_bars)
-        return effective
+        """The pattern exactly as it would play: mutes, polymeter, fills."""
+        return self._apply_fills(self._muted_pattern())
 
     def export_wav(self) -> None:
         """Render the current loop (fills and all) to a WAV file."""
@@ -1402,7 +1437,8 @@ class DrumsPanel(wx.Panel):
                 return
             path = Path(dlg.GetPath())
         try:
-            path.write_bytes(pattern_to_midi(self._pattern, self.bpm, role_of))
+            path.write_bytes(pattern_to_midi(flatten_polymeter(self._pattern),
+                                             self.bpm, role_of))
         except Exception as exc:  # noqa: BLE001
             wx.MessageBox(f"Could not export:\n{exc}", "Export MIDI", wx.ICON_ERROR)
             return

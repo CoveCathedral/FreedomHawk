@@ -78,11 +78,15 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
     total = steps_per_bar(beats, unit, grid) * max(1, bars)
     hits = {}
     levels: dict = {}
+    lengths: dict = {}
     for ln in lines:
-        steps = sorted(s for s in ln.get("steps", []) if 0 <= s < total)
+        length = ln.get("length") or total  # per-line loop length (polymeter)
+        steps = sorted(s for s in ln.get("steps", []) if 0 <= s < length)
         if not steps:
             continue
         hits[ln["id"]] = steps
+        if length != total:
+            lengths[ln["id"]] = length
         line_levels = {}
         for s in ln.get("accents", []):
             if s in steps:
@@ -92,7 +96,7 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
                 line_levels[s] = LEVEL_GHOST
         if line_levels:
             levels[ln["id"]] = line_levels
-    return Pattern(name, total, grid, hits, beats, unit, bars, levels)
+    return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths)
 
 
 def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None) -> DrumKit:
@@ -171,6 +175,7 @@ def make_record(name: str, category: str, beats: int, unit: int, grid: int,
         line_levels = pattern.levels.get(ln["id"], {})
         entry["accents"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_ACCENT)
         entry["ghosts"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_GHOST)
+        entry["length"] = pattern.lengths.get(ln["id"])  # None = default (synced)
         out_lines.append(entry)
     return {"name": name, "category": category, "beats": beats, "unit": unit,
             "grid": grid, "bars": bars, "lines": out_lines}
@@ -282,8 +287,14 @@ def record_from_file_dict(data: dict) -> dict:
         if not isinstance(ln, dict) or not ln.get("id"):
             continue
         role = ln.get("role") if ln.get("role") in ROLES else "perc"
+        length = ln.get("length")
+        if isinstance(length, (int, float)) and 1 <= int(length) <= 64:
+            length = int(length)
+        else:
+            length = None
+        limit = length or total
         steps = sorted({int(s) for s in ln.get("steps", [])
-                        if isinstance(s, (int, float)) and 0 <= int(s) < total})
+                        if isinstance(s, (int, float)) and 0 <= int(s) < limit})
 
         def _level_steps(key):
             return sorted({int(s) for s in ln.get(key, [])
@@ -292,7 +303,7 @@ def record_from_file_dict(data: dict) -> dict:
             "id": str(ln["id"]), "label": str(ln.get("label") or ln["id"]),
             "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
             "sample": (str(ln["sample"]) if ln.get("sample") else None),
-            "steps": steps,
+            "steps": steps, "length": length,
             "accents": _level_steps("accents"), "ghosts": _level_steps("ghosts"),
         })
     if not lines:

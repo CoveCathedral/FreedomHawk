@@ -260,6 +260,34 @@ def test_grid_space_cycles_dynamics(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_grid_polymeter_line_length(frame, _silence_audio):
+    # Minus/plus set a line's own loop length; the cursor stays inside that line's cycle.
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        kick = dlg.lines[_line_index(dlg, "kick")]
+        dlg.grid_list.SetSelection(_line_index(dlg, "kick"))
+        base = dlg.pattern.steps
+        for _ in range(base - 7):
+            dlg._on_grid_key(_Key(ord("-")))       # shrink kick to 7 steps
+        assert dlg.pattern.line_length("kick") == 7
+        assert dlg.pattern.is_polymetric()
+        assert "length 7 steps" in spoken[-1]
+        assert "length 7 steps" in dlg.grid_list.GetString(_line_index(dlg, "kick"))
+        # The cursor is clamped to the kick's 7-step cycle.
+        dlg._cursor = 0
+        for _ in range(20):
+            dlg._on_grid_key(_Key(wx.WXK_RIGHT))
+        assert dlg._cursor == 6
+        # Lengthening back to the pattern length un-polymeters it.
+        for _ in range(base - 7):
+            dlg._on_grid_key(_Key(ord("=")))
+        assert dlg.pattern.line_length("kick") == base
+        assert not dlg.pattern.is_polymetric()
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_meter_change(frame):
     dlg = _grid_dialog(frame)
     try:

@@ -161,6 +161,10 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   sample options (any sample from its kit, the automatic default, or None to silence
   it). **Delete** — remove a line. **P** — preview the line's sound. **F1** — speak the
   key list.
+- **Minus / Plus** (`-` / `+`) — set this line's own **loop length** for polymeter:
+  give the kick 7 steps while the hats stay at 16 and the parts phase against each
+  other and realign — the stacked-meter prog/djent feel. The pulse stays shared, and
+  each line is edited as its own loop.
 - **Add Line…** — stack drums and mix libraries: any part, from the synth or any kit
   you have, up to 24 lines.
 - The **time signature** lives here: beats per bar, beat unit, grid resolution, bars
@@ -216,7 +220,7 @@ Everything else in this manual is fully usable offline, today.
 | Alt+Up / Alt+Down | Move a tab (in Settings → Arrange Tabs) |
 
 In the Pattern Editor grid: Up/Down lines · Left/Right step · Ctrl+Left/Right beat ·
-Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · Enter sample options · Delete
+Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · minus/plus line length (polymeter) · Enter sample options · Delete
 remove line · P preview.
 
 ## Troubleshooting
