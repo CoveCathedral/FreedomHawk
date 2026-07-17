@@ -142,10 +142,27 @@ The **model knobs** (Bass, Drive, Treble, …) are **not** in this table — the
 through the **symbol table** (`defaultSymbolTable.bin`, already decoded) by symbol index
 within the currently selected model.
 
-### Remaining (one capture, or one more targeted static pass)
+### IMPORTANT: two distinct write paths (`sendParamToDevice` decompiled)
 
-The exact single-`SetEditBufferParam` message — which of the two addressing schemes a given
-set uses on the wire, and whether it is wrapped in slot/section directives — is the last
-detail. It falls out of one Bluetooth HCI capture of a known edit (now trivial to read
-given everything above), or a static pass on the `nativeSetEditBufferParam` call path.
-Frame, CRC, transport header, and value encoding are implemented in `firehawk.protocol`.
+There are **two different message formats**, and a live single-knob tweak does NOT use the
+preset serializer:
+
+1. **Bulk preset / model save** → `L6SPePresetSerializer` key→TypedValue stream (the
+   `encode_*` in `message.py`). Used by `savePresetToDevice` / `WriteModelToDevice`.
+2. **Live single parameter set** → the **ToneMatch editor** service. `sendParamToDevice`
+   dispatches:
+   - **model knob** (Bass, Drive): `GetDSPSlotForGroupAndParam(group, param)` →
+     `ToneMatchEditorService::setToneMatchModelParam(param, slot, value)` →
+     `ToneMatchEdit_Remote::SetDspModelParam(slot, paramId, toneMatchEditorTypedValue)`.
+   - **structural param**: `ParamIDToPSKey(param)` →
+     `setPresetPSKeyParam(psKey, value)` → `ToneMatchEdit_Remote::SetPresetPSKeyParam`.
+   - tempo → `SetGlobalTempo`; footswitch → `setFootswitchAssign`; cab model+mic →
+     `setToneMatchModel`; tweak bind → `bindTweak`.
+
+The actual ToneMatch message bytes are built in `ToneMatchEdit_Remote::DoCommandCommon`
+(via `SetModelParamCommon`), using a `toneMatchEditorTypedValue` and a
+`toneMatchEditorInMessageType`.  That message is the **payload** carried inside the frame /
+transport header already implemented.  Decompiling `DoCommandCommon` +
+`SetModelParamCommon` + `SetDspModelParam` + `SetPresetPSKeyParam` is the final step for a
+live `set_param`.  `ParamIDToPSKey` reads the same PSKey table (structural params only);
+model knobs resolve through `GetDSPSlotForGroupAndParam` to a (slot, param) pair.
