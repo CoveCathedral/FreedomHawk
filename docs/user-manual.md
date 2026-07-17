@@ -142,6 +142,9 @@ your own sample libraries, is in `docs/drum-kits.md`; this is the tour.
 - **Fill style** — "As written", or **Improvised**: freshly generated fills every time,
   varying length and density, always on the meter.
 - **Tempo** and **Drum volume** sliders (both spoken as real values).
+- **Swing** and **Humanize** sliders (0–100%): swing delays off-beats for a shuffle
+  feel; humanize adds subtle per-hit timing and volume drift so a loop feels less
+  mechanical. Both apply live and to WAV exports.
 - **Part** + **Mute this part** — silence any part live without erasing its steps.
 - **Start/Stop** — the loop keeps playing across tabs, like the metronome.
 

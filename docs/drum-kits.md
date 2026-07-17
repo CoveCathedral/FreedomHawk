@@ -27,6 +27,8 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Fill style** | "As written" plays the groove's own fill. **"Improvised"** generates fresh fills on every render — varying length (short, long, occasionally a whole bar) and density, Diablo-style rule-bound randomness — so the groove rarely repeats itself exactly. Fills follow the **Fill every** cadence (a 4-bar cycle when it's unset) and always land on the meter, odd time signatures included. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
 | **Drum volume** | Master volume for the drums (0–100%), so they sit right against your guitar. |
+| **Swing** | Delays the off-beats for a shuffle feel — 0% is straight, higher approaches a triplet shuffle. |
+| **Humanize** | Adds subtle per-hit timing and volume drift so a looped groove doesn't sound stamped out. Applies live, in the editor's Play, and in WAV export. |
 | **Part** + **Mute this part** | Pick a part and mute/unmute it live, without touching its steps. |
 | **Edit Pattern…** | Opens the Pattern Editor dialog. |
 | **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |

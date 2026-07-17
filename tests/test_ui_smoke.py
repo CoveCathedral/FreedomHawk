@@ -344,6 +344,31 @@ def test_drum_volume_and_fill_style_controls(frame):
     assert d.fillstyle_choice.GetStringSelection() == "As written"
 
 
+def test_swing_humanize_controls(frame):
+    d = frame.drums_page
+    assert d.swing_slider.GetValue() == 0 and d.humanize_slider.GetValue() == 0
+    assert "straight" in d.swing_label.GetLabel()
+    d.swing_slider.SetValue(60)
+    d.humanize_slider.SetValue(30)
+    d._on_feel(None)
+    assert d.swing_label.GetLabel() == "Swing: 60%"
+    assert d.humanize_label.GetLabel() == "Humanize: 30%"
+    # The feel values flow into the editor's auditions.
+    d.open_editor  # attribute exists
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
+                              set(), d.player, d.bpm, dark=True, settings=d._settings,
+                              swing=0.6, humanize=0.3)
+    try:
+        assert dlg._swing == 0.6 and dlg._humanize == 0.3
+    finally:
+        dlg.Destroy()
+
+
+def test_app_window_title_is_freedomhawk(frame):
+    assert frame.GetTitle() == "FreedomHawk"
+
+
 def test_grid_char_hook_routes_enter_and_p(frame, monkeypatch, _silence_audio):
     # A dialog steals Enter (default button) before a list's key handler runs, so
     # grid keys route via the dialog char hook (live-tested regression: Enter and P

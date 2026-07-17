@@ -26,7 +26,7 @@ from .metronomepanel import MetronomePanel
 from .presetspanel import PresetsPanel
 from .tunerpanel import TunerPanel
 
-APP_TITLE = "Firehawk Accessible Controller"
+APP_TITLE = "FreedomHawk"
 
 
 def _is_within(window: wx.Window | None, ancestor: wx.Window) -> bool:
@@ -742,7 +742,8 @@ class MainFrame(wx.Frame):
             "5. Kit Sounds... picks which sample each part uses (sample kits): choose a\n"
             "   part, arrow through its samples - each plays as you land on it - and Save.\n"
             "6. Part + Mute this part silences a part live without erasing its steps.\n"
-            "7. Set the Tempo and Drum volume, then press Start.\n\n"
+            "7. Set the Tempo, Drum volume, Swing (shuffle feel), and Humanize (subtle\n"
+            "   timing/volume drift), then press Start.\n\n"
             "The Tools menu (Alt+T) holds the Drum Pattern Library (rename, delete,\n"
             "recategorize your saved patterns), WAV export of the playing loop, drum\n"
             "pattern file sharing, and MIDI export/import.\n\n"
@@ -768,8 +769,11 @@ class MainFrame(wx.Frame):
     def _on_about(self, event) -> None:
         wx.MessageBox(
             f"{APP_TITLE}\n\n"
-            "An accessible, screen-reader-first controller for the Line 6 Firehawk FX.\n"
+            "An accessible, screen-reader-first controller for the Line 6 Firehawk FX,\n"
+            "with a built-in accessible drum machine, metronome, and tuner.\n"
             f"Loaded {len(self.catalog)} models.\n\n"
-            "Editing works offline now; hardware control is in progress.",
-            "About", wx.ICON_INFORMATION,
+            "Editing and practice tools work offline now; live pedal control is in\n"
+            "progress. Free the hardware from the dead cloud.\n\n"
+            "github.com/CoveCathedral/FreedomHawk (MIT)",
+            "About FreedomHawk", wx.ICON_INFORMATION,
         )

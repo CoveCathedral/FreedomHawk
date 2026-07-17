@@ -456,6 +456,30 @@ GENRE_PATTERNS = [
 ]
 
 
+def _bake_default_dynamics(p: Pattern) -> Pattern:
+    """Give a groove real dynamics out of the box.
+
+    Universal drummer defaults, meter-aware: the kick (and 808) accents each bar's
+    downbeat, snares and claps accent hits that land on a metrical beat (the
+    backbeats), and hi-hats ghost their off-beat strokes so the pulse breathes.
+    Every step remains editable afterwards.
+    """
+    beat_len = max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
+    per_bar = max(1, p.steps // max(1, p.bars))
+    for role, steps in p.hits.items():
+        for s in steps:
+            if role in ("kick", "808") and s % per_bar == 0:
+                p.set_level(role, s, LEVEL_ACCENT)
+            elif role in ("snare", "clap") and s % beat_len == 0:
+                p.set_level(role, s, LEVEL_ACCENT)
+            elif role == "hihat" and beat_len > 1 and s % beat_len != 0:
+                p.set_level(role, s, LEVEL_GHOST)
+    return p
+
+
+GENRE_PATTERNS = [_bake_default_dynamics(p) for p in GENRE_PATTERNS]
+
+
 # -- the pattern library (200 grooves: hand-made bases + seeded variations) --------
 
 def _metrical_beat_len(p: Pattern) -> int:
@@ -468,8 +492,10 @@ def _two_bars(base: Pattern, name: str) -> Pattern:
     per = base.steps
     hits = {r: sorted({s + b * per for b in range(2) for s in steps})
             for r, steps in base.hits.items()}
+    levels = {r: {s + b * per: lv for b in range(2) for s, lv in m.items()}
+              for r, m in base.levels.items()}
     return Pattern(name, per * 2, base.steps_per_beat, hits,
-                   base.beats_per_bar, base.beat_unit, 2)
+                   base.beats_per_bar, base.beat_unit, 2, levels)
 
 
 def _generate_variation(base: Pattern, seed: int, with_fill: bool, name: str) -> Pattern:
@@ -518,15 +544,26 @@ def _generate_variation(base: Pattern, seed: int, with_fill: bool, name: str) ->
         for role in ("snare", "hihat", "openhat", "clap", "tom", "perc"):
             if role in p.hits:
                 p.hits[role] = [s for s in p.hits[role] if s < start]
+        first = True
         for s in range(start, total):
             if rng.random() < 0.85:
-                p.hits.setdefault(rng.choice(("snare", "tom", "tom", "snare")), []).append(s)
+                role = rng.choice(("snare", "tom", "tom", "snare"))
+                p.hits.setdefault(role, []).append(s)
+                if first:  # the fill announces itself, then breathes
+                    p.set_level(role, s, LEVEL_ACCENT)
+                    first = False
+                elif rng.random() < 0.3:
+                    p.set_level(role, s, LEVEL_GHOST)
         for role in ("snare", "tom"):
             if role in p.hits:
                 p.hits[role] = sorted(set(p.hits[role]))
         p.hits["crash"] = sorted(set(p.hits.get("crash", [])) | {0})
 
     p.hits = {r: s for r, s in p.hits.items() if s}  # drop emptied roles
+    # Dynamics only where hits remain (mutations may have moved or removed steps).
+    p.levels = {r: {s: lv for s, lv in m.items() if s in set(p.hits.get(r, []))}
+                for r, m in p.levels.items()}
+    p.levels = {r: m for r, m in p.levels.items() if m}
     return p
 
 
@@ -748,31 +785,69 @@ def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
         buf[: len(v) - first] += v[first:]
 
 
+_HUMANIZE_MAX_JITTER_S = 0.014  # +/- 14 ms of timing drift at humanize = 1.0
+_HUMANIZE_MAX_GAIN = 0.28       # +/- 28% of level drift at humanize = 1.0
+
+
+def _swung_fraction(frac: float, swing: float) -> float:
+    """Map a within-beat position (0..1) to its swung position.
+
+    *swing* 0 is straight; higher delays the second eighth of each beat (and the
+    sixteenths ride along), reaching a triplet shuffle near 1.
+    """
+    if swing <= 0.0:
+        return frac
+    r = 0.5 + 0.25 * min(1.0, swing)   # first eighth takes fraction r of the beat
+    if frac < 0.5:
+        return 2 * frac * r
+    return r + 2 * (frac - 0.5) * (1 - r)
+
+
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
-                volume: float = 1.0) -> bytes:
+                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
+                seed: int | None = None) -> bytes:
     """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
 
-    *volume* (0..1) scales the finished mix — the drums' master volume.
+    *volume* (0..1) scales the finished mix.  *swing* (0..1) delays off-beats for a
+    shuffle feel.  *humanize* (0..1) adds subtle per-hit timing and level drift so a
+    looped groove doesn't sound stamped out.
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     step_s = pattern.step_seconds(bpm)
+    beat_dur = 60.0 / max(1.0, bpm)      # a quarter note, the swing reference
+    spb = max(1, pattern.steps_per_beat)
     length = max(1, int(round(pattern.steps * step_s * rate)))
     buf = np.zeros(length, dtype=np.float32)
+    rng = random.Random(seed) if humanize > 0 else None
+
+    def hit_offset(step: int) -> int:
+        if swing <= 0.0 and rng is None:
+            return int(round(step * step_s * rate))
+        beat_i, within = divmod(step, spb)
+        t = (beat_i + _swung_fraction(within / spb, swing)) * beat_dur
+        if rng is not None:
+            t += rng.uniform(-1.0, 1.0) * humanize * _HUMANIZE_MAX_JITTER_S
+        return int(round(max(0.0, t) * rate))
+
     for role, steps_on in pattern.hits.items():
         voice = kit.voice(role)
         if voice is None or len(voice) == 0:
             continue
         role_levels = pattern.levels.get(role, {})
-        # Pre-scale one copy of the voice per dynamic level used by this role.
         scaled = {None: voice}
         for step in steps_on:
             if not 0 <= step < pattern.steps:
                 continue
-            level = role_levels.get(step)
-            if level not in scaled:
-                scaled[level] = voice * _LEVEL_GAIN.get(level, 1.0)
-            _mix_wrap(buf, scaled[level], int(round(step * step_s * rate)))
+            gain = _LEVEL_GAIN.get(role_levels.get(step), 1.0)
+            if rng is not None:
+                v = voice * (gain * (1.0 + rng.uniform(-1.0, 1.0) * humanize * _HUMANIZE_MAX_GAIN))
+            else:
+                level = role_levels.get(step)
+                if level not in scaled:
+                    scaled[level] = voice * gain
+                v = scaled[level]
+            _mix_wrap(buf, v, hit_offset(step))
     peak = float(np.max(np.abs(buf))) if length else 0.0
     if peak > 1.0:                       # prevent clipping without pumping quiet loops up
         buf = buf / peak

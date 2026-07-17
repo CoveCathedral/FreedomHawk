@@ -386,6 +386,43 @@ def test_improvised_fills_have_dynamics():
         assert all(lv in (drums.LEVEL_ACCENT, drums.LEVEL_GHOST) for lv in m.values())
 
 
+def _first_onset(wav_bytes):
+    pcm = _frames(wav_bytes)
+    idx = int(np.argmax(np.abs(pcm) > 300))
+    return idx / 44100.0
+
+
+def test_swing_delays_offbeat_not_downbeat():
+    kit = drums.synth_kit()
+    # One hi-hat on the off-beat eighth (step 2 of a 4-step beat) at 120 BPM.
+    off = drums.Pattern("t", 4, 4, {"hihat": [2]}, 4, 4, 1)
+    straight = _first_onset(drums.render_loop(off, kit, 120, swing=0.0))
+    swung = _first_onset(drums.render_loop(off, kit, 120, swing=1.0))
+    assert swung > straight + 0.02          # pushed clearly later
+    # The downbeat is unaffected by swing.
+    down = drums.Pattern("t", 4, 4, {"kick": [0]}, 4, 4, 1)
+    a = _first_onset(drums.render_loop(down, kit, 120, swing=0.0))
+    b = _first_onset(drums.render_loop(down, kit, 120, swing=1.0))
+    assert abs(a - b) < 0.002
+
+
+def test_swing_default_matches_straight():
+    kit = drums.synth_kit()
+    p = drums.GENRE_PATTERNS[0]
+    assert drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120, swing=0.0)
+
+
+def test_humanize_varies_but_seeds_reproduce():
+    kit = drums.synth_kit()
+    p = drums.Pattern("t", 4, 4, {"hihat": [2]}, 4, 4, 1)
+    renders = {drums.render_loop(p, kit, 120, humanize=1.0) for _ in range(4)}
+    assert len(renders) > 1                                   # genuinely varies
+    assert (drums.render_loop(p, kit, 120, humanize=0.8, seed=3)
+            == drums.render_loop(p, kit, 120, humanize=0.8, seed=3))  # seed reproduces
+    # Zero humanize is deterministic.
+    assert (drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120))
+
+
 def test_pattern_copy_copies_levels():
     p = drums.Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1,
                       {"kick": {0: drums.LEVEL_ACCENT}})
