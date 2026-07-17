@@ -22,13 +22,14 @@ CONFIG_FILE = _config_dir() / "settings.json"
 
 def all_views() -> list[tuple[str, str]]:
     """Every navigable view as (view_id, display_name), in canonical order."""
-    views = [("presets", "Presets"), ("tuner", "Tuner"), ("metronome", "Metronome")]
+    views = [("presets", "Presets"), ("tuner", "Tuner"), ("metronome", "Metronome"),
+             ("drums", "Drum Looper")]
     views += [(s.id, s.display_name) for s in SLOT_LAYOUT]
     return views
 
 
 #: Default order: Presets, the signal-chain blocks, then the practice tools last.
-DEFAULT_PAGE_ORDER = ["presets"] + [s.id for s in SLOT_LAYOUT] + ["tuner", "metronome"]
+DEFAULT_PAGE_ORDER = ["presets"] + [s.id for s in SLOT_LAYOUT] + ["tuner", "metronome", "drums"]
 
 
 class AppSettings:

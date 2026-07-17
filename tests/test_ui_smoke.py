@@ -16,6 +16,7 @@ except Exception:  # pragma: no cover - no GUI available
 import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
+from firehawk.ui.drumspanel import DrumsPanel
 from firehawk.ui.mainframe import MainFrame
 from firehawk.ui.metronomepanel import MetronomePanel
 from firehawk.ui.presetspanel import PresetsPanel
@@ -46,17 +47,17 @@ def _block_page(frame, slot_id):
 
 
 def test_has_presets_page_and_all_blocks(frame):
-    # Presets + Tuner + Metronome pages, plus one per slot.
-    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 3
+    # Presets + Tuner + Metronome + Drum Looper pages, plus one per slot.
+    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 4
     assert isinstance(frame.listbook.GetPage(0), PresetsPanel)
 
 
 def test_default_order_puts_practice_tools_last(frame):
     assert frame._view_ids[0] == "presets"
-    assert frame._view_ids[-2:] == ["tuner", "metronome"]
+    assert frame._view_ids[-3:] == ["tuner", "metronome", "drums"]
     last = frame.listbook.GetPageCount() - 1
-    assert isinstance(frame.listbook.GetPage(last), MetronomePanel)
-    assert isinstance(frame.listbook.GetPage(last - 1), TunerPanel)
+    assert isinstance(frame.listbook.GetPage(last), DrumsPanel)
+    assert isinstance(frame.listbook.GetPage(last - 1), MetronomePanel)
 
 
 def test_reorder_rebuilds_and_persists(frame):
@@ -99,6 +100,35 @@ def test_metronome_survives_reorder(frame):
     frame._rebuild_after_reorder()
     assert frame.metronome_page is metro
     assert frame._view_ids[0] == "metronome"
+
+
+def test_drums_panel_present_and_editable(frame):
+    d = frame.drums_page
+    assert isinstance(d, DrumsPanel)
+    # Default synth kit gives editable parts and 16 step toggles.
+    assert d.part_choice.GetCount() >= 1
+    assert len(d._step_boxes) == 16
+    # Toggling a step updates the pattern model for the selected part.
+    role = d._current_part()
+    box = d._step_boxes[1]
+    box.SetValue(True)
+    evt = wx.CommandEvent(wx.EVT_CHECKBOX.typeId, box.GetId())
+    evt.SetInt(1)  # so event.IsChecked() reads True
+    d._on_step(1, evt)
+    assert 1 in d._pattern.hits[role]
+
+
+def test_drums_start_stop_toggles(frame):
+    d = frame.drums_page
+    from firehawk.practice import NUMPY_AVAILABLE
+    if not (NUMPY_AVAILABLE and d.player.available):
+        pytest.skip("no audio / numpy")
+    d._on_start_stop(None)
+    assert d._playing
+    assert d.start_button.GetLabel() == "&Stop"
+    d._on_start_stop(None)
+    assert not d._playing
+    assert d.start_button.GetLabel() == "&Start"
 
 
 def test_every_control_has_accessible_name(frame):

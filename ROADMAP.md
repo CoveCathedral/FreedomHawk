@@ -112,6 +112,26 @@ pedal + an Android device for the capture — a step Kaylea helps with.
 - Still to do: recall/store the pedal's on-device presets over the link; tuner; device
   settings; footswitch **modes**; tempo/tweak assignment wiring. (Depends on Phase 2.)
 
+### Phase 7 — Practice tools & app-only features (beyond the original app) — IN PROGRESS
+
+Features the Firehawk Remote app never had, made possible by being a Windows-native app.
+All screen-reader-first, native controls only.
+
+- **By-ear tuner** — DONE. Sustained reference tone per string; instrument (6/7/8-string
+  guitar, 4/5/6-string bass) + full tuning library. Far more useful to a blind player than
+  the pedal's light-based tuner.
+- **Metronome** — DONE. Tempo 30–300 BPM, time signature, subdivision, accented downbeat,
+  tap-tempo. Synthesized clicks; keeps running across tabs.
+- **Drum Looper** — DONE (v1). Built-in synth kit or user-imported drum libraries; genre
+  grooves + accessible step editing (part chooser + 16 step toggles + per-part mute). Loop
+  is pre-mixed so any-length sample lands exactly on the beat (`practice/drums.py`); numpy
+  for audio. See `docs/drum-kits.md`. Next: per-role sample choice, save custom grooves,
+  swing/shuffle.
+- **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
+  `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
+- **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;
+  later drives footswitch recall) · A/B tone compare · full signal-chain readout hotkey.
+
 ### Phase 6 — Hardening — NOT STARTED
 
 - Reconnect handling, error surfacing, packaging as a runnable Windows app.

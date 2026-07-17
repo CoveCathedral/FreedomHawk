@@ -41,6 +41,7 @@ connection + protocol validation) · 🎛️ hardware-only (not app-controllable
 |---|---|---|
 | Tuner | ✅ | **By-ear reference-tone tuner** — plays a sustained tone per string; instrument (6/7/8-string guitar, 4/5/6-string bass) + full tuning library. No pedal needed, and far more useful to a blind player than the pedal's light-based tuner |
 | Metronome | ✅ | **New (the pedal had none)** — adjustable tempo (30–300 BPM), time signature, subdivision, accented downbeat, and tap-tempo. Keeps running across tabs so you can practice while editing |
+| Drum Looper | ✅ | **New (the pedal had none)** — built-in synth kit or import your own drum libraries; genre grooves + accessible step editing; pre-mixed so any-length samples land exactly on the beat. Keeps running across tabs. See `docs/drum-kits.md` |
 | Tap tempo | ✅ | Tempo is set on the Global page (live tap is a device action); the Metronome also has its own tap-tempo |
 | Master volume / guitar-level blend | 🎛️ | Front-panel knob; not an app parameter |
 | Output Mode (Line / Amp) | 🎛️ | **Rear-panel physical switch** — not app-controllable |
@@ -65,7 +66,9 @@ Along with Music). Only the *cloud tone-matching* part is gone.
 - **Customizable tab order** (Settings > Arrange Tabs) — reorder any tab and it persists;
   the practice tools default to the bottom so they stay out of the editing workflow.
 - A **metronome** the pedal never had — adjustable tempo/time-signature/subdivision,
-  accented downbeat, tap-tempo. (A drum looper is planned on top of this.)
+  accented downbeat, tap-tempo.
+- A **drum looper** the pedal never had — synth kit or your own sample libraries, genre
+  grooves, accessible step editing, with sample-accurate timing regardless of sample length.
 - A **staged, gated** device bridge that shows the exact bytes each edit would send.
 
 ## Summary

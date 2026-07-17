@@ -15,8 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ui = ["wxPython>=4.2"]
-dev = ["pytest>=8.0"]
+# numpy powers the Drum Looper's audio mixing; the core (protocol/model) needs neither.
+ui = ["wxPython>=4.2", "numpy>=1.24"]
+dev = ["pytest>=8.0", "numpy>=1.24"]
 
 [project.scripts]
 firehawk = "firehawk.__main__:main"

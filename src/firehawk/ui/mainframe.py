@@ -21,6 +21,7 @@ from ..transport.serialport import find_firehawk_ports, list_serial_ports
 from . import theme
 from .accessibility import set_accessible_name
 from .blockpanel import BlockPanel
+from .drumspanel import DrumsPanel
 from .metronomepanel import MetronomePanel
 from .presetspanel import PresetsPanel
 from .tunerpanel import TunerPanel
@@ -63,6 +64,7 @@ class MainFrame(wx.Frame):
         self._view_ids: list[str] = []
         self.tuner_page: TunerPanel | None = None
         self.metronome_page: MetronomePanel | None = None
+        self.drums_page: DrumsPanel | None = None
         self._build_pages()
         self._build_menu()
 
@@ -120,6 +122,7 @@ class MainFrame(wx.Frame):
         self._view_ids = []
         self.tuner_page = None
         self.metronome_page = None
+        self.drums_page = None
         titles = dict(all_views())
         slots_by_id = {s.id: s for s in SLOT_LAYOUT}
 
@@ -137,6 +140,10 @@ class MainFrame(wx.Frame):
             elif view_id == "metronome":
                 page = MetronomePanel(self.listbook, status=self.status.SetStatusText)
                 self.metronome_page = page
+            elif view_id == "drums":
+                page = DrumsPanel(self.listbook, settings=self.settings,
+                                  status=self.status.SetStatusText)
+                self.drums_page = page
             elif view_id in slots_by_id:
                 page = BlockPanel(
                     self.listbook, slots_by_id[view_id], self.buffer, self.catalog,
@@ -264,6 +271,8 @@ class MainFrame(wx.Frame):
             self.tuner_page.dispose()
         if self.metronome_page is not None:
             self.metronome_page.dispose()
+        if self.drums_page is not None:
+            self.drums_page.dispose()
         if self.session.transport is not None:
             try:
                 self.session.transport.close()

@@ -6,7 +6,7 @@ from firehawk.config import AppSettings, DEFAULT_PAGE_ORDER, all_views
 
 def test_default_order_puts_practice_tools_last():
     assert DEFAULT_PAGE_ORDER[0] == "presets"
-    assert DEFAULT_PAGE_ORDER[-2:] == ["tuner", "metronome"]
+    assert DEFAULT_PAGE_ORDER[-3:] == ["tuner", "metronome", "drums"]
 
 
 def test_all_view_ids_are_unique():

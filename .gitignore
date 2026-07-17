@@ -23,6 +23,12 @@ Firehalk Decompiled from Webchat/
 /src/firehawk/data/*
 !/src/firehawk/data/README.md
 
+# User-supplied drum sample libraries — NOT redistributed (third-party kits may be
+# copyrighted). Drop your own kits under Samples/<KitName>/<ROLE>/*.wav.
+# See docs/drum-kits.md. Only the explanatory README is tracked.
+/Samples/*
+!/Samples/README.md
+
 # OS
 Thumbs.db
 .DS_Store
