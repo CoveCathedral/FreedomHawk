@@ -75,8 +75,9 @@ class MainFrame(wx.Frame):
 
     def _on_page_changed(self, event) -> None:
         # Stop any tuner tone when navigating away from the Tuner page.
-        if (self.tuner_page is not None
-                and self.listbook.GetPage(self.listbook.GetSelection()) is not self.tuner_page):
+        sel = self.listbook.GetSelection()
+        if (sel != wx.NOT_FOUND and self.tuner_page is not None
+                and self.listbook.GetPage(sel) is not self.tuner_page):
             self.tuner_page.stop()
         event.Skip()
 
@@ -144,15 +145,52 @@ class MainFrame(wx.Frame):
             self.listbook.SetSelection(0)
 
     def _rebuild_after_reorder(self) -> None:
-        """Rebuild pages and the Go menu after the tab order changes, then re-theme."""
-        current_view = None
-        if self._view_ids and 0 <= self.listbook.GetSelection() < len(self._view_ids):
-            current_view = self._view_ids[self.listbook.GetSelection()]
-        self._build_pages()
-        self._build_menu()
-        self._apply_theme()
-        if current_view:  # keep the user on the tab they were viewing
-            self._goto_view(current_view)
+        """Apply the saved tab order by moving existing pages (no rebuild, no flicker)."""
+        self._apply_page_order(self.settings.page_order())
+
+    def _apply_page_order(self, new_order: list[str]) -> None:
+        """Reorder the notebook by re-seating the *existing* page windows.
+
+        The pages are reused rather than recreated, so they keep their state and theme
+        and nothing flashes.  Only the (invisible) Go-menu labels are refreshed.
+        """
+        selected_view = None
+        sel = self.listbook.GetSelection()
+        if 0 <= sel < len(self._view_ids):
+            selected_view = self._view_ids[sel]
+        win_by_id = {vid: self.listbook.GetPage(i) for i, vid in enumerate(self._view_ids)}
+        titles = dict(all_views())
+
+        self.Freeze()  # suppress painting until the whole reorder is done
+        try:
+            for i in reversed(range(self.listbook.GetPageCount())):
+                self.listbook.RemovePage(i)  # removes the page but keeps the window alive
+            self._view_ids = []
+            for view_id in new_order:
+                win = win_by_id.pop(view_id, None)
+                if win is None:
+                    continue
+                self.listbook.AddPage(win, titles.get(view_id, view_id))
+                self._view_ids.append(view_id)
+            for view_id, win in win_by_id.items():  # any view not named in new_order
+                self.listbook.AddPage(win, titles.get(view_id, view_id))
+                self._view_ids.append(view_id)
+            if selected_view in self._view_ids:
+                self.listbook.SetSelection(self._view_ids.index(selected_view))
+            elif self._view_ids:
+                self.listbook.SetSelection(0)
+        finally:
+            self.Thaw()
+        self._relabel_go_menu()
+
+    def _relabel_go_menu(self) -> None:
+        """Update the Go menu's jump labels/accelerators to the current tab order."""
+        titles = dict(all_views())
+        for i, item in enumerate(self._go_view_items):
+            if i < len(self._view_ids):
+                view_id = self._view_ids[i]
+                accel = f"\tCtrl+{i + 1}" if i < 9 else ""
+                item.SetItemLabel(f"{titles.get(view_id, view_id)}{accel}")
 
     def _refresh_block_pages(self) -> None:
         for i in range(self.listbook.GetPageCount()):
@@ -243,10 +281,12 @@ class MainFrame(wx.Frame):
         back_item = go_menu.Append(wx.ID_ANY, "&Back to Presets\tCtrl+B")
         go_menu.AppendSeparator()
         titles = dict(all_views())
+        self._go_view_items = []
         for i, view_id in enumerate(self._view_ids):
             accel = f"\tCtrl+{i + 1}" if i < 9 else ""
             item = go_menu.Append(wx.ID_ANY, f"{titles.get(view_id, view_id)}{accel}")
             self.Bind(wx.EVT_MENU, lambda e, idx=i: self._goto(idx), item)
+            self._go_view_items.append(item)
         menubar.Append(go_menu, "&Go")
 
         settings_menu = wx.Menu()
@@ -388,15 +428,15 @@ class MainFrame(wx.Frame):
         self.status.SetStatusText("Dark mode on." if self.dark_mode else "Dark mode off.")
 
     def _on_arrange_tabs(self, event) -> None:
-        """Accessible reorder dialog: a list of tabs plus Move Up / Move Down buttons."""
+        """Accessible reorder dialog: a list where Alt+Up / Alt+Down move the selected tab."""
         titles = dict(all_views())
         order = list(self._view_ids)
 
         dlg = wx.Dialog(self, title="Arrange tabs", size=(380, 500))
         intro = wx.StaticText(dlg, label=(
-            "Choose where each tab appears. Select a tab, then use Move Up or Move "
-            "Down. The first tab is the one you land on at startup; Ctrl+1 through "
-            "Ctrl+9 jump to the first nine. Press OK to apply."))
+            "Choose where each tab appears. Select a tab, then press Alt+Up or Alt+Down "
+            "to move it (or use the buttons below). The first tab is the one you land on "
+            "at startup; Ctrl+1 through Ctrl+9 jump to the first nine. Press OK to apply."))
         intro.Wrap(340)
         listbox = wx.ListBox(dlg, choices=[titles.get(v, v) for v in order], style=wx.LB_SINGLE)
         set_accessible_name(listbox, "Tab order")
@@ -416,6 +456,16 @@ class MainFrame(wx.Frame):
             listbox.SetSelection(j)
             listbox.SetFocus()
 
+        def on_key(evt: wx.KeyEvent) -> None:
+            # Alt+Up / Alt+Down reorder in place, so keyboard users never leave the list.
+            if evt.AltDown() and evt.GetKeyCode() == wx.WXK_UP:
+                move(-1)
+            elif evt.AltDown() and evt.GetKeyCode() == wx.WXK_DOWN:
+                move(1)
+            else:
+                evt.Skip()
+
+        listbox.Bind(wx.EVT_KEY_DOWN, on_key)
         up_btn.Bind(wx.EVT_BUTTON, lambda e: move(-1))
         down_btn.Bind(wx.EVT_BUTTON, lambda e: move(1))
 
@@ -563,7 +613,7 @@ class MainFrame(wx.Frame):
             ("Left / Right arrows", "Adjust a slider; Page Up/Down for larger steps"),
             ("Space", "Toggle a checkbox"),
             ("Alt + underlined letter", "Open a menu (File, Go, Settings, Device, Help)"),
-            ("Settings > Arrange Tabs", "Reorder the tabs (e.g. move the Tuner elsewhere)"),
+            ("Settings > Arrange Tabs", "Reorder tabs — select one, then Alt+Up / Alt+Down"),
             ("F1", "Show this list"),
         ]
         width = max(len(k) for k, _ in commands)
