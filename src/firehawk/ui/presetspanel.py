@@ -39,7 +39,9 @@ class PresetsPanel(wx.Panel):
         left = wx.BoxSizer(wx.VERTICAL)
         list_label = wx.StaticText(self, label="Presets:")
         self.list = wx.ListBox(self, style=wx.LB_SINGLE)
-        set_accessible_name(self.list, "Presets list")
+        # Plain SetName only: a forced wx.Accessible would sit in front of the list's
+        # native item announcements, so let NVDA read the item text itself.
+        self.list.SetName("Presets")
         self.list.Bind(wx.EVT_LISTBOX, self._on_select)
         self.list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._open_selected())
         left.Add(list_label, 0, wx.ALL, 4)

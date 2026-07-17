@@ -25,10 +25,14 @@ if _HAS_ACC:
             self._value_fn = value_fn
 
         def GetName(self, childId):  # noqa: N802 - wx API name
-            return (wx.ACC_OK, self._name)
+            # childId 0 is the control itself; children (list items, dropdown
+            # options) must keep their own native names, so defer for those.
+            if childId == 0:
+                return (wx.ACC_OK, self._name)
+            return (wx.ACC_NOT_IMPLEMENTED, "")
 
         def GetValue(self, childId):  # noqa: N802 - wx API name
-            if self._value_fn is not None:
+            if childId == 0 and self._value_fn is not None:
                 try:
                     return (wx.ACC_OK, str(self._value_fn()))
                 except Exception:  # noqa: BLE001

@@ -151,6 +151,17 @@ def test_continuous_control_is_slider(frame):
     assert thr.control.GetName().strip()
 
 
+def test_forced_name_defers_to_child_items():
+    """A forced accessible name must apply to the control only, not its children,
+    so list items and dropdown options keep their own names (NVDA regression)."""
+    from firehawk.ui import accessibility
+    if not hasattr(wx, "Accessible"):
+        pytest.skip("wx.Accessible not available on this build")
+    acc = accessibility._NamedAccessible("Presets")
+    assert acc.GetName(0) == (wx.ACC_OK, "Presets")            # the control itself
+    assert acc.GetName(1)[0] == wx.ACC_NOT_IMPLEMENTED         # a child item -> native name
+
+
 def test_sliders_have_forced_accessible_name(frame):
     """Sliders/spins/choices carry a forced accessible object (not just SetName)."""
     if not hasattr(wx, "Accessible"):
