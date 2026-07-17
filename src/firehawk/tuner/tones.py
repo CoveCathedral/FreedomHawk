@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import struct
+import tempfile
 import wave
 
 try:
@@ -71,29 +73,57 @@ def sine_wav(freq: float, seconds: float = 0.35, rate: int = 44100, volume: floa
 
 
 class TonePlayer:
-    """Plays one looping reference tone at a time; call :meth:`stop` to silence."""
+    """Plays one looping reference tone at a time; call :meth:`stop` to silence.
+
+    winsound cannot loop from memory asynchronously, so the tone is written to a temp
+    WAV file and played with SND_FILENAME | SND_ASYNC | SND_LOOP (a whole number of
+    cycles, so the loop is seamless).
+    """
 
     def __init__(self) -> None:
-        self._wav = b""
         self.playing_freq: float | None = None
+        self._ok = winsound is not None
+        self._path: str | None = None
+        if winsound is not None:
+            fd, self._path = tempfile.mkstemp(prefix="firehawk_tone_", suffix=".wav")
+            os.close(fd)
 
     @property
     def available(self) -> bool:
-        return winsound is not None
+        return self._ok
 
     def play_note(self, name: str) -> float:
         """Play a sustained tone for a note name; returns its frequency."""
         freq = note_frequency(name)
-        self._wav = sine_wav(freq)
-        if winsound is not None:
+        if winsound is None or self._path is None:
+            self.playing_freq = freq
+            return freq
+        try:
+            with open(self._path, "wb") as f:
+                f.write(sine_wav(freq, seconds=0.5))
             winsound.PlaySound(
-                self._wav,
-                winsound.SND_MEMORY | winsound.SND_ASYNC | winsound.SND_LOOP,
+                self._path,
+                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP,
             )
-        self.playing_freq = freq
+            self.playing_freq = freq
+        except Exception:  # noqa: BLE001 - audio device may be unavailable
+            self._ok = False
         return freq
 
     def stop(self) -> None:
         if winsound is not None:
-            winsound.PlaySound(None, 0)
+            try:
+                winsound.PlaySound(None, 0)
+            except Exception:  # noqa: BLE001
+                pass
         self.playing_freq = None
+
+    def dispose(self) -> None:
+        """Stop playback and remove the temp file."""
+        self.stop()
+        if self._path:
+            try:
+                os.remove(self._path)
+            except OSError:
+                pass
+            self._path = None
