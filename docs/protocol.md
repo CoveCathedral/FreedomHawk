@@ -159,10 +159,28 @@ preset serializer:
    - tempo → `SetGlobalTempo`; footswitch → `setFootswitchAssign`; cab model+mic →
      `setToneMatchModel`; tweak bind → `bindTweak`.
 
-The actual ToneMatch message bytes are built in `ToneMatchEdit_Remote::DoCommandCommon`
-(via `SetModelParamCommon`), using a `toneMatchEditorTypedValue` and a
-`toneMatchEditorInMessageType`.  That message is the **payload** carried inside the frame /
-transport header already implemented.  Decompiling `DoCommandCommon` +
-`SetModelParamCommon` + `SetDspModelParam` + `SetPresetPSKeyParam` is the final step for a
-live `set_param`.  `ParamIDToPSKey` reads the same PSKey table (structural params only);
-model knobs resolve through `GetDSPSlotForGroupAndParam` to a (slot, param) pair.
+### CONFIRMED: ToneMatch command format (`DoCommandCommon` + callers, implemented)
+
+Every ToneMatch command (built in `DoCommandCommon`, sent as the frame payload) is:
+
+    [uint32 cmdID][uint32 dataLen][data ...]
+
+A ToneMatch typed value is `[uint32 type][uint32 value]` (the value word holds IEEE-754
+float bits for a continuous param). The confirmed commands:
+
+| Command                | cmdID  | data |
+|------------------------|--------|------|
+| `LoadDspModel`         | `0x08` | `[uint32 slot][uint32 modelId]` |
+| `SetDspModelParam`     | `0x0A` | `[uint32 slot][uint32 paramId][uint32 type][uint32 value]` |
+| `SetGlobalTempo`       | `0x0E` | `[float bpm]` (raw, no type tag) |
+| `SetPresetPSKeyParam`  | `0x13` | `[uint32 psKey][uint32 type][uint32 value]` |
+
+For a **model knob**: `GetDSPSlotForGroupAndParam(group, param)` resolves the block to a DSP
+`slot` and the param to a symbol; `paramId` is that param's **index in the symbol table**
+(`defaultSymbolTable.bin`, already decoded). For a **structural param**: `ParamIDToPSKey`
+gives the `psKey` (the table read out above). Implemented in
+`firehawk.protocol.tonematch`, with unit tests on the byte layout.
+
+**Remaining (small, capture-confirmable):** the exact `type` enum value for a float typed
+value, the DSP `slot` numbering per group, and which transport-header port the ToneMatch
+editor uses. The message *structure* is confirmed and coded.

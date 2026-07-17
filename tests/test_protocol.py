@@ -131,3 +131,50 @@ def test_encode_key_value_prefixes_key():
     kv = encode_key_value(0x80000003, TVType.UINT, 4)
     assert kv[:4] == struct.pack("<I", 0x80000003)
     assert kv[4:] == encode_typed_value(TVType.UINT, 4)
+
+
+# -- ToneMatch live-set commands (confirmed against DoCommandCommon + callers) --
+
+from firehawk.protocol import (  # noqa: E402
+    Cmd,
+    load_dsp_model,
+    set_dsp_model_param,
+    set_global_tempo,
+    set_preset_pskey_param,
+)
+from firehawk.protocol.tonematch import TM_TYPE_FLOAT  # noqa: E402
+
+
+def test_set_dsp_model_param_layout():
+    # cmd 0x0A, len 0x10, then [slot][paramId][type][value(float bits)]
+    msg = set_dsp_model_param(slot=2, param_id=17, value=0.5)
+    cmd, length = struct.unpack_from("<II", msg, 0)
+    assert cmd == Cmd.SET_DSP_MODEL_PARAM == 0x0A
+    assert length == 0x10 and len(msg) == 8 + 0x10
+    slot, pid, tv_type, value_word = struct.unpack_from("<IIII", msg, 8)
+    assert slot == 2 and pid == 17 and tv_type == TM_TYPE_FLOAT
+    assert struct.unpack("<f", struct.pack("<I", value_word))[0] == pytest.approx(0.5)
+
+
+def test_set_preset_pskey_param_layout():
+    msg = set_preset_pskey_param(ps_key=0x1C4D43, value=1.0)
+    cmd, length = struct.unpack_from("<II", msg, 0)
+    assert cmd == Cmd.SET_PRESET_PSKEY_PARAM == 0x13
+    assert length == 0x0C
+    pskey, tv_type, value_word = struct.unpack_from("<III", msg, 8)
+    assert pskey == 0x1C4D43
+    assert struct.unpack("<f", struct.pack("<I", value_word))[0] == pytest.approx(1.0)
+
+
+def test_set_global_tempo_is_raw_float():
+    msg = set_global_tempo(171.5)
+    cmd, length = struct.unpack_from("<II", msg, 0)
+    assert cmd == Cmd.SET_GLOBAL_TEMPO == 0x0E and length == 4
+    assert struct.unpack_from("<f", msg, 8)[0] == pytest.approx(171.5)
+
+
+def test_load_dsp_model_layout():
+    msg = load_dsp_model(slot=3, model_id=131149)
+    cmd, length = struct.unpack_from("<II", msg, 0)
+    assert cmd == Cmd.LOAD_DSP_MODEL == 0x08 and length == 8
+    assert struct.unpack_from("<II", msg, 8) == (3, 131149)

@@ -22,6 +22,14 @@ from .message import (
     encode_param,
     encode_typed_value,
 )
+from .tonematch import (
+    Cmd,
+    command,
+    load_dsp_model,
+    set_dsp_model_param,
+    set_global_tempo,
+    set_preset_pskey_param,
+)
 from .transport_header import TransportHeader
 
 __all__ = [
@@ -30,4 +38,6 @@ __all__ = [
     "Frame", "build_control_frame", "parse_frame",
     "TVType", "encode_typed_value", "encode_key_value", "encode_param",
     "KEY_SECTION_ID", "KEY_SECTION_PARAM", "KEY_SLOT_ID",
+    "Cmd", "command", "set_dsp_model_param", "set_preset_pskey_param",
+    "set_global_tempo", "load_dsp_model",
 ]
