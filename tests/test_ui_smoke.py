@@ -214,11 +214,43 @@ def test_kit_sounds_dialog(frame, tmp_path):
         dlg.Destroy()
 
 
-def test_kit_sounds_guard_for_synth(frame):
-    # The synth kit has fixed sounds; the button announces instead of opening a dialog.
+def test_fill_every_selector(frame):
+    d = frame.drums_page
+    assert d._fill_every_bars() is None  # default: pattern as written
+    d.fill_choice.SetSelection(4)        # 12 bars
+    assert d._fill_every_bars() == 12
+    from firehawk.practice import expand_with_fill
+    ex = expand_with_fill(d._pattern, 12)
+    assert ex.bars == 12
+
+
+def test_editor_growing_bars_repeats_pattern(frame):
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    d = frame.drums_page
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    try:
+        kicks_before = list(dlg.pattern.hits["kick"])
+        dlg.bars_choice.SetSelection(3)  # 4 bars
+        dlg._on_meter(None)
+        assert dlg.pattern.bars == 4
+        # No silent bars: the last bar contains the same kicks as the first.
+        per_bar = dlg.pattern.steps // 4
+        last_bar = [s - 3 * per_bar for s in dlg.pattern.hits["kick"] if s >= 3 * per_bar]
+        assert last_bar == kicks_before
+    finally:
+        dlg.Destroy()
+
+
+def test_kit_sounds_guard_for_synth(frame, monkeypatch):
+    # With the synth kit active, the button explains itself in a SPOKEN dialog —
+    # a status-bar message is inaudible to a screen reader (live-tested regression).
+    shown = {}
+    monkeypatch.setattr(wx, "MessageBox",
+                        lambda msg, *a, **k: shown.setdefault("msg", msg))
     d = frame.drums_page
     assert d._kit_dir is None
-    d._on_kit_sounds(None)  # must not raise (would block on ShowModal if not guarded)
+    d._on_kit_sounds(None)
+    assert "synth kit" in shown["msg"].lower()
 
 
 def test_metronome_odd_meter_toggle(frame):

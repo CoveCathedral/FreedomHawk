@@ -29,9 +29,11 @@ from ..practice import (
     DrumLoopPlayer,
     Pattern,
     default_sample_for,
+    expand_with_fill,
     list_role_files,
     load_kit_from_folder,
     render_loop,
+    retime_pattern,
     steps_per_bar,
     synth_kit,
     wav_duration,
@@ -157,6 +159,9 @@ class PatternEditorDialog(wx.Dialog):
         self._sync_meter_controls()
         self._rebuild_step_choice()
         self._refresh_part_boxes()
+        # Land focus on the Step dropdown so a screen reader announces the dialog
+        # and its primary control the moment it opens.
+        wx.CallAfter(self.step_choice.SetFocus)
 
     # -- state <-> controls ---------------------------------------------------
 
@@ -194,9 +199,9 @@ class PatternEditorDialog(wx.Dialog):
         while bars > 1 and per_bar * bars > MAX_STEPS:  # keep the step list navigable
             bars -= 1
         self.bars_choice.SetSelection(bars - 1)
-        total = per_bar * bars
-        hits = {r: [s for s in steps if s < total] for r, steps in self.pattern.hits.items()}
-        self.pattern = Pattern(f"{beats}/{unit}", total, grid, hits, beats, unit, bars)
+        # Growing the bar count repeats the existing bars (no silent gaps); shrinking
+        # keeps the first bars. See retime_pattern.
+        self.pattern = retime_pattern(self.pattern, beats, unit, grid, bars)
         self._rebuild_step_choice()
         self._refresh_part_boxes()
         self._reaudition()
@@ -306,6 +311,8 @@ class KitSoundsDialog(wx.Dialog):
         if self._roles:
             self.part_choice.SetSelection(0)
             self._load_samples()
+        # Announce the dialog by focusing its primary control on open.
+        wx.CallAfter(self.part_choice.SetFocus)
 
     # -- state ----------------------------------------------------------------
 
@@ -426,6 +433,16 @@ class DrumsPanel(wx.Panel):
         set_accessible_name(self.groove_choice, "Groove")
         self.groove_choice.Bind(wx.EVT_CHOICE, self._on_groove)
         grid.Add(self.groove_choice, 0, wx.EXPAND)
+
+        # Stretch the groove for jamming: plain bars with the fill only every N bars.
+        grid.Add(wx.StaticText(self, label="Fill every:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fill_choice = wx.Choice(self, choices=[
+            "Pattern length (as written)", "2 bars", "4 bars", "8 bars",
+            "12 bars", "16 bars"])
+        self.fill_choice.SetSelection(0)
+        set_accessible_name(self.fill_choice, "Fill every")
+        self.fill_choice.Bind(wx.EVT_CHOICE, self._on_fill_every)
+        grid.Add(self.fill_choice, 0, wx.EXPAND)
 
         self.tempo_label = wx.StaticText(self, label="Tempo: 90 BPM")
         grid.Add(self.tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -566,14 +583,27 @@ class DrumsPanel(wx.Panel):
 
     def _on_kit_sounds(self, event: wx.CommandEvent) -> None:
         if self._kit_dir is None:
-            self._announce("The built-in synth kit has fixed sounds. Load a sample kit "
-                           "(Kit list or Import Drum Kit) to choose its samples.")
+            # A spoken dialog, not a status-bar line — screen readers don't announce
+            # status text, so a silent decline reads as a dead button.
+            wx.MessageBox(
+                "The built-in synth kit's sounds are generated, so there are no sample\n"
+                "files to choose between.\n\n"
+                "To pick per-part samples, first select a sample kit in the Kit list\n"
+                "(or load one with Import Drum Kit), then open Kit Sounds again.",
+                "Kit Sounds", wx.ICON_INFORMATION)
             return
         was_playing = self._playing
         if was_playing:
             self.player.stop()  # previews and the loop share the audio channel
         dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
-        dlg = KitSoundsDialog(self, self._kit_dir, self._saved_choices(self._kit_dir.name), dark)
+        try:
+            dlg = KitSoundsDialog(self, self._kit_dir,
+                                  self._saved_choices(self._kit_dir.name), dark)
+        except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
+            wx.MessageBox(f"Could not open Kit Sounds:\n{exc}", "Kit Sounds", wx.ICON_ERROR)
+            if was_playing:
+                self._render_and_play()
+            return
         if dlg.ShowModal() == wx.ID_OK:
             if self._settings is not None:
                 all_choices = dict(self._settings.get("drum_kit_sounds") or {})
@@ -605,6 +635,15 @@ class DrumsPanel(wx.Panel):
         self.tempo_label.SetLabel(f"Tempo: {self.bpm} BPM")
         self._apply()
 
+    def _fill_every_bars(self) -> int | None:
+        sel = self.fill_choice.GetSelection()
+        return (None, 2, 4, 8, 12, 16)[sel] if 0 <= sel <= 5 else None
+
+    def _on_fill_every(self, event: wx.CommandEvent) -> None:
+        n = self._fill_every_bars()
+        self._apply()
+        self._announce(f"Fill every {n} bars." if n else "Playing the pattern as written.")
+
     def _on_part(self, event: wx.CommandEvent) -> None:
         role = self._current_part()
         self.mute_cb.SetValue(role in self._muted)
@@ -627,8 +666,15 @@ class DrumsPanel(wx.Panel):
         if was_playing:
             self.player.stop()  # the editor auditions on the same player
         dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
-        dlg = PatternEditorDialog(self, self._pattern.copy(), self._kit, self.player,
-                                  self.bpm, dark)
+        try:
+            dlg = PatternEditorDialog(self, self._pattern.copy(), self._kit, self.player,
+                                      self.bpm, dark)
+        except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
+            wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
+                          "Pattern Editor", wx.ICON_ERROR)
+            if was_playing:
+                self._render_and_play()
+            return
         if dlg.ShowModal() == wx.ID_OK:
             self._pattern = dlg.pattern
             self._rebuild_parts()
@@ -653,6 +699,9 @@ class DrumsPanel(wx.Panel):
             self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
             {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
             self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars)
+        fill_bars = self._fill_every_bars()
+        if fill_bars:
+            effective = expand_with_fill(effective, fill_bars)
         self.player.play(render_loop(effective, self._kit, self.bpm))
 
     def _apply(self) -> None:

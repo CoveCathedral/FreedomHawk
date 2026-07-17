@@ -22,6 +22,7 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Kit** | The sound set: "Synth (built-in)" plus any kit folder found in `Samples/`. Arrowing through this list only switches kits — it never opens a dialog. |
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
 | **Groove** | One of 200 built-in patterns: the classic bases (Rock, Funk, Trap, 5/4, 7/8…) plus numbered variations. Names ending in "fill" include a drum fill sized to the meter, with a crash landing back on the one. First-letter navigation works in the list. |
+| **Fill every** | For jamming: stretches the groove so the fill only comes around every 2, 4, 8, 12, or 16 bars — plain groove until then, fill as the turnaround, crash on the restart. "Pattern length" plays the groove exactly as written. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
 | **Part** + **Mute this part** | Pick a part and mute/unmute it live, without touching its steps. |
 | **Edit Pattern…** | Opens the Pattern Editor dialog. |
@@ -41,8 +42,11 @@ Built for keyboard-and-ears editing — no tabbing through dozens of step checkb
    groove as it was.
 
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
-each beat divides), and **Bars in loop** (1–4). Programmed hits that still fit are kept
-when you change the meter.
+each beat divides), and **Bars in loop** (1–4). **Growing the bar count repeats the
+existing music across the new bars** (no silent gaps — edit the copies afterwards if you
+want them to differ); shrinking keeps the first bars. Changing the meter itself keeps any
+hits that still fit. For loops longer than 4 bars, use **Fill every** on the main tab —
+it stretches playback to up to 16 bars without making the step list unwieldy.
 
 ## Odd & prog time signatures
 

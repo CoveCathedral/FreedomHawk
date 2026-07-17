@@ -243,6 +243,66 @@ def test_default_sample_falls_back_when_all_filtered(tmp_path):
     assert drums.default_sample_for("perc", files).name == "AHH.wav"
 
 
+def test_retime_growing_bars_repeats_music():
+    # 1 bar of 4/4 sixteenths -> 4 bars: the bar is tiled, not followed by silence.
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
+    grown = drums.retime_pattern(p, 4, 4, 4, 4)
+    assert grown.steps == 64 and grown.bars == 4
+    assert grown.hits["kick"] == [0, 8, 16, 24, 32, 40, 48, 56]
+    assert grown.hits["snare"] == [4, 12, 20, 28, 36, 44, 52, 60]
+
+
+def test_retime_two_bar_fill_tiles_cyclically():
+    # A 2-bar pattern grown to 4 bars repeats bars 1,2,1,2 (fills recur too).
+    p = drums.Pattern("t", 32, 4, {"tom": [24, 28]}, 4, 4, 2)  # fill in bar 2
+    grown = drums.retime_pattern(p, 4, 4, 4, 4)
+    assert grown.hits["tom"] == [24, 28, 56, 60]  # bar 2 and bar 4
+
+
+def test_retime_shrinking_keeps_first_bars():
+    p = drums.Pattern("t", 32, 4, {"kick": [0, 16], "tom": [28]}, 4, 4, 2)
+    shrunk = drums.retime_pattern(p, 4, 4, 4, 1)
+    assert shrunk.steps == 16
+    assert shrunk.hits["kick"] == [0]
+    assert "tom" not in shrunk.hits  # bar-2-only content drops with its bar
+
+
+def test_retime_meter_change_clips():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8, 15]}, 4, 4, 1)
+    changed = drums.retime_pattern(p, 3, 4, 4, 1)  # 3/4 -> 12 steps
+    assert changed.steps == 12 and changed.hits["kick"] == [0, 8]
+
+
+def test_expand_with_fill_places_fill_last():
+    # 2-bar groove (bar 1 plain, bar 2 has the fill) stretched to 4 bars:
+    # plain, plain, plain, fill.
+    p = drums.Pattern("t", 32, 4, {"kick": [0, 8, 16, 24], "tom": [28, 30]}, 4, 4, 2)
+    ex = drums.expand_with_fill(p, 4)
+    assert ex.steps == 64 and ex.bars == 4
+    assert ex.hits["kick"] == [0, 8, 16, 24, 32, 40, 48, 56]  # bar-1 kicks everywhere
+    assert ex.hits["tom"] == [60, 62]  # the fill only in the final bar
+
+
+def test_expand_with_fill_crash_only_on_restart():
+    # Library fills put a crash at step 0 (the post-fill downbeat). Stretched out,
+    # that crash must land once per cycle — not at the top of every body bar.
+    p = drums.Pattern("t", 32, 4, {"kick": [0, 16], "crash": [0], "tom": [28]}, 4, 4, 2)
+    ex = drums.expand_with_fill(p, 12)
+    assert ex.hits["crash"] == [0]
+
+
+def test_expand_with_fill_single_bar_repeats():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8]}, 4, 4, 1)
+    ex = drums.expand_with_fill(p, 12)
+    assert ex.bars == 12 and ex.steps == 192
+    assert len(ex.hits["kick"]) == 24  # 2 kicks x 12 bars
+
+
+def test_expand_with_fill_noop_when_not_longer():
+    p = drums.Pattern("t", 32, 4, {"kick": [0]}, 4, 4, 2)
+    assert drums.expand_with_fill(p, 2) is p
+
+
 def test_load_kit_honors_choices(tmp_path):
     d = tmp_path / "KICK"
     d.mkdir()

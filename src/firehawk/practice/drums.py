@@ -531,6 +531,66 @@ def build_pattern_library(total: int = 200) -> list[Pattern]:
 PATTERN_LIBRARY = build_pattern_library()
 
 
+def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> Pattern:
+    """Return *p* fitted to a new meter/bar count.
+
+    If the bar shape (steps per bar and grid) is unchanged, the existing bars are
+    **tiled cyclically** across the new bar count — so growing 2 bars to 4 repeats
+    the music instead of appending silence, and shrinking keeps the first bars.
+    If the bar shape changed, hits that still fit the new step count are kept.
+    """
+    per_bar = steps_per_bar(beats, unit, grid)
+    bars = max(1, bars)
+    total = per_bar * bars
+    old_bars = max(1, p.bars)
+    old_per_bar = max(1, p.steps // old_bars)
+    name = f"{beats}/{unit}"
+    if per_bar == old_per_bar and grid == p.steps_per_beat:
+        hits: dict = {}
+        for role, steps in p.hits.items():
+            out = set()
+            for b in range(bars):
+                src = b % old_bars
+                lo, hi = src * old_per_bar, (src + 1) * old_per_bar
+                out.update(s - lo + b * per_bar for s in steps if lo <= s < hi)
+            if out:
+                hits[role] = sorted(out)
+    else:
+        hits = {r: [s for s in steps if s < total] for r, steps in p.hits.items() if steps}
+    return Pattern(name, total, grid, hits, beats, unit, bars)
+
+
+def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
+    """Stretch a groove to *total_bars* with its fill (last bar) landing only at the end.
+
+    For a jam: 'fill every 12 bars' plays the plain groove for 11 bars, then the
+    pattern's final bar (where library fills live) as the turnaround.  One-bar
+    patterns simply repeat.  Returns *p* unchanged when no stretch is needed.
+    """
+    if total_bars <= p.bars:
+        return p
+    per_bar = max(1, p.steps // max(1, p.bars))
+    if p.bars >= 2:
+        body = list(range(p.bars - 1))
+        order = [body[i % len(body)] for i in range(total_bars - 1)] + [p.bars - 1]
+    else:
+        order = [0] * total_bars
+    hits: dict = {}
+    for role, steps in p.hits.items():
+        out = []
+        for dst, src in enumerate(order):
+            if role == "crash" and src == 0 and dst != 0:
+                # A first-bar crash marks the post-fill downbeat (the loop restart);
+                # tiling it onto every body bar would crash constantly.
+                continue
+            lo, hi = src * per_bar, (src + 1) * per_bar
+            out.extend(s - lo + dst * per_bar for s in steps if lo <= s < hi)
+        if out:
+            hits[role] = sorted(out)
+    return Pattern(p.name, per_bar * total_bars, p.steps_per_beat, hits,
+                   p.beats_per_bar, p.beat_unit, total_bars)
+
+
 # -- rendering (the compensator) -------------------------------------------------
 
 def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
