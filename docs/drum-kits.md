@@ -25,6 +25,7 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
 | **Part** + **Mute this part** | Pick a part and mute/unmute it live, without touching its steps. |
 | **Edit Pattern…** | Opens the Pattern Editor dialog. |
+| **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |
 | **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. |
 
 ## The Pattern Editor (Edit Pattern…)
@@ -59,10 +60,27 @@ Tip: on the **Metronome** tab, check **Non-standard meter** to reveal the beat u
 matching **Accent grouping** field (e.g. `2+2+3` for a 7) so its click accents the groups
 the same way. Leave it unchecked for a shorter, simpler tab in everyday 4/4 use.
 
+## Choosing each part's sample (Kit Sounds…)
+
+A part folder often holds dozens of samples, and producer kits mix true drum hits with
+**vocal chops** ("AHH", "HEY"), bells, and sound effects. The **Kit Sounds…** dialog lets
+you pick each part's sample by ear:
+
+1. Pick a **Part** (Kick, Snare, Perc, …).
+2. Arrow through its **Samples** — **each one plays as you land on it**, with its length
+   shown. **Preview** replays the current one.
+3. **Save** remembers your choices for that kit (they persist across restarts and
+   reloads); **Cancel** or Escape leaves everything as it was.
+
+When you haven't chosen, the app picks a sensible default: for drum parts it skips
+vocal-named files (AHH, HEY, OOH, …) and anything too long to be a hit, taking the first
+short, drum-like sample instead. 808 and FX parts are allowed to ring.
+
 ## Bringing your own kit
 
 A kit is a **folder** whose subfolders are named for drum parts, each holding one or more
-`.wav` files. The looper loads the first working sample it finds in each part folder.
+`.wav` files. The looper picks one sample per part (see Kit Sounds above for how, and how
+to override it).
 
 ```
 My Kit/

@@ -15,10 +15,13 @@ from .drums import (
     DrumLoopPlayer,
     Pattern,
     blank_pattern,
+    default_sample_for,
+    list_role_files,
     load_kit_from_folder,
     render_loop,
     steps_per_bar,
     synth_kit,
+    wav_duration,
 )
 from .metronome import (
     BEAT_UNITS,
@@ -58,8 +61,11 @@ __all__ = [
     "DrumLoopPlayer",
     "Pattern",
     "blank_pattern",
+    "default_sample_for",
+    "list_role_files",
     "load_kit_from_folder",
     "render_loop",
     "steps_per_bar",
     "synth_kit",
+    "wav_duration",
 ]

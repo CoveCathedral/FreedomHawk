@@ -678,8 +678,10 @@ class MainFrame(wx.Frame):
             "   (arrow keys - steps are named by beat, like 'Bar 2, Beat 3'), then check\n"
             "   which parts hit there. Play auditions while you edit; Save keeps it,\n"
             "   Cancel or Escape discards. The time signature (odd meters too) is set here.\n"
-            "4. Part + Mute this part silences a part live without erasing its steps.\n"
-            "5. Set the Tempo and press Start. Changes apply on the next loop.\n\n"
+            "4. Kit Sounds... picks which sample each part uses (sample kits): choose a\n"
+            "   part, arrow through its samples - each plays as you land on it - and Save.\n"
+            "5. Part + Mute this part silences a part live without erasing its steps.\n"
+            "6. Set the Tempo and press Start. Changes apply on the next loop.\n\n"
             "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
             "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
             "Using the Drum Looper", wx.ICON_INFORMATION)

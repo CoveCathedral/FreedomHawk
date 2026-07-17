@@ -28,13 +28,22 @@ from ..practice import (
     ROLES,
     DrumLoopPlayer,
     Pattern,
+    default_sample_for,
+    list_role_files,
     load_kit_from_folder,
     render_loop,
     steps_per_bar,
     synth_kit,
+    wav_duration,
 )
+from ..practice.drums import load_sample
 from . import theme
 from .accessibility import set_accessible_name
+
+try:
+    import winsound
+except ImportError:  # non-Windows
+    winsound = None
 
 TEMPO_MIN = 30
 TEMPO_MAX = 300
@@ -238,6 +247,142 @@ class PatternEditorDialog(wx.Dialog):
         self.EndModal(wx.ID_CANCEL)
 
 
+class KitSoundsDialog(wx.Dialog):
+    """Choose which sample each drum part uses, by ear.
+
+    Part dropdown -> Sample dropdown (that part's folder).  Arrowing through the
+    samples previews each one, so you audition with the arrow keys alone; Save
+    remembers the choices for this kit.
+    """
+
+    def __init__(self, parent: wx.Window, kit_dir: Path, choices: dict[str, str],
+                 dark: bool = True):
+        super().__init__(parent, title="Kit Sounds", size=(560, 360),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._files = list_role_files(kit_dir)
+        self._roles = [r for r in ROLES if r in self._files]
+        self.choices = dict(choices)  # role -> filename; edited in place, read on Save
+        self._preview_data: bytes | None = None  # keep alive while playing
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        intro = wx.StaticText(self, label=(
+            "Pick a part, then arrow through its samples — each one plays as you land on "
+            "it (lengths are shown; names are the kit maker's own). Save keeps your "
+            "choices for this kit; Cancel or Escape leaves it unchanged."))
+        intro.Wrap(520)
+        root.Add(intro, 0, wx.ALL, 10)
+
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
+        grid.AddGrowableCol(1, 1)
+        grid.Add(wx.StaticText(self, label="Part:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.part_choice = wx.Choice(self, choices=[ROLE_LABELS.get(r, r) for r in self._roles])
+        set_accessible_name(self.part_choice, "Part")
+        self.part_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_samples())
+        grid.Add(self.part_choice, 0, wx.EXPAND)
+
+        grid.Add(wx.StaticText(self, label="Sample:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.sample_choice = wx.Choice(self)
+        set_accessible_name(self.sample_choice, "Sample")
+        self.sample_choice.Bind(wx.EVT_CHOICE, self._on_sample)
+        grid.Add(self.sample_choice, 0, wx.EXPAND)
+        root.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        preview_btn = wx.Button(self, label="&Preview")
+        preview_btn.Bind(wx.EVT_BUTTON, lambda e: self._preview())
+        btns.Add(preview_btn, 0, wx.RIGHT, 8)
+        save_btn = wx.Button(self, wx.ID_OK, "&Save")
+        save_btn.Bind(wx.EVT_BUTTON, self._on_save)
+        btns.Add(save_btn, 0, wx.RIGHT, 8)
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
+        btns.Add(cancel_btn, 0)
+        root.Add(btns, 0, wx.ALL, 10)
+
+        self.SetSizer(root)
+        save_btn.SetDefault()
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+        theme.apply(self, dark)
+        if self._roles:
+            self.part_choice.SetSelection(0)
+            self._load_samples()
+
+    # -- state ----------------------------------------------------------------
+
+    def _current_role(self) -> str | None:
+        sel = self.part_choice.GetSelection()
+        return self._roles[sel] if 0 <= sel < len(self._roles) else None
+
+    def _load_samples(self) -> None:
+        role = self._current_role()
+        files = self._files.get(role, [])
+        labels = []
+        for f in files:
+            dur = wav_duration(f)
+            labels.append(f"{f.stem}  ({dur:.2f}s)" if dur else f.stem)
+        self.sample_choice.Set(labels)
+        current = self.choices.get(role)
+        default = default_sample_for(role, files)
+        names = [f.name for f in files]
+        if current in names:
+            self.sample_choice.SetSelection(names.index(current))
+        elif default is not None:
+            self.sample_choice.SetSelection(names.index(default.name))
+
+    def _on_sample(self, event: wx.CommandEvent) -> None:
+        role = self._current_role()
+        files = self._files.get(role, [])
+        i = self.sample_choice.GetSelection()
+        if role is None or not (0 <= i < len(files)):
+            return
+        self.choices[role] = files[i].name
+        self._preview()
+
+    def _preview(self) -> None:
+        """Play the selected sample once (converted, so float WAVs preview fine)."""
+        role = self._current_role()
+        files = self._files.get(role, [])
+        i = self.sample_choice.GetSelection()
+        if winsound is None or not NUMPY_AVAILABLE or role is None or not (0 <= i < len(files)):
+            return
+        try:
+            import io
+            import wave as wave_mod
+            import numpy as np
+            x = load_sample(files[i])
+            pcm = (np.clip(x, -1.0, 1.0) * 32767.0).astype("<i2")
+            buf = io.BytesIO()
+            w = wave_mod.open(buf, "wb")
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(44100)
+            w.writeframes(pcm.tobytes())
+            w.close()
+            self._preview_data = buf.getvalue()  # must outlive the async playback
+            winsound.PlaySound(self._preview_data, winsound.SND_MEMORY | winsound.SND_ASYNC)
+        except Exception:  # noqa: BLE001 - preview is best-effort
+            pass
+
+    def _stop_preview(self) -> None:
+        if winsound is not None:
+            try:
+                winsound.PlaySound(None, 0)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _on_save(self, event: wx.CommandEvent) -> None:
+        self._stop_preview()
+        self.EndModal(wx.ID_OK)
+
+    def _on_cancel(self, event: wx.CommandEvent) -> None:
+        self._stop_preview()
+        self.EndModal(wx.ID_CANCEL)
+
+    def _on_close(self, event) -> None:
+        self._stop_preview()
+        self.EndModal(wx.ID_CANCEL)
+
+
 class DrumsPanel(wx.Panel):
     def __init__(self, parent: wx.Window, settings=None, status: Callable[[str], None] | None = None):
         super().__init__(parent)
@@ -245,6 +390,7 @@ class DrumsPanel(wx.Panel):
         self._status = status
         self.player = DrumLoopPlayer()
         self._kit = synth_kit() if NUMPY_AVAILABLE else None
+        self._kit_dir: Path | None = None  # None while the synth kit is active
         self._pattern = PATTERN_LIBRARY[0].copy()
         self._muted: set[str] = set()
         self._playing = False
@@ -306,6 +452,9 @@ class DrumsPanel(wx.Panel):
         self.edit_button = wx.Button(self, label="&Edit Pattern...")
         self.edit_button.Bind(wx.EVT_BUTTON, self._on_edit_pattern)
         buttons.Add(self.edit_button, 0, wx.RIGHT, 8)
+        self.sounds_button = wx.Button(self, label="&Kit Sounds...")
+        self.sounds_button.Bind(wx.EVT_BUTTON, self._on_kit_sounds)
+        buttons.Add(self.sounds_button, 0, wx.RIGHT, 8)
         self.start_button = wx.Button(self, label="&Start")
         self.start_button.Bind(wx.EVT_BUTTON, self._on_start_stop)
         buttons.Add(self.start_button, 0)
@@ -365,15 +514,24 @@ class DrumsPanel(wx.Panel):
 
     # -- events ---------------------------------------------------------------
 
+    def _saved_choices(self, kit_name: str) -> dict[str, str]:
+        """The user's per-part sample choices for a kit (from the Kit Sounds dialog)."""
+        if self._settings is None:
+            return {}
+        return dict((self._settings.get("drum_kit_sounds") or {}).get(kit_name, {}))
+
     def _on_kit(self, event: wx.CommandEvent) -> None:
         sel = self.kit_choice.GetStringSelection()
         if sel == SYNTH_LABEL:
+            self._kit_dir = None
             self._set_kit(synth_kit())
             self._announce("Synth kit selected.")
             return
         self._announce(f"Loading kit: {sel}...")
         try:
-            kit = load_kit_from_folder(self._kits_dir() / sel)
+            kit_dir = self._kits_dir() / sel
+            kit = load_kit_from_folder(kit_dir, choices=self._saved_choices(sel))
+            self._kit_dir = kit_dir
             self._set_kit(kit)
             self._announce(f"Kit '{sel}' loaded: {len(kit.roles())} parts.")
         except Exception as exc:  # noqa: BLE001
@@ -386,7 +544,7 @@ class DrumsPanel(wx.Panel):
                 return
             path = Path(dlg.GetPath())
         try:
-            kit = load_kit_from_folder(path)
+            kit = load_kit_from_folder(path, choices=self._saved_choices(path.name))
         except Exception as exc:  # noqa: BLE001
             wx.MessageBox(f"Could not load kit:\n{exc}", "Drum kit", wx.ICON_ERROR)
             return
@@ -402,8 +560,35 @@ class DrumsPanel(wx.Panel):
         self.kit_choice.Set(self._kit_choices())
         idx = self.kit_choice.FindString(path.name)
         self.kit_choice.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+        self._kit_dir = path
         self._set_kit(kit)
         self._announce(f"Kit '{path.name}' loaded: {len(kit.roles())} parts.")
+
+    def _on_kit_sounds(self, event: wx.CommandEvent) -> None:
+        if self._kit_dir is None:
+            self._announce("The built-in synth kit has fixed sounds. Load a sample kit "
+                           "(Kit list or Import Drum Kit) to choose its samples.")
+            return
+        was_playing = self._playing
+        if was_playing:
+            self.player.stop()  # previews and the loop share the audio channel
+        dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
+        dlg = KitSoundsDialog(self, self._kit_dir, self._saved_choices(self._kit_dir.name), dark)
+        if dlg.ShowModal() == wx.ID_OK:
+            if self._settings is not None:
+                all_choices = dict(self._settings.get("drum_kit_sounds") or {})
+                all_choices[self._kit_dir.name] = dlg.choices
+                self._settings.set("drum_kit_sounds", all_choices)
+            try:
+                self._set_kit(load_kit_from_folder(self._kit_dir, choices=dlg.choices))
+                self._announce("Kit sounds saved.")
+            except Exception as exc:  # noqa: BLE001
+                wx.MessageBox(f"Could not reload kit:\n{exc}", "Drum kit", wx.ICON_ERROR)
+        else:
+            self._announce("Kit sounds unchanged.")
+        dlg.Destroy()
+        if was_playing:
+            self._render_and_play()
 
     def _set_kit(self, kit) -> None:
         self._kit = kit

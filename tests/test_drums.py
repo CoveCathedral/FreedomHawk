@@ -203,3 +203,52 @@ def test_pattern_library_fills_land_on_the_meter():
 def test_synth_kit_covers_fill_roles():
     kit = drums.synth_kit()
     assert {"kick", "snare", "tom", "crash", "ride", "perc"} <= set(kit.roles())
+
+
+def _sine(n=4410):
+    return 0.4 * np.sin(2 * np.pi * 220 * np.arange(n) / 44100)
+
+
+def test_wav_duration_reads_header_only(tmp_path):
+    p = tmp_path / "t.wav"
+    _write_int16_wav(p, _sine(22050))  # 0.5 s
+    assert drums.wav_duration(p) == pytest.approx(0.5, abs=0.01)
+    assert drums.wav_duration(tmp_path / "missing.wav") is None
+
+
+def test_default_sample_skips_vocal_names(tmp_path):
+    d = tmp_path / "PERC"
+    d.mkdir()
+    _write_int16_wav(d / "740 PERC AHH.wav", _sine())     # vocal chop: alphabetically first
+    _write_int16_wav(d / "740 PERC ANVIL.wav", _sine())
+    files = drums.list_role_files(tmp_path)["perc"]
+    pick = drums.default_sample_for("perc", files)
+    assert pick.name == "740 PERC ANVIL.wav"
+
+
+def test_default_sample_skips_long_hits(tmp_path):
+    d = tmp_path / "SNARE"
+    d.mkdir()
+    _write_int16_wav(d / "a_long.wav", _sine(44100 * 2))  # 2 s: too long for a hit
+    _write_int16_wav(d / "b_short.wav", _sine(8000))
+    files = drums.list_role_files(tmp_path)["snare"]
+    assert drums.default_sample_for("snare", files).name == "b_short.wav"
+
+
+def test_default_sample_falls_back_when_all_filtered(tmp_path):
+    d = tmp_path / "PERC"
+    d.mkdir()
+    _write_int16_wav(d / "AHH.wav", _sine())  # only option, vocal-named
+    files = drums.list_role_files(tmp_path)["perc"]
+    assert drums.default_sample_for("perc", files).name == "AHH.wav"
+
+
+def test_load_kit_honors_choices(tmp_path):
+    d = tmp_path / "KICK"
+    d.mkdir()
+    _write_int16_wav(d / "a.wav", np.full(1000, 0.1))
+    _write_int16_wav(d / "b.wav", np.full(2000, 0.1))
+    kit = drums.load_kit_from_folder(tmp_path, choices={"kick": "b.wav"})
+    assert len(kit.voice("kick")) == 2000  # the chosen file, not the first
+    kit2 = drums.load_kit_from_folder(tmp_path, choices={"kick": "nonexistent.wav"})
+    assert len(kit2.voice("kick")) == 1000  # bad choice falls back to the default

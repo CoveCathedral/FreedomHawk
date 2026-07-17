@@ -187,6 +187,40 @@ def test_pattern_editor_save_flow(frame):
     assert "Tom" in d.part_choice.GetItems()
 
 
+def test_kit_sounds_dialog(frame, tmp_path):
+    import numpy as np
+    import wave as wave_mod
+    from firehawk.ui.drumspanel import KitSoundsDialog
+
+    def write_wav(path, n):
+        pcm = (0.3 * np.sin(np.arange(n) / 5) * 32767).astype("<i2")
+        w = wave_mod.open(str(path), "wb")
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(pcm.tobytes()); w.close()
+
+    (tmp_path / "KICK").mkdir()
+    write_wav(tmp_path / "KICK" / "a.wav", 4000)
+    write_wav(tmp_path / "KICK" / "b.wav", 4000)
+    dlg = KitSoundsDialog(frame.drums_page, tmp_path, {}, dark=True)
+    try:
+        assert dlg.part_choice.GetCount() == 1  # just Kick
+        assert dlg.sample_choice.GetCount() == 2
+        # Selecting a sample records the choice for that part.
+        dlg.sample_choice.SetSelection(1)
+        dlg._on_sample(None)
+        assert dlg.choices["kick"] == "b.wav"
+        dlg._stop_preview()
+    finally:
+        dlg.Destroy()
+
+
+def test_kit_sounds_guard_for_synth(frame):
+    # The synth kit has fixed sounds; the button announces instead of opening a dialog.
+    d = frame.drums_page
+    assert d._kit_dir is None
+    d._on_kit_sounds(None)  # must not raise (would block on ShowModal if not guarded)
+
+
 def test_metronome_odd_meter_toggle(frame):
     m = frame.metronome_page
     # Standard timing by default: odd-meter controls hidden.

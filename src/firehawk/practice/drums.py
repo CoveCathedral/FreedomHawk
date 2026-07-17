@@ -251,18 +251,98 @@ def synth_kit(rate: int = RATE) -> DrumKit:
     })
 
 
-def load_kit_from_folder(path, rate: int = RATE) -> DrumKit:
-    """Load one representative sample per recognised ROLE subfolder (or role-named files)."""
-    p = Path(path)
-    voices: dict = {}
-    for sub in sorted(p.iterdir()) if p.is_dir() else []:
+#: Name tokens that mark a sample as a vocal chop / chant rather than a drum hit.
+#: Producer kits commonly hide these in PERC and FX folders; they make jarring
+#: default drum voices, so the auto-pick skips them (they stay selectable by hand).
+_VOCAL_TOKENS = {"AHH", "AH", "AAH", "UH", "UHH", "DUH", "HEY", "OOH", "OOOH", "WOO",
+                 "YEAH", "YAH", "YA", "VOX", "VOCAL", "CHANT", "TALK", "LAUGH", "SKRRT"}
+
+#: Roles whose default voice should be a short drum hit (808/fx may ring long).
+_PERCUSSIVE_ROLES = {"kick", "snare", "hihat", "openhat", "clap", "perc", "tom",
+                     "ride", "crash"}
+_MAX_DEFAULT_HIT_SECONDS = 1.25
+
+
+def _name_tokens(path) -> set[str]:
+    return set(Path(path).stem.upper().replace("_", " ").split())
+
+
+def wav_duration(path) -> float | None:
+    """Seconds of audio in a WAV, from the header only (no decode).  None if unreadable."""
+    try:
+        raw = Path(path).read_bytes()
+        if raw[:4] != b"RIFF" or raw[8:12] != b"WAVE":
+            return None
+        rate = block = data_size = None
+        pos, n = 12, len(raw)
+        while pos + 8 <= n:
+            cid = raw[pos:pos + 4]
+            size = struct.unpack("<I", raw[pos + 4:pos + 8])[0]
+            if cid == b"fmt " and size >= 16:
+                _fmt, _ch, rate, _br, block, _bits = struct.unpack(
+                    "<HHIIHH", raw[pos + 8:pos + 24])
+            elif cid == b"data":
+                data_size = size
+            pos += 8 + size + (size & 1)
+        if not rate or not block or data_size is None:
+            return None
+        return data_size / block / rate
+    except OSError:
+        return None
+
+
+def list_role_files(kit_dir) -> dict[str, list]:
+    """Every .wav per recognised role folder in a kit directory, sorted by name."""
+    p = Path(kit_dir)
+    out: dict[str, list] = {}
+    if not p.is_dir():
+        return out
+    for sub in sorted(p.iterdir()):
         if not sub.is_dir():
             continue
         role = FOLDER_ROLE_MAP.get(sub.name.upper())
-        if role is None or role in voices:
+        if role is None or role in out:
             continue
         wavs = sorted(sub.glob("*.wav"))
-        for wav in wavs:  # take the first that loads cleanly
+        if wavs:
+            out[role] = wavs
+    return out
+
+
+def default_sample_for(role: str, files: list):
+    """The best default file for a role: for drum-hit roles, prefer the first file
+    that is neither vocal-named nor longer than a hit; otherwise just the first."""
+    if not files:
+        return None
+    if role in _PERCUSSIVE_ROLES:
+        for f in files:
+            if _name_tokens(f) & _VOCAL_TOKENS:
+                continue
+            dur = wav_duration(f)
+            if dur is not None and dur > _MAX_DEFAULT_HIT_SECONDS:
+                continue
+            return f
+    return files[0]
+
+
+def load_kit_from_folder(path, rate: int = RATE, choices: dict | None = None) -> DrumKit:
+    """Load one sample per recognised ROLE subfolder (or role-named files).
+
+    *choices* optionally maps role -> filename (basename) to use instead of the
+    automatic pick, so users can select each part's sample (see the Kit Sounds
+    dialog).  Unknown or missing filenames fall back to the automatic pick.
+    """
+    p = Path(path)
+    voices: dict = {}
+    for role, wavs in list_role_files(p).items():
+        ordered = list(wavs)
+        chosen_name = (choices or {}).get(role)
+        chosen = next((w for w in ordered if w.name == chosen_name), None)
+        if chosen is None:
+            chosen = default_sample_for(role, ordered)
+        if chosen is not None:  # try the pick first, then the rest as fallbacks
+            ordered = [chosen] + [w for w in ordered if w != chosen]
+        for wav in ordered:
             try:
                 voices[role] = load_sample(wav, rate)
                 break
