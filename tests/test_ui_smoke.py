@@ -343,6 +343,24 @@ def test_line_tuning_shifts_and_speaks(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_line_volume_trims_and_speaks(frame, _silence_audio):
+    import numpy as np
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(0)
+        line = dlg._current_line()
+        loud = float(np.max(np.abs(dlg._line_kit.voice(line["id"]))))
+        _silence_audio.clear()
+        dlg._change_gain(-6)
+        assert line["gain_db"] == -6
+        assert "-6 dB" in _silence_audio[-1] and "volume" in _silence_audio[-1]
+        assert "volume -6 dB" in dlg._row_label(line)
+        quiet = float(np.max(np.abs(dlg._line_kit.voice(line["id"]))))
+        assert quiet < loud                         # the baked voice really got quieter
+    finally:
+        dlg.Destroy()
+
+
 def test_line_tuning_clamps_to_range(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

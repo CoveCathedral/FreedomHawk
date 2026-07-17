@@ -170,6 +170,10 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   tuned +2, A1"), `P` speaks the note a line plays, and the row shows its tuning.
   FreedomHawk estimates each sample's key by ear, so you can tune to a target pitch
   without seeing anything; noise sounds (hats, cymbals) simply report no key.
+- **Comma / Period** (`,` / `.`) — set this line's **volume** in decibels (Shift for a
+  6 dB step), spoken as you go. Balance the parts — pull a boomy or octave-dropped kick
+  back so it doesn't wash out the rest. It saves with the pattern; the main tab's **Drum
+  volume** still rides the overall level on top.
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).
@@ -229,7 +233,7 @@ Everything else in this manual is fully usable offline, today.
 
 In the Pattern Editor grid: Up/Down lines · Left/Right step · Ctrl+Left/Right beat ·
 Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · minus/plus line length (polymeter) ·
-brackets `[`/`]` tune the line (Shift = octave) · Enter sample options · Delete remove line · P preview (speaks the note).
+brackets `[`/`]` tune the line (Shift = octave) · comma/period `,`/`.` line volume · Enter sample options · Delete remove line · P preview (speaks the note).
 
 ## Troubleshooting
 

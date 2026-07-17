@@ -32,6 +32,7 @@ from .drums import (
     list_role_files,
     load_sample,
     resample_pitch,
+    scale_voice,
     steps_per_bar,
     synth_kit,
 )
@@ -39,6 +40,31 @@ from .pitch import Pitch, estimate_pitch
 
 #: Per-line pitch tuning is clamped to +/- two octaves.
 MAX_TUNE = 24
+
+#: Per-line volume trim, in decibels (0 = unchanged).  Down for ducking, a little up
+#: for lift; full silence is the sample's "None" option, not the bottom of this range.
+MIN_GAIN_DB, MAX_GAIN_DB = -24, 6
+
+
+def clamp_tune(value) -> int:
+    """A line's tuning in whole semitones, clamped to the allowed range."""
+    try:
+        return max(-MAX_TUNE, min(MAX_TUNE, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def clamp_gain_db(value) -> int:
+    """A line's volume trim in whole decibels, clamped to the allowed range."""
+    try:
+        return max(MIN_GAIN_DB, min(MAX_GAIN_DB, int(value or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def gain_from_db(db: float) -> float:
+    """Linear amplitude multiplier for a decibel value (0 dB = 1.0)."""
+    return 10.0 ** (db / 20.0)
 
 MAX_LINES = 24  # keep the grid navigable
 
@@ -109,14 +135,6 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
     return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths)
 
 
-def clamp_tune(value) -> int:
-    """A line's tuning in whole semitones, clamped to the allowed range."""
-    try:
-        return max(-MAX_TUNE, min(MAX_TUNE, int(value or 0)))
-    except (TypeError, ValueError):
-        return 0
-
-
 def resolve_line_voice(line: dict, kits_dir, base_kit: DrumKit | None,
                        synth: DrumKit | None = None, cache: dict | None = None):
     """The raw (untuned) voice a single line resolves to — its own kit/sample, else
@@ -159,8 +177,8 @@ def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None)
     Each line's source: ``kit=None`` follows *base_kit* (the globally selected kit),
     ``kit=SYNTH_KIT_NAME`` is the synth, any other name is that kit folder (with the
     line's own sample choice).  Each voice is pitch-shifted by the line's ``tune``
-    (semitones).  Canonical roles missing from the lines fall back to the base kit
-    (then synth), so generated fills always sound.
+    (semitones) and scaled by its ``gain_db`` (volume trim).  Canonical roles missing
+    from the lines fall back to the base kit (then synth), so generated fills sound.
     """
     synth = synth_kit()
     cache: dict = {}
@@ -173,7 +191,8 @@ def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None)
     for ln in lines:
         v = resolve_line_voice(ln, kits_dir, base_kit, synth, cache)
         if v is not None:
-            voices[ln["id"]] = resample_pitch(v, clamp_tune(ln.get("tune")))
+            v = resample_pitch(v, clamp_tune(ln.get("tune")))
+            voices[ln["id"]] = scale_voice(v, gain_from_db(clamp_gain_db(ln.get("gain_db"))))
     for role in ROLES:  # fill/audition fallbacks for roles no line covers
         if role not in voices:
             voices[role] = global_voice(role)
@@ -347,6 +366,7 @@ def record_from_file_dict(data: dict) -> dict:
             "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
             "sample": (str(ln["sample"]) if ln.get("sample") else None),
             "steps": steps, "length": length, "tune": clamp_tune(ln.get("tune")),
+            "gain_db": clamp_gain_db(ln.get("gain_db")),
             "accents": _level_steps("accents"), "ghosts": _level_steps("ghosts"),
         })
     if not lines:

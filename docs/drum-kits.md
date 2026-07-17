@@ -55,6 +55,7 @@ Beat 3.2, hit"):
 | **Delete** | Remove the selected line. |
 | **Minus / Plus** (`-` / `+`) | Set this line's **loop length** — polymeter (see below). |
 | **Left / Right bracket** (`[` / `]`) | **Tune** this line down / up a semitone; hold **Shift** for a whole octave. Spoken with the resulting note ("Kick tuned +2, A1"). See below. |
+| **Comma / Period** (`,` / `.`) | **Volume** for this line, down / up in decibels (Shift for a 6 dB step). Balance the mix — pull a boomy kick back so it doesn't wash the others out. Spoken ("Kick volume −6 dB"). |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 
@@ -78,6 +79,15 @@ musical note** and speaks it:
 Noise-based sounds (snares, hats, cymbals) have no clear pitch, so they simply stay
 silent on the key readout rather than guess. Detection is automatic and needs no tags —
 it listens to the sample the way a tuner would, past the attack, to the note that rings.
+
+### Per-line volume (mixing)
+
+Each line has its own **volume trim** on the `,` and `.` keys (Shift for a 6 dB step),
+spoken in decibels. It's the companion to tuning: drop a kick down an octave and it can
+suddenly boom over everything, so pull its line back a few dB to sit it back in the mix.
+The trim is baked into the sound and saved with the pattern. Full silence isn't the bottom
+of this range — for that, set the line's sample to **None** (Enter). The main tab's **Drum
+volume** still sets the overall level; per-line trims balance the parts underneath it.
 
 ### Polymeter (per-line loop lengths)
 

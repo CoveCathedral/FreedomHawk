@@ -147,7 +147,8 @@ All screen-reader-first, native controls only.
   detection** (`[`/`]` tune a line, Shift = octave; baked into the voice by resampling;
   `practice/pitch.py` estimates each sample's note by autocorrelation and speaks it, so an
   808 or tom can be tuned to the song's key without sight; noise sounds report no key;
-  persists through saves/shares/MIDI).
+  persists through saves/shares/MIDI). **Per-line volume** (`,`/`.` trim each line in dB,
+  spoken; baked into the voice; balances the mix under the master Drum volume).
   **Planned next (Kaylea approved):** song mode (pattern chaining) · tempo trainer · count-in · audition-step & speak-rhythm keys · choke
   groups · **MIDI controller input** (craft beats from a keyboard). Long-term: spin
   the sequencer out as its own open-source project (engine already firehawk-independent).

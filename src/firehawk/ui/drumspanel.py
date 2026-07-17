@@ -47,11 +47,14 @@ from ..practice import (
 )
 from ..practice.drums import RATE, load_sample
 from ..practice.patternstore import (
+    MAX_GAIN_DB,
     MAX_LINES,
     MAX_TUNE,
+    MIN_GAIN_DB,
     all_categories,
     build_line_kit,
     builtin_category,
+    clamp_gain_db,
     clamp_tune,
     delete_pattern,
     line_pitch,
@@ -204,6 +207,7 @@ class PatternEditorDialog(wx.Dialog):
             "move between lines; Left/Right move by step, Ctrl by beat, Ctrl+Shift "
             "by bar; Space toggles a hit; Enter picks the line's sample (or None); "
             "Left/Right brackets tune the line (Shift for an octave); "
+            "comma and period set its volume; "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -310,7 +314,9 @@ class PatternEditorDialog(wx.Dialog):
         tune = clamp_tune(line.get("tune"))
         note = self._tuned_note(line) if tune else None
         tuned = f", tuned {tune:+d}{f' to {note}' if note else ''}" if tune else ""
-        return f"{line['label']}: {hits}{poly}{tuned}, sample {self._sample_desc(line)}"
+        gain = clamp_gain_db(line.get("gain_db"))
+        vol = f", volume {gain:+d} dB" if gain else ""
+        return f"{line['label']}: {hits}{poly}{tuned}{vol}, sample {self._sample_desc(line)}"
 
     def _rebuild_rows(self) -> None:
         keep = max(0, self.grid_list.GetSelection())
@@ -367,11 +373,13 @@ class PatternEditorDialog(wx.Dialog):
     _SHORTEN_KEYS = frozenset({ord("-"), ord("_"), wx.WXK_NUMPAD_SUBTRACT})
     _TUNE_DOWN_KEYS = frozenset({ord("["), ord("{")})   # Shift for a whole octave
     _TUNE_UP_KEYS = frozenset({ord("]"), ord("}")})
+    _QUIETER_KEYS = frozenset({ord(","), ord("<")})     # Shift for a bigger step
+    _LOUDER_KEYS = frozenset({ord("."), ord(">")})
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
                             ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
-        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS
+        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -414,6 +422,10 @@ class PatternEditorDialog(wx.Dialog):
             self._change_tune(-12 if shift else -1)
         elif code in self._TUNE_UP_KEYS:
             self._change_tune(12 if shift else 1)
+        elif code in self._QUIETER_KEYS:
+            self._change_gain(-6 if shift else -1)
+        elif code in self._LOUDER_KEYS:
+            self._change_gain(6 if shift else 1)
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -425,7 +437,9 @@ class PatternEditorDialog(wx.Dialog):
                 "length for polymeter, so lines can loop in different lengths and "
                 "phase against each other. Left and Right square brackets tune this "
                 "line down and up a semitone; hold Shift for a whole octave, and P "
-                "speaks the note it plays. Enter picks this line's sample or None. "
+                "speaks the note it plays. Comma and period trim this line's volume "
+                "in decibels, Shift for a bigger step, to balance the mix. Enter "
+                "picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
                 "and Cancel.")
@@ -476,6 +490,23 @@ class PatternEditorDialog(wx.Dialog):
                 f"{new:+d} semitone{'s' if abs(new) != 1 else ''}"
             note = self._tuned_note(line)
             speech.speak(f"{line['label']} tuned {amount}{f', {note}' if note else ''}")
+        self._reaudition()
+
+    def _change_gain(self, delta: int) -> None:
+        """Trim the current line's volume in decibels (Shift = a 6 dB step)."""
+        line = self._current_line()
+        if line is None:
+            return
+        cur = clamp_gain_db(line.get("gain_db"))
+        new = max(MIN_GAIN_DB, min(MAX_GAIN_DB, cur + delta))
+        line["gain_db"] = new
+        self._rebuild_line_kit()
+        self._refresh_row(line)
+        if new == cur:
+            speech.speak(f"{line['label']} volume at its {'top' if delta > 0 else 'bottom'} limit")
+        else:
+            level = "unity" if new == 0 else f"{new:+d} dB"
+            speech.speak(f"{line['label']} volume {level}")
         self._reaudition()
 
     def _toggle_hit(self) -> None:

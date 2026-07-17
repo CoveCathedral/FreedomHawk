@@ -905,6 +905,13 @@ def resample_pitch(voice, semitones: float):
     return ((1.0 - frac) * voice[i0] + frac * voice[i1]).astype(np.float32)
 
 
+def scale_voice(voice, gain: float):
+    """Scale a voice's amplitude by a linear *gain* (per-line mix balance)."""
+    if np is None or voice is None or gain == 1.0 or len(voice) == 0:
+        return voice
+    return (voice * gain).astype(np.float32)
+
+
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
                 seed: int | None = None) -> bytes:

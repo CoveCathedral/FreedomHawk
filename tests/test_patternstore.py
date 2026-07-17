@@ -82,6 +82,40 @@ def test_build_line_kit_stacks_and_falls_back(tmp_path):
     assert kit.voice("snare") is not None and kit.voice("crash") is not None
 
 
+def test_build_line_kit_bakes_tune_and_gain(tmp_path):
+    import numpy as np
+    from firehawk.practice import DrumKit
+    tone = np.sin(2 * np.pi * 100.0 * np.arange(4000) / 44100).astype(np.float32)
+    base_kit = DrumKit("Base", {"kick": tone})
+    plain = ps.build_line_kit([ps.make_line("kick")], tmp_path, base_kit=base_kit)
+    assert np.array_equal(plain.voice("kick"), tone)              # untuned, unity gain
+
+    up = ps.build_line_kit([dict(ps.make_line("kick"), tune=12)], tmp_path, base_kit=base_kit)
+    assert len(up.voice("kick")) == pytest.approx(len(tone) / 2, rel=0.02)  # octave up
+
+    quiet = ps.build_line_kit([dict(ps.make_line("kick"), gain_db=-6)], tmp_path, base_kit=base_kit)
+    ratio = float(np.max(np.abs(quiet.voice("kick"))) / np.max(np.abs(tone)))
+    assert ratio == pytest.approx(ps.gain_from_db(-6), rel=0.01)   # -6 dB ~= 0.5x
+
+
+def test_clamp_helpers_bound_tune_and_gain():
+    assert ps.clamp_tune(999) == ps.MAX_TUNE
+    assert ps.clamp_tune(-999) == -ps.MAX_TUNE
+    assert ps.clamp_tune("bad") == 0
+    assert ps.clamp_gain_db(999) == ps.MAX_GAIN_DB
+    assert ps.clamp_gain_db(-999) == ps.MIN_GAIN_DB
+    assert ps.clamp_gain_db(None) == 0
+
+
+def test_pattern_file_carries_tune_and_gain(tmp_path):
+    line = dict(ps.make_line("kick"), steps=[0, 8], tune=3, gain_db=-4)
+    pattern = ps.lines_to_pattern([line], 4, 4, 4, 1)
+    record = ps.make_record("mix", "Imported", 4, 4, 4, 1, [line], pattern)
+    back = ps.record_from_file_dict(ps.record_to_file_dict(record))
+    assert back["lines"][0]["tune"] == 3
+    assert back["lines"][0]["gain_db"] == -4
+
+
 def test_builtin_category():
     assert ps.builtin_category("Rock") == "Rock"
     assert ps.builtin_category("Rock 04 fill") == "Rock"
