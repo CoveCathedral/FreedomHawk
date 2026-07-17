@@ -645,11 +645,19 @@ class PatternEditorDialog(wx.Dialog):
         while bars > 1 and per_bar * bars > MAX_STEPS:  # keep the grid navigable
             bars -= 1
         self.bars_choice.SetSelection(bars - 1)
-        # Growing the bar count repeats the existing bars (no silent gaps); shrinking
-        # keeps the first bars. See retime_pattern.
+        # Non-destructive: bar-count changes tile; grid/beat changes remap hits by
+        # musical time so nothing drops or drifts out of time (see retime_pattern).
+        grid_changed = grid != self.pattern.steps_per_beat
+        was_poly = self.pattern.is_polymetric()
         self.pattern = retime_pattern(self.pattern, beats, unit, grid, bars)
-        self._cursor = min(self._cursor, self.pattern.steps - 1)
+        self._cursor = min(self._cursor, self._line_len() - 1)
         self._rebuild_rows()
+        note = " Per-line lengths reset." if (was_poly and grid_changed) else ""
+        if grid_changed:
+            speech.speak(f"Grid changed; hits re-quantized to the new grid.{note}")
+        else:
+            speech.speak(f"Meter {self.pattern.meter_label()}, "
+                         f"{self.pattern.bars} bar{'s' if self.pattern.bars != 1 else ''}.")
         self._reaudition()
 
     def _effective_pattern(self) -> Pattern:

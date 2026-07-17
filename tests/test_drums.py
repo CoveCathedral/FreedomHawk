@@ -267,10 +267,33 @@ def test_retime_shrinking_keeps_first_bars():
     assert "tom" not in shrunk.hits  # bar-2-only content drops with its bar
 
 
-def test_retime_meter_change_clips():
-    p = drums.Pattern("t", 16, 4, {"kick": [0, 8, 15]}, 4, 4, 1)
-    changed = drums.retime_pattern(p, 3, 4, 4, 1)  # 3/4 -> 12 steps
-    assert changed.steps == 12 and changed.hits["kick"] == [0, 8]
+def test_retime_grid_change_remaps_by_time_not_clip():
+    # Changing the grid must keep every hit at its musical position, not drop the ones
+    # past the new length (the "parts missing / out of time" bug).
+    p = drums.Pattern("t", 16, 4, {"snare": [4, 12]}, 4, 4, 1)  # backbeats
+    trip = drums.retime_pattern(p, 4, 4, 3, 1)                  # sixteenths -> triplets
+    assert trip.steps == 12
+    assert len(trip.hits["snare"]) == 2                        # nothing dropped
+    assert trip.hits["snare"] == [3, 9]                        # still beats 2 and 4
+    back = drums.retime_pattern(trip, 4, 4, 4, 1)              # triplets -> sixteenths
+    assert back.hits["snare"] == [4, 12]                       # backbeat round-trips
+
+
+def test_retime_bar_count_is_reversible():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1,
+                      {"snare": {4: drums.LEVEL_ACCENT}})
+    grown = drums.retime_pattern(p, 4, 4, 4, 2)   # 1 -> 2 bars (tiles)
+    shrunk = drums.retime_pattern(grown, 4, 4, 4, 1)  # 2 -> 1
+    assert shrunk.hits == p.hits and shrunk.levels == p.levels
+
+
+def test_retime_grid_change_keeps_dynamics_and_resets_polymeter():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8]}, 4, 4, 1,
+                      {"kick": {0: drums.LEVEL_ACCENT}})
+    p.set_line_length("kick", 7)  # polymetric
+    changed = drums.retime_pattern(p, 4, 4, 2, 1)   # grid change
+    assert changed.levels.get("kick")               # a dynamic survived the remap
+    assert not changed.is_polymetric()              # per-line length reset (grid-relative)
 
 
 def test_expand_with_fill_places_fill_last():

@@ -103,11 +103,13 @@ The main **Tools** menu (Alt+T) holds the sequencer's management and sharing com
 MIDI *controller* input (crafting beats from a MIDI keyboard) is planned.
 
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
-each beat divides), and **Bars in loop** (1–4). **Growing the bar count repeats the
-existing music across the new bars** (no silent gaps — edit the copies afterwards if you
-want them to differ); shrinking keeps the first bars. Changing the meter itself keeps any
-hits that still fit. For loops longer than 4 bars, use **Fill every** on the main tab —
-it stretches playback to up to 16 bars without making the grid unwieldy.
+each beat divides), and **Bars in loop** (1–4). Changing these is **non-destructive**:
+**growing the bar count repeats the existing music** across the new bars (shrinking keeps
+the first bars, and 1→N→1 restores exactly), while **changing the grid or beats re-quantizes
+every hit to its musical position** — a backbeat stays a backbeat, nothing drops out or
+drifts out of time. (Grids like triplets and sixteenths don't divide evenly, so flipping
+between them isn't bit-perfect, but the feel is preserved; per-line polymeter lengths reset
+on a grid change.) For loops longer than 4 bars, use **Fill every** on the main tab.
 
 Spoken navigation uses the `accessible_output2` library (speaks through NVDA when it is
 running, Windows speech otherwise). It installs with the app's UI dependencies.

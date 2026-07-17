@@ -659,12 +659,16 @@ PATTERN_LIBRARY = build_pattern_library()
 
 
 def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> Pattern:
-    """Return *p* fitted to a new meter/bar count.
+    """Return *p* fitted to a new meter/bar count — non-destructively.
 
-    If the bar shape (steps per bar and grid) is unchanged, the existing bars are
-    **tiled cyclically** across the new bar count — so growing 2 bars to 4 repeats
-    the music instead of appending silence, and shrinking keeps the first bars.
-    If the bar shape changed, hits that still fit the new step count are kept.
+    A pure bar-count change (same grid, not polymetric) **tiles** the existing bars
+    across the new count: growing repeats the music, shrinking keeps the first bars.
+
+    Any other change (grid resolution, beats, or unit) **remaps every hit by its
+    musical time position** so the groove stays in time and no parts are dropped —
+    changing sixteenths to triplets keeps the backbeat on the backbeat, not scattered.
+    (Incommensurate grids like triplets vs sixteenths can't round-trip bit-perfectly,
+    but the feel is preserved.)  Per-line polymeter is reset, being grid-relative.
     """
     per_bar = steps_per_bar(beats, unit, grid)
     bars = max(1, bars)
@@ -673,7 +677,8 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
     old_per_bar = max(1, p.steps // old_bars)
     name = f"{beats}/{unit}"
     levels: dict = {}
-    if per_bar == old_per_bar and grid == p.steps_per_beat:
+
+    if per_bar == old_per_bar and grid == p.steps_per_beat and not p.is_polymetric():
         hits: dict = {}
         for role, steps in p.hits.items():
             out = set()
@@ -692,11 +697,23 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
                 hits[role] = sorted(out)
                 if new_levels:
                     levels[role] = new_levels
-    else:
-        hits = {r: [s for s in steps if s < total] for r, steps in p.hits.items() if steps}
-        levels = {r: {s: lv for s, lv in m.items() if s < total}
-                  for r, m in p.levels.items()}
-        levels = {r: m for r, m in levels.items() if m}
+        return Pattern(name, total, grid, hits, beats, unit, bars, levels)
+
+    # Time-preserving remap: place each hit at the same fraction of the loop.
+    old_total = max(1, p.steps)
+    hits = {}
+    for role, steps in p.hits.items():
+        src_levels = p.levels.get(role, {})
+        chosen: dict = {}  # new step -> level (None if the hit here had no dynamic)
+        for s in steps:
+            ns = max(0, min(total - 1, round(s / old_total * total)))
+            if src_levels.get(s) is not None or ns not in chosen:
+                chosen[ns] = src_levels.get(s, chosen.get(ns))
+        if chosen:
+            hits[role] = sorted(chosen)
+            role_levels = {ns: lv for ns, lv in chosen.items() if lv}
+            if role_levels:
+                levels[role] = role_levels
     return Pattern(name, total, grid, hits, beats, unit, bars, levels)
 
 
