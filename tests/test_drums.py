@@ -354,6 +354,46 @@ def test_render_volume_scales_output():
     assert abs(half * 2 - full) <= 2
 
 
+def test_levels_render_at_different_gains():
+    kit = drums.synth_kit()
+    p = drums.Pattern("t", 16, 4, {"snare": [0, 4, 8]}, 4, 4, 1,
+                      {"snare": {0: drums.LEVEL_ACCENT, 8: drums.LEVEL_GHOST}})
+    pcm = _frames(drums.render_loop(p, kit, 120))
+    q = len(pcm) // 16
+
+    def peak(step):
+        return int(np.abs(pcm[step * q:(step + 1) * q]).max())
+    assert peak(0) > peak(4) > peak(8)  # accent > normal > ghost
+
+
+def test_levels_survive_retime_and_expand():
+    p = drums.Pattern("t", 16, 4, {"snare": [0, 8]}, 4, 4, 1,
+                      {"snare": {0: drums.LEVEL_ACCENT, 8: drums.LEVEL_GHOST}})
+    grown = drums.retime_pattern(p, 4, 4, 4, 2)
+    assert grown.levels["snare"] == {0: "accent", 8: "ghost", 16: "accent", 24: "ghost"}
+    two = drums.Pattern("t", 32, 4, {"kick": [0, 16], "tom": [28]}, 4, 4, 2,
+                        {"tom": {28: drums.LEVEL_ACCENT}})
+    ex = drums.expand_with_fill(two, 4)
+    assert ex.levels["tom"] == {60: "accent"}  # the fill accent rides to the final bar
+
+
+def test_improvised_fills_have_dynamics():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
+    loop = drums.improvised_loop(p, 4, 4, seed=11)
+    assert loop.levels  # generated fills carry accents/ghosts
+    for role, m in loop.levels.items():
+        assert all(s in loop.hits[role] for s in m)  # levels only where hits exist
+        assert all(lv in (drums.LEVEL_ACCENT, drums.LEVEL_GHOST) for lv in m.values())
+
+
+def test_pattern_copy_copies_levels():
+    p = drums.Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1,
+                      {"kick": {0: drums.LEVEL_ACCENT}})
+    c = p.copy()
+    c.set_level("kick", 0, drums.LEVEL_GHOST)
+    assert p.level_of("kick", 0) == drums.LEVEL_ACCENT  # original untouched
+
+
 def test_load_kit_honors_choices(tmp_path):
     d = tmp_path / "KICK"
     d.mkdir()

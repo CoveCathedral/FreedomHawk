@@ -228,7 +228,9 @@ def test_grid_cursor_speaks_positions(frame, _silence_audio):
         dlg.Destroy()
 
 
-def test_grid_space_toggles_hits(frame, _silence_audio):
+def test_grid_space_cycles_dynamics(frame, _silence_audio):
+    # Space cycles off -> on -> accent -> ghost -> off, each spoken.
+    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
     spoken = _silence_audio
     dlg = _grid_dialog(frame)
     try:
@@ -238,9 +240,22 @@ def test_grid_space_toggles_hits(frame, _silence_audio):
         dlg._on_grid_key(_Key(wx.WXK_SPACE))
         assert 2 in dlg.pattern.hits["kick"] and "Kick on" in spoken[-1]
         dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert dlg.pattern.level_of("kick", 2) == LEVEL_ACCENT
+        assert "Kick accent" in spoken[-1]
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert dlg.pattern.level_of("kick", 2) == LEVEL_GHOST
+        assert "Kick ghost" in spoken[-1]
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
         assert 2 not in dlg.pattern.hits.get("kick", []) and "Kick off" in spoken[-1]
-        # The row label reflects the new hit count.
+        assert dlg.pattern.level_of("kick", 2) is None
+        # The row label reflects the (restored) hit count.
         assert dlg.grid_list.GetString(idx).startswith("Kick: 2 hits")
+        # The cursor speaks the dynamic state too.
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))  # on
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))  # accent
+        dlg._on_grid_key(_Key(wx.WXK_LEFT))
+        dlg._on_grid_key(_Key(wx.WXK_RIGHT))
+        assert spoken[-1].endswith("accent")
     finally:
         dlg.Destroy()
 

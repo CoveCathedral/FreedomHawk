@@ -29,15 +29,22 @@ def test_make_line_unique_ids_and_labels():
 
 
 def test_lines_pattern_round_trip():
+    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
     lines = [ps.make_line("kick"), ps.make_line("snare")]
     lines[0]["steps"] = [0, 8]
     lines[1]["steps"] = [4, 12, 99]  # out-of-range step is dropped
     p = ps.lines_to_pattern(lines, 4, 4, 4, 1, name="t")
     assert p.steps == 16
     assert p.hits == {"kick": [0, 8], "snare": [4, 12]}
+    # Dynamics survive the record round trip.
+    p.set_level("kick", 0, LEVEL_ACCENT)
+    p.set_level("snare", 12, LEVEL_GHOST)
     rec = ps.make_record("t", "Test", 4, 4, 4, 1, lines, p)
+    assert rec["lines"][0]["accents"] == [0]
+    assert rec["lines"][1]["ghosts"] == [12]
     back = ps.record_to_pattern(rec)
     assert back.hits == p.hits and back.meter_label() == "4/4"
+    assert back.levels == {"kick": {0: LEVEL_ACCENT}, "snare": {12: LEVEL_GHOST}}
 
 
 def test_build_line_kit_stacks_and_falls_back(tmp_path):

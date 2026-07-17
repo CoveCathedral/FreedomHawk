@@ -48,7 +48,7 @@ Beat 3.2, hit"):
 | **Ctrl + Left / Right** | Move by one beat. |
 | **Ctrl + Shift + Left / Right** | Move by one bar. |
 | **Home / End** | Jump to the start / last step. |
-| **Space** | Toggle a hit for this line at the cursor ("Kick on, Beat 2"). |
+| **Space** | Cycle the step's state: **on → accent → ghost → off**, each spoken ("Kick accent, Beat 2"). Accents hit harder, ghosts whisper — real drummer dynamics. Dynamics survive saving, sharing, and MIDI (as note velocities) in both directions. |
 | **Enter** | Sample options for this line: any sample from its kit folder, the automatic default, or **None** (silence the line). |
 | **Delete** | Remove the selected line. |
 | **P** | Preview this line's sound. |

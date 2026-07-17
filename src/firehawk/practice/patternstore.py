@@ -21,6 +21,8 @@ from pathlib import Path
 
 from .drums import (
     GENRE_PATTERNS,
+    LEVEL_ACCENT,
+    LEVEL_GHOST,
     ROLE_LABELS,
     ROLES,
     DrumKit,
@@ -75,11 +77,22 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
                      bars: int, name: str = "custom") -> Pattern:
     total = steps_per_bar(beats, unit, grid) * max(1, bars)
     hits = {}
+    levels: dict = {}
     for ln in lines:
         steps = sorted(s for s in ln.get("steps", []) if 0 <= s < total)
-        if steps:
-            hits[ln["id"]] = steps
-    return Pattern(name, total, grid, hits, beats, unit, bars)
+        if not steps:
+            continue
+        hits[ln["id"]] = steps
+        line_levels = {}
+        for s in ln.get("accents", []):
+            if s in steps:
+                line_levels[s] = LEVEL_ACCENT
+        for s in ln.get("ghosts", []):
+            if s in steps:
+                line_levels[s] = LEVEL_GHOST
+        if line_levels:
+            levels[ln["id"]] = line_levels
+    return Pattern(name, total, grid, hits, beats, unit, bars, levels)
 
 
 def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None) -> DrumKit:
@@ -150,11 +163,14 @@ def save_user_pattern(settings, record: dict) -> None:
 
 def make_record(name: str, category: str, beats: int, unit: int, grid: int,
                 bars: int, lines: list[dict], pattern: Pattern) -> dict:
-    """Serialize the editor state; each line carries its steps from *pattern*."""
+    """Serialize the editor state; each line carries its steps and dynamics."""
     out_lines = []
     for ln in lines:
         entry = dict(ln)
         entry["steps"] = list(pattern.hits.get(ln["id"], []))
+        line_levels = pattern.levels.get(ln["id"], {})
+        entry["accents"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_ACCENT)
+        entry["ghosts"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_GHOST)
         out_lines.append(entry)
     return {"name": name, "category": category, "beats": beats, "unit": unit,
             "grid": grid, "bars": bars, "lines": out_lines}
@@ -268,11 +284,16 @@ def record_from_file_dict(data: dict) -> dict:
         role = ln.get("role") if ln.get("role") in ROLES else "perc"
         steps = sorted({int(s) for s in ln.get("steps", [])
                         if isinstance(s, (int, float)) and 0 <= int(s) < total})
+
+        def _level_steps(key):
+            return sorted({int(s) for s in ln.get(key, [])
+                           if isinstance(s, (int, float)) and int(s) in steps})
         lines.append({
             "id": str(ln["id"]), "label": str(ln.get("label") or ln["id"]),
             "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
             "sample": (str(ln["sample"]) if ln.get("sample") else None),
             "steps": steps,
+            "accents": _level_steps("accents"), "ghosts": _level_steps("ghosts"),
         })
     if not lines:
         raise ValueError("the pattern's lines are unreadable")

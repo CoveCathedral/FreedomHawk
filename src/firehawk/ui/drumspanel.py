@@ -23,6 +23,8 @@ from .. import config
 from ..practice import (
     DRUM_BEAT_UNITS,
     GRID_CHOICES,
+    LEVEL_ACCENT,
+    LEVEL_GHOST,
     MAX_STEPS,
     NUMPY_AVAILABLE,
     PATTERN_LIBRARY,
@@ -311,8 +313,7 @@ class PatternEditorDialog(wx.Dialog):
 
     def _speak_cursor(self) -> None:
         line = self._current_line()
-        state = ("hit" if line and self._cursor in self.pattern.hits.get(line["id"], [])
-                 else "empty")
+        state = self._state_at(line["id"], self._cursor) if line else "empty"
         speech.speak(f"{step_label(self.pattern, self._cursor)}, {state}")
 
     def _move_cursor(self, delta: int) -> None:
@@ -328,7 +329,7 @@ class PatternEditorDialog(wx.Dialog):
         new = max(0, min(len(self.lines) - 1, sel + delta))
         self.grid_list.SetSelection(new)
         line = self.lines[new]
-        state = "hit" if self._cursor in self.pattern.hits.get(line["id"], []) else "empty"
+        state = self._state_at(line["id"], self._cursor)
         speech.speak(f"{self._row_label(line)}. Cursor: "
                      f"{step_label(self.pattern, self._cursor)}, {state}")
 
@@ -376,25 +377,37 @@ class PatternEditorDialog(wx.Dialog):
             speech.speak(
                 "Up and Down move between lines. Left and Right move by step. "
                 "Control Left and Right move by beat. Control Shift Left and Right "
-                "move by bar. Home and End jump to the start and end. Space toggles "
-                "a hit. Enter picks this line's sample or None. Delete removes a "
-                "line. P previews the line. Tab reaches Add Line, Load Groove, "
-                "Save as Preset, the meter controls, and Play, Save and Cancel.")
+                "move by bar. Home and End jump to the start and end. Space cycles "
+                "a step: on, accent, ghost, off. Enter picks this line's sample or "
+                "None. Delete removes a line. P previews the line. Tab reaches Add "
+                "Line, Load Groove, Save as Preset, the meter controls, and Play, "
+                "Save and Cancel.")
         else:
             event.Skip()
 
     def _toggle_hit(self) -> None:
+        """Space cycles a step's state: off -> on -> accent -> ghost -> off."""
         line = self._current_line()
         if line is None:
             return
         line_id = line["id"]
         steps = set(self.pattern.hits.get(line_id, []))
-        if self._cursor in steps:
-            steps.discard(self._cursor)
-            spoken = "off"
-        else:
+        if self._cursor not in steps:
             steps.add(self._cursor)
+            self.pattern.set_level(line_id, self._cursor, None)
             spoken = "on"
+        else:
+            level = self.pattern.level_of(line_id, self._cursor)
+            if level is None:
+                self.pattern.set_level(line_id, self._cursor, LEVEL_ACCENT)
+                spoken = "accent"
+            elif level == LEVEL_ACCENT:
+                self.pattern.set_level(line_id, self._cursor, LEVEL_GHOST)
+                spoken = "ghost"
+            else:  # ghost -> off
+                steps.discard(self._cursor)
+                self.pattern.set_level(line_id, self._cursor, None)
+                spoken = "off"
         if steps:
             self.pattern.hits[line_id] = sorted(steps)
         else:
@@ -402,6 +415,11 @@ class PatternEditorDialog(wx.Dialog):
         self._refresh_row(line)
         speech.speak(f"{line['label']} {spoken}, {step_label(self.pattern, self._cursor)}")
         self._reaudition()
+
+    def _state_at(self, line_id: str, step: int) -> str:
+        if step not in self.pattern.hits.get(line_id, []):
+            return "empty"
+        return self.pattern.level_of(line_id, step) or "hit"
 
     # -- line management -------------------------------------------------------
 
@@ -601,7 +619,8 @@ class PatternEditorDialog(wx.Dialog):
         p = self.pattern
         return Pattern(p.name, p.steps, p.steps_per_beat,
                        {r: s for r, s in p.hits.items() if r not in self.silenced},
-                       p.beats_per_bar, p.beat_unit, p.bars)
+                       p.beats_per_bar, p.beat_unit, p.bars,
+                       {r: dict(m) for r, m in p.levels.items() if r not in self.silenced})
 
     def _on_play(self, event: wx.CommandEvent) -> None:
         if self._auditioning:
@@ -1193,7 +1212,8 @@ class DrumsPanel(wx.Panel):
         effective = Pattern(
             self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
             {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
-            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars)
+            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars,
+            {r: dict(m) for r, m in self._pattern.levels.items() if r not in self._muted})
         fill_bars = self._fill_every_bars()
         if self.fillstyle_choice.GetSelection() == 1:
             # Improvised: several passes, each ending in a different generated fill.
@@ -1252,7 +1272,8 @@ class DrumsPanel(wx.Panel):
         effective = Pattern(
             self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
             {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
-            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars)
+            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars,
+            {r: dict(m) for r, m in self._pattern.levels.items() if r not in self._muted})
         fill_bars = self._fill_every_bars()
         if self.fillstyle_choice.GetSelection() == 1:
             cycle = fill_bars or max(4, effective.bars)

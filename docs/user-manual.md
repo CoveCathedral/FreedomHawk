@@ -153,9 +153,11 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 
 - **Up/Down** — move between lines. **Left/Right** — move by step; **Ctrl** by beat;
   **Ctrl+Shift** by bar; **Home/End** — start and end.
-- **Space** — toggle a hit. **Enter** — this line's sample options (any sample from its
-  kit, the automatic default, or None to silence it). **Delete** — remove a line.
-  **P** — preview the line's sound. **F1** — speak the key list.
+- **Space** — cycle the step: **on → accent → ghost → off**, each spoken. Accents hit
+  harder and ghosts whisper, so grooves get real dynamics. **Enter** — this line's
+  sample options (any sample from its kit, the automatic default, or None to silence
+  it). **Delete** — remove a line. **P** — preview the line's sound. **F1** — speak the
+  key list.
 - **Add Line…** — stack drums and mix libraries: any part, from the synth or any kit
   you have, up to 24 lines.
 - The **time signature** lives here: beats per bar, beat unit, grid resolution, bars
@@ -211,7 +213,7 @@ Everything else in this manual is fully usable offline, today.
 | Alt+Up / Alt+Down | Move a tab (in Settings → Arrange Tabs) |
 
 In the Pattern Editor grid: Up/Down lines · Left/Right step · Ctrl+Left/Right beat ·
-Ctrl+Shift+Left/Right bar · Home/End · Space toggle · Enter sample options · Delete
+Ctrl+Shift+Left/Right bar · Home/End · Space cycle on/accent/ghost/off · Enter sample options · Delete
 remove line · P preview.
 
 ## Troubleshooting

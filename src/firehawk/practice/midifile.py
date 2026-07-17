@@ -11,10 +11,16 @@ from __future__ import annotations
 
 import struct
 
-from .drums import MAX_STEPS, ROLES, Pattern, steps_per_bar
+from .drums import LEVEL_ACCENT, LEVEL_GHOST, MAX_STEPS, ROLES, Pattern, steps_per_bar
 
 _TICKS_PER_QUARTER = 480
 _DRUM_CHANNEL = 9  # zero-based channel 10
+
+#: Dynamics <-> MIDI velocity. Import thresholds sit between the export values so
+#: our own files round-trip exactly and foreign files classify sensibly.
+_LEVEL_VELOCITY = {LEVEL_ACCENT: 120, None: 90, LEVEL_GHOST: 45}
+_GHOST_BELOW = 60
+_ACCENT_ABOVE = 105
 
 #: Our roles -> General MIDI percussion note numbers.
 ROLE_TO_GM = {
@@ -53,9 +59,11 @@ def pattern_to_midi(pattern: Pattern, bpm: float,
     for line_id, steps in pattern.hits.items():
         role = (role_of or {}).get(line_id, line_id if line_id in ROLES else "perc")
         note = ROLE_TO_GM.get(role, 37)
+        line_levels = pattern.levels.get(line_id, {})
         for step in steps:
             tick = step * ticks_per_step
-            events.append((tick, bytes((0x90 | _DRUM_CHANNEL, note, 100))))
+            velocity = _LEVEL_VELOCITY.get(line_levels.get(step), 90)
+            events.append((tick, bytes((0x90 | _DRUM_CHANNEL, note, velocity))))
             events.append((tick + ticks_per_step // 2, bytes((0x80 | _DRUM_CHANNEL, note, 0))))
     events.sort(key=lambda e: e[0])
 
@@ -124,7 +132,7 @@ def _parse_notes(data: bytes):
                 kind = status & 0xF0
                 if kind in (0x80, 0x90, 0xA0, 0xB0, 0xE0):
                     if kind == 0x90 and data[p + 1] > 0:
-                        notes.append((tick, status & 0x0F, data[p]))
+                        notes.append((tick, status & 0x0F, data[p], data[p + 1]))
                     p += 2
                 elif kind in (0xC0, 0xD0):
                     p += 1
@@ -155,14 +163,16 @@ def midi_to_pattern(data: bytes, grid: int = 4) -> tuple[Pattern, dict]:
     ticks_per_step = max(1, division // max(1, grid))
     per_bar = steps_per_bar(beats, unit, grid)
     hits: dict[str, set] = {}
+    velocities: dict = {}  # (role, step) -> max velocity seen
     max_step = 0
-    for tick, _ch, note in notes:
+    for tick, _ch, note, velocity in notes:
         step = round(tick / ticks_per_step)
         role = GM_TO_ROLE.get(note)
         if role is None:
             role = "perc"
             info["unmapped"] = info.get("unmapped", 0) + 1
         hits.setdefault(role, set()).add(step)
+        velocities[(role, step)] = max(velocities.get((role, step), 0), velocity)
         max_step = max(max_step, step)
     bars = max(1, min(4, -(-(max_step + 1) // per_bar)))  # ceil, capped at 4 bars
     while per_bar * bars > MAX_STEPS and bars > 1:
@@ -170,13 +180,24 @@ def midi_to_pattern(data: bytes, grid: int = 4) -> tuple[Pattern, dict]:
     total = per_bar * bars
     dropped = 0
     clean: dict[str, list] = {}
+    levels: dict = {}
     for role, steps in hits.items():
         kept = sorted(s for s in steps if 0 <= s < total)
         dropped += len(steps) - len(kept)
-        if kept:
-            clean[role] = kept
+        if not kept:
+            continue
+        clean[role] = kept
+        role_levels = {}
+        for s in kept:  # dynamics from velocity: quiet -> ghost, loud -> accent
+            velocity = velocities.get((role, s), 90)
+            if velocity < _GHOST_BELOW:
+                role_levels[s] = LEVEL_GHOST
+            elif velocity > _ACCENT_ABOVE:
+                role_levels[s] = LEVEL_ACCENT
+        if role_levels:
+            levels[role] = role_levels
     if dropped:
         info["dropped"] = dropped
     if not clean:
         raise ValueError("no notes landed inside the importable range")
-    return Pattern("MIDI import", total, grid, clean, beats, unit, bars), info
+    return Pattern("MIDI import", total, grid, clean, beats, unit, bars, levels), info

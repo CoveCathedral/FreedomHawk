@@ -364,6 +364,12 @@ def load_kit_from_folder(path, rate: int = RATE, choices: dict | None = None) ->
 
 # -- patterns --------------------------------------------------------------------
 
+#: Per-hit dynamic levels.  A hit absent from ``Pattern.levels`` plays normal.
+LEVEL_ACCENT = "accent"
+LEVEL_GHOST = "ghost"
+_LEVEL_GAIN = {None: 1.0, LEVEL_ACCENT: 1.45, LEVEL_GHOST: 0.4}
+
+
 @dataclass
 class Pattern:
     name: str
@@ -373,6 +379,7 @@ class Pattern:
     beats_per_bar: int = 4     # time-signature numerator
     beat_unit: int = 4         # time-signature denominator (2/4/8/16)
     bars: int = 1
+    levels: dict = field(default_factory=dict)  # role -> {step: "accent"|"ghost"}
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -383,10 +390,23 @@ class Pattern:
     def meter_label(self) -> str:
         return f"{self.beats_per_bar}/{self.beat_unit}"
 
+    def level_of(self, role: str, step: int) -> str | None:
+        return self.levels.get(role, {}).get(step)
+
+    def set_level(self, role: str, step: int, level: str | None) -> None:
+        if level is None:
+            if role in self.levels:
+                self.levels[role].pop(step, None)
+                if not self.levels[role]:
+                    del self.levels[role]
+        else:
+            self.levels.setdefault(role, {})[step] = level
+
     def copy(self) -> "Pattern":
         return Pattern(self.name, self.steps, self.steps_per_beat,
                        {r: list(s) for r, s in self.hits.items()},
-                       self.beats_per_bar, self.beat_unit, self.bars)
+                       self.beats_per_bar, self.beat_unit, self.bars,
+                       {r: dict(m) for r, m in self.levels.items()})
 
 
 #: Grid resolutions as (label, steps-per-quarter-note).
@@ -548,19 +568,32 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
     old_bars = max(1, p.bars)
     old_per_bar = max(1, p.steps // old_bars)
     name = f"{beats}/{unit}"
+    levels: dict = {}
     if per_bar == old_per_bar and grid == p.steps_per_beat:
         hits: dict = {}
         for role, steps in p.hits.items():
             out = set()
+            src_levels = p.levels.get(role, {})
+            new_levels: dict = {}
             for b in range(bars):
                 src = b % old_bars
                 lo, hi = src * old_per_bar, (src + 1) * old_per_bar
-                out.update(s - lo + b * per_bar for s in steps if lo <= s < hi)
+                for s in steps:
+                    if lo <= s < hi:
+                        dst = s - lo + b * per_bar
+                        out.add(dst)
+                        if s in src_levels:
+                            new_levels[dst] = src_levels[s]
             if out:
                 hits[role] = sorted(out)
+                if new_levels:
+                    levels[role] = new_levels
     else:
         hits = {r: [s for s in steps if s < total] for r, steps in p.hits.items() if steps}
-    return Pattern(name, total, grid, hits, beats, unit, bars)
+        levels = {r: {s: lv for s, lv in m.items() if s < total}
+                  for r, m in p.levels.items()}
+        levels = {r: m for r, m in levels.items() if m}
+    return Pattern(name, total, grid, hits, beats, unit, bars, levels)
 
 
 def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
@@ -579,19 +612,29 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
     else:
         order = [0] * total_bars
     hits: dict = {}
+    levels: dict = {}
     for role, steps in p.hits.items():
         out = []
+        src_levels = p.levels.get(role, {})
+        new_levels: dict = {}
         for dst, src in enumerate(order):
             if role == "crash" and src == 0 and dst != 0:
                 # A first-bar crash marks the post-fill downbeat (the loop restart);
                 # tiling it onto every body bar would crash constantly.
                 continue
             lo, hi = src * per_bar, (src + 1) * per_bar
-            out.extend(s - lo + dst * per_bar for s in steps if lo <= s < hi)
+            for s in steps:
+                if lo <= s < hi:
+                    d = s - lo + dst * per_bar
+                    out.append(d)
+                    if s in src_levels:
+                        new_levels[d] = src_levels[s]
         if out:
             hits[role] = sorted(out)
+            if new_levels:
+                levels[role] = new_levels
     return Pattern(p.name, per_bar * total_bars, p.steps_per_beat, hits,
-                   p.beats_per_bar, p.beat_unit, total_bars)
+                   p.beats_per_bar, p.beat_unit, total_bars, levels)
 
 
 # -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
@@ -610,13 +653,21 @@ def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int):
     fill_len = min(per_bar, beat_len * rng.choice((1, 1, 1, 2, 2, per_bar // max(1, beat_len))))
     fill_len = max(1, fill_len)
     hits: dict = {}
+    levels: dict = {}
     density = rng.uniform(0.6, 0.95)
+    first = True
     for s in range(fill_len):
         if rng.random() < density:
-            hits.setdefault(rng.choice(("snare", "tom", "tom", "snare", "perc")), []).append(s)
+            role = rng.choice(("snare", "tom", "tom", "snare", "perc"))
+            hits.setdefault(role, []).append(s)
+            if first:  # the fill announces itself
+                levels.setdefault(role, {})[s] = LEVEL_ACCENT
+                first = False
+            elif rng.random() < 0.3:  # ghosted in-between strokes breathe
+                levels.setdefault(role, {})[s] = LEVEL_GHOST
     if fill_len >= beat_len and rng.random() < 0.4:  # kick pickup into the fill
         hits.setdefault("kick", []).append(0)
-    return fill_len, hits
+    return fill_len, hits, levels
 
 
 def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
@@ -637,34 +688,46 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     total_bars = cycle_bars * max(1, cycles)
     total_steps = per_bar * total_bars
     hits: dict = {}
+    levels: dict = {}
 
     def copy_bar(src: int, dst: int) -> None:
         lo, hi = src * per_bar, (src + 1) * per_bar
         for role, steps in p.hits.items():
             if role == "crash":
                 continue  # crashes are re-placed on cycle downbeats below
-            sel = [s - lo + dst * per_bar for s in steps if lo <= s < hi]
-            if sel:
-                hits.setdefault(role, []).extend(sel)
+            src_levels = p.levels.get(role, {})
+            for s in steps:
+                if lo <= s < hi:
+                    d = s - lo + dst * per_bar
+                    hits.setdefault(role, []).append(d)
+                    if s in src_levels:
+                        levels.setdefault(role, {})[d] = src_levels[s]
 
     for c in range(max(1, cycles)):
         base = c * cycle_bars
         for b in range(cycle_bars):
             copy_bar(body_bars[b % len(body_bars)], base + b)
-        fill_len, fill_hits = _generate_fill_zone(rng, beat_len, per_bar)
+        fill_len, fill_hits, fill_levels = _generate_fill_zone(rng, beat_len, per_bar)
         zone_start = (base + cycle_bars) * per_bar - fill_len
         for role in _FILL_CLEAR_ROLES:
             if role in hits:
                 hits[role] = [s for s in hits[role] if not (zone_start <= s)
                               or s >= zone_start + fill_len]
+            if role in levels:
+                levels[role] = {s: lv for s, lv in levels[role].items()
+                                if s < zone_start or s >= zone_start + fill_len}
         for role, offsets in fill_hits.items():
             hits.setdefault(role, []).extend(zone_start + o for o in offsets)
+        for role, offset_levels in fill_levels.items():
+            for off, lv in offset_levels.items():
+                levels.setdefault(role, {})[zone_start + off] = lv
         # Crash lands on the downbeat after each fill (wrapping at the loop end).
         hits.setdefault("crash", []).append(((base + cycle_bars) * per_bar) % total_steps)
 
     hits = {r: sorted(set(s)) for r, s in hits.items() if s}
+    levels = {r: m for r, m in levels.items() if m and r in hits}
     return Pattern(f"{p.name} improv", total_steps, p.steps_per_beat, hits,
-                   p.beats_per_bar, p.beat_unit, total_bars)
+                   p.beats_per_bar, p.beat_unit, total_bars, levels)
 
 
 # -- rendering (the compensator) -------------------------------------------------
@@ -700,9 +763,16 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
         voice = kit.voice(role)
         if voice is None or len(voice) == 0:
             continue
+        role_levels = pattern.levels.get(role, {})
+        # Pre-scale one copy of the voice per dynamic level used by this role.
+        scaled = {None: voice}
         for step in steps_on:
-            if 0 <= step < pattern.steps:
-                _mix_wrap(buf, voice, int(round(step * step_s * rate)))
+            if not 0 <= step < pattern.steps:
+                continue
+            level = role_levels.get(step)
+            if level not in scaled:
+                scaled[level] = voice * _LEVEL_GAIN.get(level, 1.0)
+            _mix_wrap(buf, scaled[level], int(round(step * step_s * rate)))
     peak = float(np.max(np.abs(buf))) if length else 0.0
     if peak > 1.0:                       # prevent clipping without pumping quiet loops up
         buf = buf / peak

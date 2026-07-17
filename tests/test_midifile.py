@@ -13,6 +13,15 @@ from firehawk.practice.midifile import (
 )
 
 
+def test_dynamics_round_trip_as_velocities():
+    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
+    p = Pattern("t", 16, 4, {"snare": [0, 4, 8]}, 4, 4, 1,
+                {"snare": {0: LEVEL_ACCENT, 8: LEVEL_GHOST}})
+    back, _ = midi_to_pattern(pattern_to_midi(p, 120))
+    assert back.hits["snare"] == [0, 4, 8]
+    assert back.levels.get("snare") == {0: LEVEL_ACCENT, 8: LEVEL_GHOST}
+
+
 def test_round_trip_preserves_hits_and_meter():
     rock = PATTERN_LIBRARY[0]
     back, info = midi_to_pattern(pattern_to_midi(rock, 120))
