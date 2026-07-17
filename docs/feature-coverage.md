@@ -61,6 +61,8 @@ Along with Music). Only the *cloud tone-matching* part is gone.
 
 - Full **NVDA screen-reader accessibility** — the entire point; the original app had none.
 - **High-contrast dark mode**, large labels, keyboard-first navigation, jump hotkeys.
+- **Customizable tab order** (Settings > Arrange Tabs) — reorder any tab and it persists;
+  the Tuner defaults to the bottom so it stays out of the editing workflow.
 - A **staged, gated** device bridge that shows the exact bytes each edit would send.
 
 ## Summary

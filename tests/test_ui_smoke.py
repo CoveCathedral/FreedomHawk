@@ -13,14 +13,18 @@ try:
 except Exception:  # pragma: no cover - no GUI available
     pytest.skip("no wx display available", allow_module_level=True)
 
+import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
 from firehawk.ui.mainframe import MainFrame
 from firehawk.ui.presetspanel import PresetsPanel
+from firehawk.ui.tunerpanel import TunerPanel
 
 
 @pytest.fixture()
-def frame():
+def frame(tmp_path, monkeypatch):
+    # Isolate the tab-order settings file so tests never touch the real one.
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
     f = MainFrame()
     yield f
     f.Destroy()
@@ -44,6 +48,32 @@ def test_has_presets_page_and_all_blocks(frame):
     # Presets + Tuner pages, plus one per slot.
     assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 2
     assert isinstance(frame.listbook.GetPage(0), PresetsPanel)
+
+
+def test_default_order_puts_tuner_last(frame):
+    assert frame._view_ids[0] == "presets"
+    assert frame._view_ids[-1] == "tuner"
+    assert isinstance(frame.listbook.GetPage(frame.listbook.GetPageCount() - 1), TunerPanel)
+
+
+def test_reorder_rebuilds_and_persists(frame):
+    new_order = ["tuner"] + [v for v in frame._view_ids if v != "tuner"]
+    frame.settings.set_page_order(new_order)
+    frame._rebuild_after_reorder()
+    assert frame._view_ids == new_order
+    # The Tuner is now the first page, and the live tuner reference points to it.
+    assert isinstance(frame.listbook.GetPage(0), TunerPanel)
+    assert frame.tuner_page is frame.listbook.GetPage(0)
+    # The order was written to the (isolated) settings file.
+    assert config.AppSettings().page_order() == new_order
+
+
+def test_editing_still_works_after_reorder(frame):
+    frame.settings.set_page_order(list(reversed(frame._view_ids)))
+    frame._rebuild_after_reorder()
+    amp = _block_page(frame, "amp")
+    amp._on_param("Bass", 0.42)
+    assert frame.buffer.get_param("amp", "Bass") == pytest.approx(0.42)
 
 
 def test_every_control_has_accessible_name(frame):

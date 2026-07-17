@@ -13,6 +13,7 @@ from pathlib import Path
 
 import wx
 
+from ..config import AppSettings, all_views
 from ..device import DeviceSession
 from ..model import EditBuffer, ModelCatalog, Preset, PresetLibrary, SLOT_LAYOUT
 from ..transport import SerialTransport
@@ -42,6 +43,7 @@ class MainFrame(wx.Frame):
         self.catalog = catalog or ModelCatalog()
         self.device_id = device_id
         self.dark_mode = dark
+        self.settings = AppSettings()
         self.buffer = EditBuffer(self.catalog)
         self.library = PresetLibrary(self.catalog.data_dir)
         self._dirty = False
@@ -73,7 +75,8 @@ class MainFrame(wx.Frame):
 
     def _on_page_changed(self, event) -> None:
         # Stop any tuner tone when navigating away from the Tuner page.
-        if self.listbook.GetPage(self.listbook.GetSelection()) is not self.tuner_page:
+        if (self.tuner_page is not None
+                and self.listbook.GetPage(self.listbook.GetSelection()) is not self.tuner_page):
             self.tuner_page.stop()
         event.Skip()
 
@@ -108,33 +111,48 @@ class MainFrame(wx.Frame):
     # -- pages ----------------------------------------------------------------
 
     def _build_pages(self) -> None:
+        """Build the notebook pages in the user's saved order (Settings > Arrange Tabs)."""
         self.listbook.DeleteAllPages()
         self._view_ids = []
+        self.tuner_page = None
+        titles = dict(all_views())
+        slots_by_id = {s.id: s for s in SLOT_LAYOUT}
 
-        presets = PresetsPanel(
-            self.listbook, self.library, self.catalog,
-            on_open=self._guarded_open,
-            get_current=lambda: self.buffer.preset,
-            status=self.status.SetStatusText,
-        )
-        self.listbook.AddPage(presets, "Presets")
-        self._view_ids.append("presets")
-
-        self.tuner_page = TunerPanel(self.listbook, status=self.status.SetStatusText)
-        self.listbook.AddPage(self.tuner_page, "Tuner")
-        self._view_ids.append("tuner")
-
-        for slot in SLOT_LAYOUT:
-            page = BlockPanel(
-                self.listbook, slot, self.buffer, self.catalog,
-                device_id=self.device_id, status=self.status.SetStatusText,
-                themer=self._themer,
-            )
-            self.listbook.AddPage(page, slot.display_name)
-            self._view_ids.append(slot.id)
+        for view_id in self.settings.page_order():
+            if view_id == "presets":
+                page = PresetsPanel(
+                    self.listbook, self.library, self.catalog,
+                    on_open=self._guarded_open,
+                    get_current=lambda: self.buffer.preset,
+                    status=self.status.SetStatusText,
+                )
+            elif view_id == "tuner":
+                page = TunerPanel(self.listbook, status=self.status.SetStatusText)
+                self.tuner_page = page
+            elif view_id in slots_by_id:
+                page = BlockPanel(
+                    self.listbook, slots_by_id[view_id], self.buffer, self.catalog,
+                    device_id=self.device_id, status=self.status.SetStatusText,
+                    themer=self._themer,
+                )
+            else:
+                continue
+            self.listbook.AddPage(page, titles.get(view_id, view_id))
+            self._view_ids.append(view_id)
 
         if self.listbook.GetPageCount():
             self.listbook.SetSelection(0)
+
+    def _rebuild_after_reorder(self) -> None:
+        """Rebuild pages and the Go menu after the tab order changes, then re-theme."""
+        current_view = None
+        if self._view_ids and 0 <= self.listbook.GetSelection() < len(self._view_ids):
+            current_view = self._view_ids[self.listbook.GetSelection()]
+        self._build_pages()
+        self._build_menu()
+        self._apply_theme()
+        if current_view:  # keep the user on the tab they were viewing
+            self._goto_view(current_view)
 
     def _refresh_block_pages(self) -> None:
         for i in range(self.listbook.GetPageCount()):
@@ -187,8 +205,9 @@ class MainFrame(wx.Frame):
                 return True
             return False
         # Already on the navigation list: go back to Presets (the home screen).
-        if self.listbook.GetSelection() != 0:
-            self._goto(0)
+        home = self._view_ids.index("presets") if "presets" in self._view_ids else 0
+        if self.listbook.GetSelection() != home:
+            self._goto(home)
             return True
         return False
 
@@ -196,7 +215,8 @@ class MainFrame(wx.Frame):
         if event.CanVeto() and not self._confirm_discard():
             event.Veto()
             return
-        self.tuner_page.stop()
+        if self.tuner_page is not None:
+            self.tuner_page.stop()
         if self.session.transport is not None:
             try:
                 self.session.transport.close()
@@ -222,17 +242,17 @@ class MainFrame(wx.Frame):
         go_menu = wx.Menu()
         back_item = go_menu.Append(wx.ID_ANY, "&Back to Presets\tCtrl+B")
         go_menu.AppendSeparator()
-        titles = ["Presets"] + [s.display_name for s in SLOT_LAYOUT]
-        self._go_items = []
-        for i, title in enumerate(titles):
+        titles = dict(all_views())
+        for i, view_id in enumerate(self._view_ids):
             accel = f"\tCtrl+{i + 1}" if i < 9 else ""
-            item = go_menu.Append(wx.ID_ANY, f"{title}{accel}")
+            item = go_menu.Append(wx.ID_ANY, f"{titles.get(view_id, view_id)}{accel}")
             self.Bind(wx.EVT_MENU, lambda e, idx=i: self._goto(idx), item)
         menubar.Append(go_menu, "&Go")
 
         settings_menu = wx.Menu()
         self.dark_item = settings_menu.AppendCheckItem(wx.ID_ANY, "&Dark Mode")
         self.dark_item.Check(self.dark_mode)
+        arrange_item = settings_menu.Append(wx.ID_ANY, "&Arrange Tabs...")
         settings_menu.AppendSeparator()
         folder_item = settings_menu.Append(wx.ID_ANY, "User Presets &Folder...")
         device_item = settings_menu.Append(wx.ID_ANY, "De&vice Settings and Modes...")
@@ -254,6 +274,8 @@ class MainFrame(wx.Frame):
         menubar.Append(help_menu, "&Help")
 
         self.SetMenuBar(menubar)
+        # Keep the transmit checkbox in sync with session state across menu rebuilds.
+        self.transmit_item.Check(self.session.transmit_enabled)
         self.Bind(wx.EVT_MENU, self._on_new, new_item)
         self.Bind(wx.EVT_MENU, self._on_open_file, open_item)
         self.Bind(wx.EVT_MENU, self._on_save, save_item)
@@ -262,6 +284,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self._goto_view("presets"), back_item)
         self.Bind(wx.EVT_MENU, lambda e: self.Close(), exit_item)
         self.Bind(wx.EVT_MENU, self._on_toggle_dark, self.dark_item)
+        self.Bind(wx.EVT_MENU, self._on_arrange_tabs, arrange_item)
         self.Bind(wx.EVT_MENU, self._on_presets_folder, folder_item)
         self.Bind(wx.EVT_MENU, self._on_device_settings, device_item)
         self.Bind(wx.EVT_MENU, self._on_connect, connect_item)
@@ -351,9 +374,11 @@ class MainFrame(wx.Frame):
         self.status.SetStatusText("Reset to default preset.")
 
     def _refresh_presets_page(self) -> None:
-        page = self.listbook.GetPage(0)
-        if isinstance(page, PresetsPanel):
-            page.reload()
+        for i in range(self.listbook.GetPageCount()):
+            page = self.listbook.GetPage(i)
+            if isinstance(page, PresetsPanel):
+                page.reload()
+                return
 
     # -- settings / device ----------------------------------------------------
 
@@ -361,6 +386,55 @@ class MainFrame(wx.Frame):
         self.dark_mode = self.dark_item.IsChecked()
         self._apply_theme()
         self.status.SetStatusText("Dark mode on." if self.dark_mode else "Dark mode off.")
+
+    def _on_arrange_tabs(self, event) -> None:
+        """Accessible reorder dialog: a list of tabs plus Move Up / Move Down buttons."""
+        titles = dict(all_views())
+        order = list(self._view_ids)
+
+        dlg = wx.Dialog(self, title="Arrange tabs", size=(380, 500))
+        intro = wx.StaticText(dlg, label=(
+            "Choose where each tab appears. Select a tab, then use Move Up or Move "
+            "Down. The first tab is the one you land on at startup; Ctrl+1 through "
+            "Ctrl+9 jump to the first nine. Press OK to apply."))
+        intro.Wrap(340)
+        listbox = wx.ListBox(dlg, choices=[titles.get(v, v) for v in order], style=wx.LB_SINGLE)
+        set_accessible_name(listbox, "Tab order")
+        if order:
+            listbox.SetSelection(0)
+
+        up_btn = wx.Button(dlg, label="Move &Up")
+        down_btn = wx.Button(dlg, label="Move &Down")
+
+        def move(delta: int) -> None:
+            i = listbox.GetSelection()
+            j = i + delta
+            if i == wx.NOT_FOUND or not (0 <= j < len(order)):
+                return
+            order[i], order[j] = order[j], order[i]
+            listbox.Set([titles.get(v, v) for v in order])
+            listbox.SetSelection(j)
+            listbox.SetFocus()
+
+        up_btn.Bind(wx.EVT_BUTTON, lambda e: move(-1))
+        down_btn.Bind(wx.EVT_BUTTON, lambda e: move(1))
+
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        btns.Add(up_btn, 0, wx.RIGHT, 6)
+        btns.Add(down_btn, 0)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(intro, 0, wx.ALL, 10)
+        sizer.Add(listbox, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        sizer.Add(btns, 0, wx.ALL, 10)
+        sizer.Add(dlg.CreateButtonSizer(wx.OK | wx.CANCEL), 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        dlg.SetSizer(sizer)
+        theme.apply(dlg, self.dark_mode)
+
+        if dlg.ShowModal() == wx.ID_OK and order != self._view_ids:
+            self.settings.set_page_order(order)
+            self._rebuild_after_reorder()
+            self.status.SetStatusText("Tab order updated.")
+        dlg.Destroy()
 
     def _on_presets_folder(self, event) -> None:
         self.library.ensure_user_dir()
@@ -475,12 +549,13 @@ class MainFrame(wx.Frame):
         wx.MessageBox(body, "Detected serial ports", wx.ICON_INFORMATION)
 
     def _on_keys(self, event) -> None:
+        titles = dict(all_views())
+        jump_targets = ", ".join(titles.get(v, v) for v in self._view_ids[:9])
         commands = [
             ("Ctrl+N", "New preset"),
             ("Ctrl+O", "Open preset file"),
             ("Ctrl+S", "Save preset to your library"),
-            ("Ctrl+1 .. Ctrl+9", "Jump to Presets, Wah, Compressor, Noise Gate, Amp,"
-                                 " Cabinet, EQ, FX 1, FX 2"),
+            ("Ctrl+1 .. Ctrl+9", f"Jump to the first nine tabs ({jump_targets})"),
             ("Ctrl+B", "Back to the Presets list"),
             ("Escape", "Back one level: page controls -> block list -> Presets"),
             ("Tab / Shift+Tab", "Move between controls on a page"),
@@ -488,6 +563,7 @@ class MainFrame(wx.Frame):
             ("Left / Right arrows", "Adjust a slider; Page Up/Down for larger steps"),
             ("Space", "Toggle a checkbox"),
             ("Alt + underlined letter", "Open a menu (File, Go, Settings, Device, Help)"),
+            ("Settings > Arrange Tabs", "Reorder the tabs (e.g. move the Tuner elsewhere)"),
             ("F1", "Show this list"),
         ]
         width = max(len(k) for k, _ in commands)
