@@ -7,12 +7,12 @@
 The Firehawk FX is a guitar multi-effects pedal whose only editor was a mobile app that
 was never built to be accessible, was discontinued by Line 6 in 2024, and depends on a
 login/cloud layer that is fading. On the pedal itself there are six knobs and a tiny
-screen. For a blind owner, that left hundreds of parameters — amps, cabs, effects,
-reverbs, wah — simply unreachable, and the hardware on a path to becoming a brick.
+screen. For a blind or low-vision owner, that left hundreds of parameters — amps, cabs,
+effects, reverbs, wah — simply unreachable, and the hardware on a path to becoming a brick.
 
-FreedomHawk is an independent editor that talks to the pedal directly, built so a blind
-musician can operate the whole device with a screen reader — everything the old app did,
-minus the cloud.
+FreedomHawk is an independent editor that talks to the pedal directly, built so a blind or
+low-vision musician can operate the whole device with a screen reader — everything the old
+app did, minus the cloud.
 
 ## Who it's for
 
@@ -35,7 +35,8 @@ minus the cloud.
 ## The accessible drum machine
 
 Possibly the first genuinely screen-reader-first step sequencer anywhere — designed
-hands-on with its blind user, and headed for a standalone open-source project of its own:
+hands-on with the blind and low-vision musician it's built for, and headed for a standalone
+open-source project of its own:
 
 - **500 built-in grooves** across ~60 genres (rock, metal, funk, hip-hop, trap, house,
   techno, drum & bass, reggae, latin, jazz, 5/4, 7/8, 9/8, djent polymeters, and more) plus your own
@@ -44,10 +45,19 @@ hands-on with its blind user, and headed for a standalone open-source project of
   cursor on the arrow keys (step / beat / bar granularity), every move **spoken directly
   through the screen reader**. Space toggles hits, Enter picks a line's sample, P
   previews — and lines can **stack drums and mix samples from different libraries**.
+- **Feel and expression:** per-hit **dynamics** (accents/ghosts), **swing**, **humanize**,
+  and true **polymeter** (each line its own loop length, phasing and realigning). Per line:
+  **tuning** (with by-ear **pitch detection** that speaks a sample's musical key, so you can
+  tune an 808 to your song), **volume** trim, and **choke groups** (a closed hat cuts the
+  open hat, as on a real kit).
+- **Practice aids:** a **count-in** before the loop, and a **tempo trainer** that speeds the
+  BPM up as you play — each new tempo spoken, ramp or endurance mode.
 - **Improvised drum fills** — rule-bound randomness that generates fresh fills every
   render, always on the meter, with fill cadences up to 16 bars for jamming.
 - **Bring your own drum kits** as plain WAV folders; audition and choose every part's
   sample by ear (no third-party audio ships with the app).
+- **Low-vision visual track:** an optional high-contrast picture of the grid in the editor —
+  display-only, so the screen-reader workflow is unchanged.
 - **Share everything:** export loops as WAV, trade patterns as small JSON files, and
   export/import **MIDI** (General MIDI drum mapping, odd meters preserved).
 
@@ -77,6 +87,11 @@ Everything is keyboard-navigable. Highlights:
 - Tabs are **reorderable** (Settings → Arrange Tabs) and the order persists.
 - A high-contrast **dark mode with large white labels** is on by default (toggle in
   Settings).
+
+**For low vision** (additive — never at the expense of the screen-reader path): the tab
+sidebar is enlarged and high-contrast, the user manual opens as a **navigable HTML page**
+(Help → User Manual: table of contents, heading navigation), and the drum editor has an
+optional **high-contrast visual track** that mirrors the grid.
 
 ## Requirements
 
@@ -129,7 +144,8 @@ src/firehawk/
   ui/          the accessible wxPython interface, incl. direct screen-reader speech
   data/        tone data — generated locally by tools/extract_assets.py, not in the repo
 tests/         model, protocol, device, practice, and UI smoke tests (headless)
-docs/          user-manual.md, drum-kits.md, protocol.md, capture-guide.md, and more
+docs/          user-manual.md (+ generated .html), drum-kits.md, protocol.md, and more
+scripts/       build_manual.py — regenerates the navigable HTML user manual from Markdown
 tools/         extract_assets.py, plus reverse-engineering helpers (symbol decoder, etc.)
 Samples/       your own drum kits live here (git-ignored; nothing is redistributed)
 ```

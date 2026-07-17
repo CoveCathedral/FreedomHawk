@@ -7,8 +7,8 @@ libraries** for higher-fidelity sounds.
 ## Quick start
 
 1. Open the **Drum Looper** tab.
-2. Leave **Kit** on "Synth (built-in)", pick a **Groove** (200 built in — basics plus
-   generated variations, many with drum fills), set the **Tempo**, and press **Start**.
+2. Leave **Kit** on "Synth (built-in)", pick a **Groove** (500 built in across ~60 genres —
+   basics plus generated variations, many with drum fills), set the **Tempo**, press **Start**.
 3. To customize a groove, press **Edit Pattern…** — see the Pattern Editor below.
 4. Use **Part** + **Mute this part** to silence a part live without erasing its steps.
 
