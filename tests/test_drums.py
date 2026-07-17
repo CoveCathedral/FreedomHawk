@@ -397,6 +397,14 @@ def test_count_in_matches_meter_and_tempo():
     assert float(np.max(np.abs(buf7))) > 0.0             # it actually clicks
 
 
+def test_tempo_ramp_sequence():
+    assert drums.tempo_ramp(100, 120, 5) == [100, 105, 110, 115, 120]
+    assert drums.tempo_ramp(100, 118, 5) == [100, 105, 110, 115, 118]   # last jump clamps
+    assert drums.tempo_ramp(120, 120, 5) == [120]                        # already there
+    assert drums.tempo_ramp(140, 100, 5) == [140]                        # target below start
+    assert drums.tempo_ramp(90, 300, 10)[-1] == 300
+
+
 def test_render_volume_scales_output():
     kit = drums.synth_kit()
     p = drums.GENRE_PATTERNS[0]

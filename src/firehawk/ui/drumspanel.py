@@ -45,7 +45,7 @@ from ..practice import (
     synth_kit,
     wav_duration,
 )
-from ..practice.drums import RATE, load_sample, render_count_in
+from ..practice.drums import RATE, load_sample, render_count_in, tempo_ramp
 from ..practice.patternstore import (
     MAX_CHOKE_GROUP,
     MAX_GAIN_DB,
@@ -982,6 +982,78 @@ class KitSoundsDialog(wx.Dialog):
         self.EndModal(wx.ID_CANCEL)
 
 
+class TempoTrainerDialog(wx.Dialog):
+    """Configure the tempo trainer: how fast it climbs, and whether it stops.
+
+    Ramp mode climbs from the current tempo to a target and holds; continuous mode
+    keeps nudging the tempo up past the target until you stop.  Every change is spoken
+    as the trainer runs, so the climbing speed is audible without watching the screen.
+    """
+
+    _BAR_CHOICES = [1, 2, 4, 8]
+
+    def __init__(self, parent, cfg: dict, start_bpm: int, dark: bool = True):
+        super().__init__(parent, title="Tempo Trainer", size=(460, 320),
+                         style=wx.DEFAULT_DIALOG_STYLE)
+        self.result = dict(cfg)
+        try:
+            root = wx.BoxSizer(wx.VERTICAL)
+            root.Add(wx.StaticText(self, label=(
+                f"Speed up as you practice, starting from the current tempo "
+                f"({start_bpm} BPM). Each step is spoken as it happens.")),
+                0, wx.ALL, 10)
+
+            grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
+            grid.AddGrowableCol(1, 1)
+
+            grid.Add(wx.StaticText(self, label="Speed up by (BPM):"), 0, wx.ALIGN_CENTER_VERTICAL)
+            self.step = wx.Slider(self, value=int(cfg["step"]), minValue=1, maxValue=30)
+            set_accessible_name(self.step, "Speed up by, BPM per step",
+                                value_fn=lambda: f"{self.step.GetValue()} BPM")
+            grid.Add(self.step, 0, wx.EXPAND)
+
+            grid.Add(wx.StaticText(self, label="Every (bars):"), 0, wx.ALIGN_CENTER_VERTICAL)
+            self.bars = wx.Choice(self, choices=[str(n) for n in self._BAR_CHOICES])
+            self.bars.SetSelection(self._BAR_CHOICES.index(cfg["bars"])
+                                   if cfg["bars"] in self._BAR_CHOICES else 1)
+            set_accessible_name(self.bars, "Speed up every how many bars")
+            grid.Add(self.bars, 0, wx.EXPAND)
+
+            grid.Add(wx.StaticText(self, label="Up to target (BPM):"), 0, wx.ALIGN_CENTER_VERTICAL)
+            self.target = wx.Slider(self, value=int(cfg["target"]),
+                                    minValue=TEMPO_MIN, maxValue=TEMPO_MAX)
+            set_accessible_name(self.target, "Target tempo, BPM",
+                                value_fn=lambda: f"{self.target.GetValue()} BPM")
+            grid.Add(self.target, 0, wx.EXPAND)
+            root.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+            self.continuous = wx.CheckBox(
+                self, label="Keep climbing past the target (endurance mode)")
+            self.continuous.SetValue(bool(cfg["continuous"]))
+            root.Add(self.continuous, 0, wx.ALL, 10)
+
+            btns = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+            if btns:
+                root.Add(btns, 0, wx.ALL | wx.ALIGN_RIGHT, 10)
+            self.Bind(wx.EVT_BUTTON, self._on_ok, id=wx.ID_OK)
+            self.SetSizer(root)
+            theme.apply(self, dark)
+            wx.CallAfter(self.step.SetFocus)
+        except Exception as exc:  # noqa: BLE001 - a swallowed error is a dead button
+            wx.MessageBox(f"Could not open Tempo Trainer:\n{exc}", "Tempo Trainer",
+                          wx.OK | wx.ICON_ERROR, self)
+            self.EndModal(wx.ID_CANCEL)
+
+    def _on_ok(self, event: wx.CommandEvent) -> None:
+        self.result = {
+            "step": self.step.GetValue(),
+            "bars": self._BAR_CHOICES[max(0, self.bars.GetSelection())],
+            "target": self.target.GetValue(),
+            "continuous": self.continuous.GetValue(),
+        }
+        self.EndModal(wx.ID_OK)
+
+
 class DrumsPanel(wx.Panel):
     def __init__(self, parent: wx.Window, settings=None, status: Callable[[str], None] | None = None):
         super().__init__(parent)
@@ -990,6 +1062,10 @@ class DrumsPanel(wx.Panel):
         self.player = DrumLoopPlayer()
         self._countin_player = _PreviewPlayer()   # one-shot channel for the count-in
         self._countin_timer: wx.CallLater | None = None
+        # Tempo trainer: climb the BPM as you practice (see TempoTrainerDialog).
+        self._trainer_cfg = {"step": 5, "bars": 2, "target": 160, "continuous": False}
+        self._trainer_timer: wx.CallLater | None = None
+        self._trainer_bpm = 0
         self._kit = synth_kit() if NUMPY_AVAILABLE else None
         self._kit_dir: Path | None = None  # None while the synth kit is active
         self._pattern = PATTERN_LIBRARY[0].copy()
@@ -1114,6 +1190,12 @@ class DrumsPanel(wx.Panel):
         self.countin_cb = wx.CheckBox(self, label="Count-&in")
         self.countin_cb.SetToolTip("Play one bar of clicks before the loop starts")
         buttons.Add(self.countin_cb, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.trainer_cb = wx.CheckBox(self, label="Tempo &trainer")
+        self.trainer_cb.SetToolTip("Speed the tempo up as you play; configure with Trainer Options")
+        buttons.Add(self.trainer_cb, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        self.trainer_btn = wx.Button(self, label="Trainer &Options...")
+        self.trainer_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_trainer_options())
+        buttons.Add(self.trainer_btn, 0, wx.RIGHT, 8)
         self.start_button = wx.Button(self, label="&Start")
         self.start_button.Bind(wx.EVT_BUTTON, self._on_start_stop)
         buttons.Add(self.start_button, 0)
@@ -1502,8 +1584,68 @@ class DrumsPanel(wx.Panel):
         self._countin_timer = None
         if not self._playing:                    # stopped during the count-in
             return
-        self._render_and_play()
-        self._announce(f"Drum loop started: {self._pattern.name}, {self.bpm} BPM.")
+        if self.trainer_cb.GetValue():
+            self._start_trainer()
+        else:
+            self._render_and_play()
+            self._announce(f"Drum loop started: {self._pattern.name}, {self.bpm} BPM.")
+
+    # -- tempo trainer --------------------------------------------------------
+
+    def _start_trainer(self) -> None:
+        self._trainer_bpm = self.bpm             # the Tempo slider is the starting speed
+        self._play_at_trainer_bpm()
+        cfg = self._trainer_cfg
+        if cfg["continuous"]:
+            self._announce(f"Tempo trainer from {self._trainer_bpm} BPM, climbing "
+                           f"{cfg['step']} every {cfg['bars']} bars.")
+        else:
+            steps = len(tempo_ramp(self._trainer_bpm, cfg["target"], cfg["step"]))
+            self._announce(f"Tempo trainer: {self._trainer_bpm} to {cfg['target']} BPM, "
+                           f"{steps} step{'s' if steps != 1 else ''}.")
+        self._schedule_trainer_bump()
+
+    def _play_at_trainer_bpm(self) -> None:
+        bpm = max(TEMPO_MIN, min(TEMPO_MAX, self._trainer_bpm))
+        self.tempo_slider.SetValue(bpm)          # programmatic: fires no EVT_SLIDER
+        self.tempo_label.SetLabel(f"Tempo: {bpm} BPM")
+        self._render_and_play()                  # renders at self.bpm (the slider)
+
+    def _schedule_trainer_bump(self) -> None:
+        bar_s = self._pattern.loop_seconds(self.bpm) / max(1, self._pattern.bars)
+        interval = max(0.5, self._trainer_cfg["bars"] * bar_s)
+        self._trainer_timer = wx.CallLater(int(interval * 1000), self._trainer_bump)
+
+    def _trainer_bump(self) -> None:
+        self._trainer_timer = None
+        if not self._playing:
+            return
+        cfg = self._trainer_cfg
+        nxt = self._trainer_bpm + cfg["step"]
+        if not cfg["continuous"] and nxt >= cfg["target"]:
+            self._trainer_bpm = cfg["target"]    # reached the ceiling: hold and stop climbing
+            self._play_at_trainer_bpm()
+            self._announce(f"Reached target, holding at {cfg['target']} BPM.")
+            return
+        if nxt > TEMPO_MAX:                       # continuous mode hit the very top
+            self._trainer_bpm = TEMPO_MAX
+            self._play_at_trainer_bpm()
+            self._announce(f"Top speed, {TEMPO_MAX} BPM.")
+            return
+        self._trainer_bpm = nxt
+        self._play_at_trainer_bpm()
+        self._announce(f"{nxt} BPM.")
+        self._schedule_trainer_bump()
+
+    def _open_trainer_options(self) -> None:
+        dlg = TempoTrainerDialog(self, self._trainer_cfg, self.bpm, dark=self._dark())
+        if dlg.ShowModal() == wx.ID_OK:
+            self._trainer_cfg = dlg.result
+            self.trainer_cb.SetValue(True)        # configuring it turns it on
+            c = self._trainer_cfg
+            mode = "climbing past the target" if c["continuous"] else f"up to {c['target']} BPM"
+            self._announce(f"Tempo trainer on: +{c['step']} BPM every {c['bars']} bars, {mode}.")
+        dlg.Destroy()
 
     def _cancel_countin(self) -> None:
         if self._countin_timer is not None:
@@ -1511,8 +1653,14 @@ class DrumsPanel(wx.Panel):
             self._countin_timer = None
         self._countin_player.stop()
 
+    def _cancel_trainer(self) -> None:
+        if self._trainer_timer is not None:
+            self._trainer_timer.Stop()
+            self._trainer_timer = None
+
     def stop(self) -> None:
         self._cancel_countin()
+        self._cancel_trainer()
         self.player.stop()
         self._playing = False
         self.start_button.SetLabel("&Start")
@@ -1521,6 +1669,7 @@ class DrumsPanel(wx.Panel):
     def dispose(self) -> None:
         # Teardown-safe: stop audio and free the temp file, touch no UI.
         self._cancel_countin()
+        self._cancel_trainer()
         self._countin_player.dispose()
         self.player.dispose()
         self._playing = False

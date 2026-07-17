@@ -33,7 +33,26 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Edit Pattern…** | Opens the Pattern Editor dialog. |
 | **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |
 | **Count-in** | When checked, **Start** first plays one bar of clicks (accented downbeat, at your tempo and meter) so you can come in on time; the loop then begins. Stop during the count-in cancels it. |
+| **Tempo trainer** + **Trainer Options…** | When checked, the loop **speeds up as you play** to build your chops. See below. |
 | **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. |
+
+### Tempo trainer (build speed)
+
+Check **Tempo trainer** and press **Start**: the loop begins at the current **Tempo** and
+**climbs as you play**, so you can push a fill or groove faster over a practice session.
+Each tempo change is **spoken** ("115 BPM"), so you hear the climb without watching.
+
+**Trainer Options…** sets how it climbs:
+
+- **Speed up by** — how many BPM to add at each step (1–30).
+- **Every** — how many bars to hold each tempo before stepping up (1, 2, 4, or 8).
+- **Up to target** — the tempo to climb toward.
+- **Keep climbing past the target (endurance mode)** — off = a *defined ramp* that stops
+  and holds at the target ("Reached target, holding at 130 BPM"); on = a *continuous* climb
+  that keeps nudging up until you Stop (or hit 300 BPM). This is the "both modes" toggle.
+
+It works with **Count-in** (the count leads in, then the climb starts) and with any meter.
+Stop ends it at once.
 
 ## The Pattern Editor (Edit Pattern… — or Ctrl+D from anywhere)
 

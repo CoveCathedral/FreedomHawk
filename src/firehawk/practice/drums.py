@@ -923,6 +923,21 @@ def _click_array(freq: float, rate: int, ms: float = 35.0, volume: float = 0.6):
     return (np.sin(2 * np.pi * freq * t) * env * volume).astype(np.float32)
 
 
+def tempo_ramp(start: int, target: int, step: int) -> list[int]:
+    """The tempo-trainer plateaus from *start* up to *target* (inclusive), by *step* BPM.
+
+    Always at least ``[start]``; never overshoots the target (the last jump is clamped).
+    Used for the finite ramp and to describe the climb ("90 to 160, 15 steps").
+    """
+    start = max(1, int(start))
+    step = max(1, int(step))
+    target = max(start, int(target))
+    seq = [start]
+    while seq[-1] < target:
+        seq.append(min(target, seq[-1] + step))
+    return seq
+
+
 def render_count_in(beats: int, beat_unit: int, bpm: float, rate: int = RATE):
     """One bar of clicks for a count-in as a (float32 samples, duration_seconds) pair.
 

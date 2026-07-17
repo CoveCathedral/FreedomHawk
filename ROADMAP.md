@@ -152,11 +152,12 @@ All screen-reader-first, native controls only.
   groups** (`C` puts a line in a group; lines in a group cut each other's ring — closed hat
   chokes open hat — with a short fade; render-time in `render_loop`; saved/shared).
   **Count-in** (main-tab checkbox; one accented bar of clicks at tempo/meter before the
-  loop, on its own one-shot channel; `render_count_in`).
-  **Planned next (Kaylea approved):** tempo trainer · song mode (pattern chaining) ·
-  audition-step & speak-rhythm keys · **MIDI controller input** (craft beats from a
-  keyboard). Long-term: spin
-  the sequencer out as its own open-source project (engine already firehawk-independent).
+  loop, on its own one-shot channel; `render_count_in`). **Tempo trainer** (climbs the BPM
+  as you play, each step spoken; Trainer Options dialog sets step/bars/target; toggle for a
+  defined ramp that holds at target vs. continuous endurance climb; `tempo_ramp`).
+  **Planned next (Kaylea approved):** song mode (pattern chaining) · audition-step &
+  speak-rhythm keys · **MIDI controller input** (craft beats from a keyboard). Long-term:
+  spin the sequencer out as its own open-source project (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;

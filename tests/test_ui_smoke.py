@@ -381,6 +381,49 @@ def test_count_in_defers_loop_and_stop_cancels(frame, monkeypatch):
     assert d._countin_timer is None and not d._playing
 
 
+def test_tempo_trainer_ramp_climbs_and_holds(frame, monkeypatch, _silence_audio):
+    d = frame.drums_page
+    if not d.player.available:
+        pytest.skip("no audio on this system")
+    d.tempo_slider.SetValue(100)
+    d._trainer_cfg = {"step": 5, "bars": 2, "target": 115, "continuous": False}
+    d.trainer_cb.SetValue(True)
+    d._playing = True
+    d._begin_loop()
+    assert d._trainer_bpm == 100                      # starts at the slider tempo
+    seq = [d._trainer_bpm]
+    for _ in range(6):
+        if d._trainer_timer:
+            d._trainer_timer.Stop()
+            d._trainer_timer = None
+        else:
+            break                                     # stopped climbing (held at target)
+        d._trainer_bump()
+        seq.append(d._trainer_bpm)
+    assert seq[-1] == 115 and d._trainer_timer is None   # reached and holds at target
+    assert d.tempo_slider.GetValue() == 115              # the slider tracked the climb
+    d.stop()
+
+
+def test_tempo_trainer_continuous_passes_target(frame, _silence_audio):
+    d = frame.drums_page
+    if not d.player.available:
+        pytest.skip("no audio on this system")
+    d.tempo_slider.SetValue(120)
+    d._trainer_cfg = {"step": 10, "bars": 1, "target": 130, "continuous": True}
+    d.trainer_cb.SetValue(True)
+    d._playing = True
+    d._begin_loop()
+    for _ in range(3):
+        if d._trainer_timer:
+            d._trainer_timer.Stop()
+            d._trainer_timer = None
+        d._trainer_bump()
+    assert d._trainer_bpm > 130                        # climbed past the target in endurance mode
+    d.stop()
+    assert not d._playing and d._trainer_timer is None
+
+
 def test_line_choke_group_cycles_and_speaks(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

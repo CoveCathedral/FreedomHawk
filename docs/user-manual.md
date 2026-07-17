@@ -148,6 +148,11 @@ your own sample libraries, is in `docs/drum-kits.md`; this is the tour.
 - **Part** + **Mute this part** — silence any part live without erasing its steps.
 - **Count-in** — when checked, Start plays one accented bar of clicks at your tempo and
   meter before the loop, so you can come in on the downbeat. Stop during it cancels.
+- **Tempo trainer** + **Trainer Options…** — when checked, the loop starts at the current
+  tempo and **speeds up as you play**, announcing each new BPM. In **Trainer Options** set
+  how much it climbs (BPM per step), how often (bars per step), the target, and whether to
+  **keep climbing past the target** (endurance mode) or stop and hold there (a defined
+  ramp). Great for pushing a fill from slow to fast, hands-free.
 - **Start/Stop** — the loop keeps playing across tabs, like the metronome.
 
 ### The Pattern Editor
