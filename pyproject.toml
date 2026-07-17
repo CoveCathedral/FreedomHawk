@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "firehawk-accessible"
+version = "0.1.0"
+description = "Accessible, screen-reader-first Windows controller for the Line 6 Firehawk FX pedal"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Firehawk Accessible Controller project" }]
+license = { text = "MIT" }
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+ui = ["wxPython>=4.2"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+firehawk = "firehawk.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+firehawk = ["data/*.json", "data/*.models", "data/*.bin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

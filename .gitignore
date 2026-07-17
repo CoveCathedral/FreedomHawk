@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Reverse-engineering scratch (large binaries / decompiled output kept locally, not shipped)
+extracted/
+ghidra_project/
+*.apk
+"Firehalk Decompiled from Webchat/"
+Firehalk Decompiled from Webchat/
+
+# Line 6 proprietary tone data — NOT redistributed. Each user extracts it from their
+# own lawfully-held APK with tools/extract_assets.py. Keep only the explanatory README.
+/src/firehawk/data/*
+!/src/firehawk/data/README.md
+
+# OS
+Thumbs.db
+.DS_Store

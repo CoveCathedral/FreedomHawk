@@ -1,0 +1,91 @@
+"""Visual theming: a high-contrast dark mode with large white labels.
+
+Designed for low-vision use — dark background, large bold white text labels, and
+readable input fields.  Applied recursively so it also covers controls created later
+when a block's parameters are rebuilt.
+
+On Windows we additionally ask the platform to render native controls (checkboxes,
+combos, spin buttons, scrollbars) in dark mode where the wx build supports it; the
+manual colouring below covers everything else and is the fallback when it doesn't.
+"""
+
+from __future__ import annotations
+
+import wx
+
+# Palette
+DARK_BG = wx.Colour(0x1E, 0x1E, 0x1E)      # window / panel background
+DARK_INPUT = wx.Colour(0x2D, 0x2D, 0x30)   # text fields, lists, combos
+LIGHT_FG = wx.Colour(0xFF, 0xFF, 0xFF)      # text
+MUTED_FG = wx.Colour(0xE0, 0xE0, 0xE0)
+
+LIGHT_BG = wx.NullColour  # let the system decide in light mode
+
+LABEL_POINT_SIZE = 12
+
+
+def label_font() -> wx.Font:
+    return wx.Font(wx.FontInfo(LABEL_POINT_SIZE).Bold())
+
+
+def input_font() -> wx.Font:
+    return wx.Font(wx.FontInfo(LABEL_POINT_SIZE))
+
+
+def enable_native_dark_mode(app: wx.App) -> None:
+    """Ask Windows to draw native controls dark, where the wx build supports it."""
+    for attr in ("MSWEnableDarkMode",):
+        fn = getattr(app, attr, None)
+        if callable(fn):
+            try:
+                fn()  # some builds accept a flags argument; default is fine
+            except TypeError:
+                try:
+                    fn(0)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+
+def apply(root: wx.Window, dark: bool = True) -> None:
+    """Recursively theme *root* and all descendants."""
+    stack = [root]
+    while stack:
+        win = stack.pop()
+        _style(win, dark)
+        stack.extend(win.GetChildren())
+    root.Refresh()
+
+
+def _style(win: wx.Window, dark: bool) -> None:
+    if not dark:
+        # Reset to system defaults for light mode.
+        win.SetBackgroundColour(wx.NullColour)
+        win.SetForegroundColour(wx.NullColour)
+        if isinstance(win, wx.StaticText):
+            win.SetFont(label_font())  # keep labels large even in light mode
+        return
+
+    if isinstance(win, wx.StaticText):
+        win.SetForegroundColour(LIGHT_FG)
+        win.SetBackgroundColour(DARK_BG)
+        win.SetFont(label_font())
+    elif isinstance(win, (wx.TextCtrl, wx.ListBox)):
+        win.SetBackgroundColour(DARK_INPUT)
+        win.SetForegroundColour(LIGHT_FG)
+        win.SetFont(input_font())
+    elif isinstance(win, wx.CheckBox):
+        win.SetForegroundColour(LIGHT_FG)
+        win.SetBackgroundColour(DARK_BG)
+        win.SetFont(label_font())
+    elif isinstance(win, (wx.Choice, wx.ComboBox, wx.SpinCtrl, wx.SpinCtrlDouble, wx.Button)):
+        win.SetBackgroundColour(DARK_INPUT)
+        win.SetForegroundColour(LIGHT_FG)
+    elif isinstance(win, wx.Slider):
+        win.SetBackgroundColour(DARK_BG)
+        win.SetForegroundColour(LIGHT_FG)
+    else:
+        # Panels, scrolled windows, listbook, the frame itself.
+        win.SetBackgroundColour(DARK_BG)
+        win.SetForegroundColour(LIGHT_FG)

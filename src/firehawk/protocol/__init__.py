@@ -1,0 +1,20 @@
+"""Protocol layer: wire framing, transport header, CRC, and value encoding.
+
+Confirmed so far (from static analysis of libAmplifiRemoteNdk.so):
+
+* :mod:`firehawk.protocol.crc` -- the CRC-16/CCITT used by the serial link.
+* :mod:`firehawk.protocol.transport_header` -- the 8-byte message transport header.
+
+Still to be finalised (see ``docs/protocol.md``): the ``RobustSerialMsgChannel`` serial
+frame (sync/length/seq/ack/segmentation) and the ``TypedValue`` payload encoding for a
+"set edit-buffer parameter" message.  Those land in a ``frame.py`` module once the
+Ghidra deep-dive and a hardware capture pin down the exact bytes.
+"""
+
+from .crc import crc16_ccitt_false, crc16_process, crc16_xmodem
+from .transport_header import TransportHeader
+
+__all__ = [
+    "crc16_process", "crc16_xmodem", "crc16_ccitt_false",
+    "TransportHeader",
+]
