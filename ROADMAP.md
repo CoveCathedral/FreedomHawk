@@ -126,8 +126,11 @@ All screen-reader-first, native controls only.
 - **Drum Looper** — DONE, several iterations with Kaylea live-testing. Built-in synth kit
   (kick/snare/hats/clap/808/tom/perc/ride/crash) or user drum libraries (Import Drum Kit
   button; kits auto-discovered from `Samples/`; per-part sample choice via Kit Sounds).
-  **200-groove library** + **user-saved patterns** with genre **categories and filtering**
-  (user-defined categories included). **Tracker-grid Pattern Editor** (Kaylea's design):
+  **500-groove library across ~60 genres** (rock/metal/funk/hip-hop/electronic/latin/jazz/
+  odd-meters, each a category; dynamics baked in) + **user-saved patterns** with genre
+  **categories and filtering** (user-defined categories included). Grooves that play both
+  hats come pre-choked (open hat closed by the closed hat). **Tracker-grid Pattern Editor**
+  (Kaylea's design):
   one list line per drum line, spoken time cursor (step/beat/bar granularity via direct
   screen-reader speech), Space toggles, Enter per-line sample options incl. None, Delete,
   P preview, F1 key help; **drum stacking + mix-and-match across libraries** (up to 24

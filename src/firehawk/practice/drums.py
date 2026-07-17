@@ -521,6 +521,71 @@ GENRE_PATTERNS = [
        beats=5, unit=8, grid=2),
     _p("Djent 7/16 (poly)", {"kick": [0, 1, 2, 4, 5], "808": [0, 4], "snare": [3]},
        beats=7, unit=16, grid=4),
+
+    # --- rock & punk ---
+    _p("Hard Rock", {"kick": [0, 6, 8, 14], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Punk", {"kick": [0, 8, 10], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14], "crash": [0]}),
+    _p("Grunge", {"kick": [0, 8, 11], "snare": [4, 12], "hihat": [0, 4, 8, 12], "crash": [0]}),
+    _p("Motorik", {"kick": [0, 4, 8, 12], "snare": [4, 12], "hihat": list(range(16))}),
+    _p("Surf", {"kick": [0, 8], "snare": [4, 12], "tom": [2, 6, 10, 14], "hihat": [0, 4, 8, 12]}),
+    _p("Ballad", {"kick": [0, 8], "snare": [8], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+
+    # --- metal (extreme) ---
+    _p("Thrash Gallop", {"kick": [0, 2, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15], "snare": [4, 12], "crash": [0]}),
+    _p("Blast Beat", {"kick": [0, 2, 4, 6, 8, 10, 12, 14], "snare": [1, 3, 5, 7, 9, 11, 13, 15], "crash": [0]}),
+    _p("D-Beat", {"kick": [0, 3, 8, 11], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14], "crash": [0]}),
+    _p("Breakdown", {"kick": [0, 3, 6, 8, 11, 14], "snare": [8], "crash": [0, 8]}),
+    _p("Doom", {"kick": [0, 8], "snare": [8], "hihat": [0, 4, 8, 12], "crash": [0]}),
+
+    # --- funk, soul, disco ---
+    _p("Motown", {"kick": [0, 8], "snare": [4, 12], "clap": [0, 4, 8, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Second Line", {"kick": [0, 3, 8, 11], "snare": [4, 6, 12, 14], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Boogaloo", {"kick": [0, 3, 6, 10, 11], "snare": [4, 12], "hihat": list(range(16))}),
+    _p("Nu-Disco", {"kick": [0, 4, 8, 12], "clap": [4, 12], "openhat": [2, 6, 10, 14], "hihat": [0, 8]}),
+
+    # --- hip-hop, trap, r&b ---
+    _p("Boom Bap", {"kick": [0, 3, 8], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Drill", {"kick": [0, 7, 10], "808": [0, 7, 10], "snare": [6, 14], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Lo-Fi", {"kick": [0, 10], "snare": [4, 12], "hihat": [0, 4, 8, 12]}),
+    _p("R&B", {"kick": [0, 6, 10], "snare": [4, 12], "hihat": list(range(16))}),
+    _p("Reggaeton", {"kick": [0, 8], "snare": [3, 7, 11, 14], "hihat": [0, 4, 8, 12]}),
+
+    # --- electronic ---
+    _p("House", {"kick": [0, 4, 8, 12], "clap": [4, 12], "openhat": [2, 6, 10, 14], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Techno", {"kick": [0, 4, 8, 12], "clap": [4, 12], "hihat": [2, 6, 10, 14], "perc": [3, 11]}),
+    _p("Trance", {"kick": [0, 4, 8, 12], "clap": [4, 12], "openhat": [2, 6, 10, 14]}),
+    _p("Drum and Bass", {"kick": [0, 10], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Dubstep", {"kick": [0, 6], "snare": [8], "hihat": [0, 4, 8, 12], "openhat": [14]}),
+    _p("Breakbeat", {"kick": [0, 6, 10], "snare": [4, 12], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("UK Garage", {"kick": [0, 6, 10], "snare": [4, 12], "hihat": [2, 6, 10, 14], "openhat": [8]}),
+    _p("Trip-Hop", {"kick": [0, 8], "snare": [4, 12], "hihat": [0, 4, 8, 12]}),
+
+    # --- latin & world ---
+    _p("Bossa Nova", {"kick": [0, 6, 8, 14], "perc": [0, 3, 6, 10, 13], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Samba", {"kick": [0, 3, 4, 7, 8, 11, 12, 15], "snare": [2, 6, 10, 14], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Afrobeat", {"kick": [0, 6, 10], "snare": [4, 10, 12], "perc": [2, 5, 8, 13], "hihat": list(range(16))}),
+    _p("Reggae One Drop", {"kick": [8], "snare": [8], "hihat": [0, 2, 4, 6, 8, 10, 12, 14]}),
+    _p("Ska", {"kick": [0, 8], "snare": [4, 12], "hihat": [2, 6, 10, 14]}),
+    _p("Soca", {"kick": [0, 4, 8, 12], "snare": [4, 12], "hihat": [2, 6, 10, 14], "perc": [3, 7, 11, 15]}),
+
+    # --- jazz & traditional (triplet-swing where noted) ---
+    _p("Jazz Swing", {"ride": [0, 2, 3, 5, 6, 8, 9, 11], "hihat": [3, 9], "kick": [0, 6]},
+       beats=4, unit=4, grid=3),
+    _p("Blues Shuffle", {"kick": [0, 6], "snare": [3, 9], "ride": [0, 2, 3, 5, 6, 8, 9, 11]},
+       beats=4, unit=4, grid=3),
+    _p("Jazz Waltz", {"ride": [0, 2, 3, 5, 6, 8], "hihat": [3], "kick": [0]},
+       beats=3, unit=4, grid=3),
+    _p("Waltz", {"kick": [0], "snare": [4, 8], "hihat": [0, 2, 4, 6, 8, 10]}, beats=3, unit=4),
+    _p("March", {"kick": [0, 4], "snare": [0, 2, 4, 6], "crash": [0]}, beats=2, unit=4),
+    _p("Polka", {"kick": [0, 4], "snare": [2, 6], "hihat": [0, 2, 4, 6]}, beats=2, unit=4),
+    _p("Gospel 6/8", {"kick": [0, 3], "snare": [3], "hihat": [0, 1, 2, 3, 4, 5]}, beats=6, unit=8, grid=2),
+    _p("Country Train", {"kick": [0, 8], "snare": [4, 12], "hihat": list(range(16))}),
+
+    # --- more odd / prog meters ---
+    _p("9/8", {"kick": [0, 4], "snare": [2, 6], "hihat": [0, 1, 2, 3, 4, 5, 6, 7, 8]}, beats=9, unit=8, grid=2),
+    _p("7/4", {"kick": [0, 4, 8], "snare": [4, 10], "hihat": list(range(14))}, beats=7, unit=4, grid=2),
+    _p("11/8 (3+3+3+2)", {"kick": [0, 3, 6], "snare": [9], "hihat": list(range(11))}, beats=11, unit=8, grid=2),
+    _p("5/4 Fast", {"kick": [0, 6, 12], "snare": [4, 16], "hihat": list(range(0, 20, 2))}, beats=5, unit=4),
 ]
 
 
@@ -548,7 +613,7 @@ def _bake_default_dynamics(p: Pattern) -> Pattern:
 GENRE_PATTERNS = [_bake_default_dynamics(p) for p in GENRE_PATTERNS]
 
 
-# -- the pattern library (200 grooves: hand-made bases + seeded variations) --------
+# -- the pattern library (500 grooves: hand-made genre bases + seeded variations) --
 
 def _metrical_beat_len(p: Pattern) -> int:
     """Grid steps in one metrical beat of the pattern (e.g. an eighth in 7/8)."""
@@ -635,11 +700,12 @@ def _generate_variation(base: Pattern, seed: int, with_fill: bool, name: str) ->
     return p
 
 
-def build_pattern_library(total: int = 200) -> list[Pattern]:
+def build_pattern_library(total: int = 500) -> list[Pattern]:
     """The full groove list: the hand-made bases plus seeded variations up to *total*.
 
     Seeds are fixed, so the library is identical every launch — pattern 137 today is
-    pattern 137 forever.
+    pattern 137 forever.  Dozens of genre bases (rock, metal, funk, hip-hop, electronic,
+    latin, jazz, odd meters, ...) each become a category, with dynamics baked in.
     """
     library = [p.copy() for p in GENRE_PATTERNS]
     counters: dict[str, int] = {}

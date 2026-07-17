@@ -129,9 +129,9 @@ def test_drums_panel_layout(frame):
     d = frame.drums_page
     assert isinstance(d, DrumsPanel)
     assert d.part_choice.GetCount() >= 1
-    # 200 grooves in the dropdown; the kit dropdown holds only kits (import is a
+    # 500 grooves in the dropdown; the kit dropdown holds only kits (import is a
     # separate button, so arrowing through kits never springs a folder dialog).
-    assert d.groove_choice.GetCount() == 200
+    assert d.groove_choice.GetCount() == 500
     assert all("..." not in item for item in d.kit_choice.GetItems())
     assert d.import_button.GetLabel() == "&Import Drum Kit..."
 
@@ -523,7 +523,7 @@ def test_category_filter_and_user_presets(frame):
     from firehawk.practice.patternstore import make_line, make_record, save_user_pattern
     d = frame.drums_page
     all_count = len(d._groove_entries)
-    assert all_count == 200  # built-ins with no user patterns yet
+    assert all_count == 500  # built-ins with no user patterns yet
     # Filter to the Rock family only.
     d.category_choice.SetSelection(d.category_choice.FindString("Rock"))
     d._rebuild_groove_list()

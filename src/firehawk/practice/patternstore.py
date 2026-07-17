@@ -116,6 +116,11 @@ def lines_for_kit(pattern: Pattern, kit, kit_name: str | None,
     kit_roles = kit.roles() if kit else []
     roles = [r for r in ROLES if r in kit_roles or r in pattern.hits]
     roles += [r for r in pattern.hits if r not in roles]
+    # Default hi-hat choke: when a groove actually plays both an open and a closed hat, put
+    # them in one choke group so the closed hat cuts the open hat's ring (as on a real kit).
+    # Keyed on the hits (not just kit voices), so closed-hat-only grooves are untouched.
+    # The user can clear it per line with C in the editor.
+    hats_choke = 1 if ("hihat" in pattern.hits and "openhat" in pattern.hits) else 0
     lines = []
     for role in roles:
         lines.append({
@@ -123,6 +128,7 @@ def lines_for_kit(pattern: Pattern, kit, kit_name: str | None,
             "role": role if role in ROLES else "perc",
             "kit": None, "sample": None,  # follow the globally selected kit
             "steps": list(pattern.hits.get(role, [])),
+            "choke": hats_choke if role in ("hihat", "openhat") else 0,
         })
     return lines
 

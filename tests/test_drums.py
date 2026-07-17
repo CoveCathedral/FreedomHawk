@@ -173,11 +173,18 @@ def test_all_genre_patterns_hits_in_range():
 
 def test_pattern_library_size_and_uniqueness():
     lib = drums.PATTERN_LIBRARY
-    assert len(lib) == 200
+    assert len(lib) == 500
     names = [p.name for p in lib]
-    assert len(set(names)) == 200
+    assert len(set(names)) == 500
     # The hand-made bases come first, unchanged.
     assert names[: len(drums.GENRE_PATTERNS)] == [p.name for p in drums.GENRE_PATTERNS]
+
+
+def test_library_spans_many_genres():
+    from firehawk.practice import patternstore as ps
+    cats = {ps.builtin_category(p.name) for p in drums.PATTERN_LIBRARY}
+    assert "" not in cats                       # every pattern maps to a genre
+    assert len(cats) >= 40                       # a broad spread of styles
 
 
 def test_pattern_library_is_valid_and_deterministic():

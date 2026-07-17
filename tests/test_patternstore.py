@@ -215,6 +215,18 @@ def test_polymeter_length_round_trips():
     assert ps.record_from_file_dict(weird)["lines"][0]["length"] is None
 
 
+def test_lines_for_kit_auto_chokes_played_hats():
+    from firehawk.practice import synth_kit
+    both = Pattern("t", 16, 4, {"hihat": [0, 4], "openhat": [8], "kick": [0]}, 4, 4, 1)
+    m = {ln["id"]: ln.get("choke", 0) for ln in ps.lines_for_kit(both, synth_kit(), None)}
+    assert m["hihat"] == 1 and m["openhat"] == 1     # closed hat chokes the open hat
+    assert m["kick"] == 0
+    # A groove that only plays closed hats is left untouched (nothing ringing to cut).
+    closed = Pattern("t", 16, 4, {"hihat": [0, 4], "kick": [0]}, 4, 4, 1)
+    m2 = {ln["id"]: ln.get("choke", 0) for ln in ps.lines_for_kit(closed, synth_kit(), None)}
+    assert m2["hihat"] == 0 and m2.get("openhat", 0) == 0
+
+
 def test_lines_for_kit_covers_pattern_and_kit():
     from firehawk.practice import synth_kit
     p = Pattern("t", 16, 4, {"kick": [0], "fx": [4]}, 4, 4, 1)

@@ -37,7 +37,8 @@ minus the cloud.
 Possibly the first genuinely screen-reader-first step sequencer anywhere — designed
 hands-on with its blind user, and headed for a standalone open-source project of its own:
 
-- **200 built-in grooves** (rock to trap to 5/4, 7/8, and djent polymeters) plus your own
+- **500 built-in grooves** across ~60 genres (rock, metal, funk, hip-hop, trap, house,
+  techno, drum & bass, reggae, latin, jazz, 5/4, 7/8, 9/8, djent polymeters, and more) plus your own
   saved patterns, organised by genre **categories you can create and manage**.
 - A **tracker-style Pattern Editor** (Ctrl+D from anywhere): one line per drum, a time
   cursor on the arrow keys (step / beat / bar granularity), every move **spoken directly

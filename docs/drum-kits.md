@@ -22,7 +22,7 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Kit** | The sound set for the **whole pattern**: "Synth (built-in)" plus any kit folder found in `Samples/`. It applies globally — every part follows it, including any groove or saved pattern you load — unless you deliberately give a line its own source in the editor. Arrowing this list only switches kits; it never opens a dialog. |
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
 | **Category** | Filters the Groove list by genre family (Rock, Funk, Trap, 5/4…) — plus any categories you create when saving your own patterns. |
-| **Groove** | 200 built-in patterns (the classic bases plus numbered variations — names ending in "fill" include a drum fill), followed by **your saved patterns** shown with their category. First-letter navigation works in the list. |
+| **Groove** | 500 built-in patterns across ~60 genres — rock, punk, metal, funk, disco, hip-hop, trap, drill, house, techno, drum & bass, dubstep, reggae, ska, bossa, samba, afrobeat, jazz swing, blues shuffle, waltz, gospel 6/8, odd meters (5/4, 7/8, 9/8, 11/8…), and more — each a base groove plus numbered variations (names ending in "fill" include a drum fill), followed by **your saved patterns** shown with their category. First-letter navigation works in the list. |
 | **Fill every** | For jamming: stretches the groove so the fill only comes around every 2, 4, 8, 12, or 16 bars — plain groove until then, fill as the turnaround, crash on the restart. "Pattern length" plays the groove exactly as written. |
 | **Fill style** | "As written" plays the groove's own fill. **"Improvised"** generates fresh fills on every render — varying length (short, long, occasionally a whole bar) and density, Diablo-style rule-bound randomness — so the groove rarely repeats itself exactly. Fills follow the **Fill every** cadence (a 4-bar cycle when it's unset) and always land on the meter, odd time signatures included. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
@@ -120,6 +120,10 @@ the open hat that's still ringing. The readout names the members ("Open Hat chok
 choking with Closed Hat"). It also works for cymbal chokes, or any "this sound kills that
 one" pair. The cut lands exactly on the next hit in the group (with a tiny fade so it
 doesn't click), and the setting saves and shares with the pattern.
+
+**Built-in grooves that play both an open and a closed hat come pre-choked** (both hats in
+group 1), so open hats close naturally like on a real kit. Press **C** on either hat line
+to change or clear it.
 
 ### Visual track (low-vision grid view)
 

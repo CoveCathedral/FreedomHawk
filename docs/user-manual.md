@@ -136,8 +136,10 @@ your own sample libraries, is in `docs/drum-kits.md`; this is the tour.
 - **Kit Sounds…** — choose which sample each part uses, by ear: pick a part, arrow
   through its samples (each plays as you land on it), Save.
 - **Category** — filter the grooves by genre family, including categories you create.
-- **Groove** — 200 built-in patterns plus your saved ones. Names ending in "fill"
-  include a drum fill.
+- **Groove** — 500 built-in patterns spanning ~60 genres (rock, metal, funk, hip-hop,
+  trap, house, techno, drum & bass, reggae, latin, jazz, odd meters, and many more) plus
+  your saved ones. Names ending in "fill" include a drum fill; **Category** filters by
+  genre.
 - **Fill every** — stretch the groove so the fill only comes around every 2–16 bars.
 - **Fill style** — "As written", or **Improvised**: freshly generated fills every time,
   varying length and density, always on the meter.
