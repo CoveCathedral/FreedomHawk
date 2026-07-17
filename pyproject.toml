@@ -25,7 +25,7 @@ firehawk = "firehawk.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-firehawk = ["data/*.json", "data/*.models", "data/*.bin"]
+firehawk = ["data/*.json", "data/*.models", "data/*.bin", "presets/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

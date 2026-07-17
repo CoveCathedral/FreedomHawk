@@ -1,0 +1,119 @@
+{
+  "data": {
+    "device": 2097154,
+    "device_version": 7471224,
+    "meta": {
+      "name": "Chime & Shimmer",
+      "author": "FreedomHawk",
+      "band": "",
+      "style": "Clean",
+      "instrument": "Electric"
+    },
+    "tone": {
+      "amp": {
+        "@model": "ClassA30TopBoost",
+        "Bass": 0.39,
+        "Mid": 0.88,
+        "Treble": 0.69,
+        "Gain": 0.48,
+        "Presence": 0.0,
+        "@volume": 0.61,
+        "Cut": 0.6
+      },
+      "cab": {
+        "@model": "2x12ClassAFawnStudio",
+        "@mic": 0,
+        "Level": 0.0
+      },
+      "compressor": {
+        "@enabled": false,
+        "@model": "SharcPodFixedComp",
+        "Gain": 0,
+        "Thresh/G": 0.806982
+      },
+      "eq": {
+        "@enabled": true,
+        "@model": "ParaGraphic4_band",
+        "Gain": 0.505133,
+        "HMid": 0.305695,
+        "Hi": 0.515729,
+        "LMid": 0.288098,
+        "Low": 0.12956,
+        "gain": 0.50154,
+        "gain.1": 0.50308,
+        "gain.2": 0.406571
+      },
+      "fx1": {
+        "@enabled": false,
+        "@mix": 1,
+        "@mixtype": 0,
+        "@model": "Screamer",
+        "@post": false,
+        "Drive": 0.750513,
+        "Gain": 0.344456,
+        "Tone": 0.750513
+      },
+      "fx2": {
+        "@enabled": false,
+        "@mix": 0.924025,
+        "@mixtype": 1,
+        "@model": "UVibe",
+        "@post": true,
+        "@temposync": false,
+        "Depth": 0.458419,
+        "Speed": 0.0663765,
+        "SyncSelect": 6
+      },
+      "fx3": {
+        "@model": "AnalogDelay",
+        "SyncSelect": 6,
+        "@temposync": true,
+        "Time": 0.265153,
+        "Feedback": 0.38,
+        "Bass": 0.5,
+        "Treble": 0.5,
+        "@mix": 0.18,
+        "@mixtype": 0,
+        "@enabled": true,
+        "@post": true,
+        "@stereo": false
+      },
+      "gate": {
+        "@enabled": false,
+        "@model": "Gate",
+        "Decay": 0.802361,
+        "Thresh": -54.5051
+      },
+      "global": {
+        "@tempo": 171.473,
+        "@tweakgroup": "fx3",
+        "@tweakparam": "@mix"
+      },
+      "reverb": {
+        "@model": "HD_VerbzillaReverbPlate",
+        "Decay": 0.33,
+        "Predelay": 0.004,
+        "Tone": 0.55,
+        "@mix": 0.3,
+        "@mixtype": 3,
+        "@enabled": true,
+        "@post": true
+      },
+      "volume": {
+        "@enabled": true,
+        "@model": "VolumePedal",
+        "@post": true,
+        "MaxVol": 1,
+        "MinVol": 0,
+        "Volume": 1
+      },
+      "wah": {
+        "@enabled": false,
+        "@model": "Line6Vetta",
+        "Pedal": 0.570329
+      }
+    }
+  },
+  "schema": "L6Preset",
+  "version": 5
+}

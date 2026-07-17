@@ -22,6 +22,23 @@ def test_factory_preset_present(library: PresetLibrary):
     assert not factory[0].deletable
 
 
+def test_starter_presets_present(library: PresetLibrary, catalog: ModelCatalog):
+    starters = library.starter_presets()
+    assert len(starters) >= 5
+    names = {e.name for e in starters}
+    assert "Classic Crunch" in names
+    for e in starters:
+        assert e.source == "starter" and not e.deletable
+        # Their models resolve against the catalog (valid, loadable presets).
+        amp = e.preset.blocks["amp"].model_id
+        assert catalog.model(amp) is not None
+
+
+def test_all_presets_includes_starters(library: PresetLibrary):
+    displays = [e.display for e in library.all_presets()]
+    assert any("(Starter)" in d for d in displays)
+
+
 def test_save_list_and_delete_user_preset(library: PresetLibrary, catalog: ModelCatalog):
     preset = Preset.load_default(catalog.data_dir)
     path = library.save(preset, "My Metal Tone")

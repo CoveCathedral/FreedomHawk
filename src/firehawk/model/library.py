@@ -19,6 +19,9 @@ from .preset import Preset
 
 DEFAULT_USER_DIR = Path.home() / "Documents" / "Firehawk Presets"
 
+# The project's own starter presets, bundled in the package (repo-committed).
+STARTER_DIR = Path(__file__).resolve().parent.parent / "presets"
+
 # Factory presets bundled with the app data.
 _FACTORY_FILES = ("default_preset.json",)
 
@@ -38,7 +41,8 @@ class PresetEntry:
 
     @property
     def display(self) -> str:
-        tag = {"factory": "Factory", "user": "User", "device": "Device"}.get(self.source, "")
+        tag = {"factory": "Factory", "starter": "Starter",
+               "user": "User", "device": "Device"}.get(self.source, "")
         return f"{self.name}  ({tag})" if tag else self.name
 
 
@@ -67,6 +71,18 @@ class PresetLibrary:
             entries.append(PresetEntry(preset.meta.get("name") or path.stem, "factory", preset))
         return entries
 
+    def starter_presets(self) -> list[PresetEntry]:
+        entries: list[PresetEntry] = []
+        if not STARTER_DIR.exists():
+            return entries
+        for path in sorted(STARTER_DIR.glob("*.json")):
+            try:
+                preset = Preset.from_json(json.loads(path.read_text(encoding="utf-8")))
+            except (ValueError, KeyError, OSError):
+                continue
+            entries.append(PresetEntry(preset.meta.get("name") or path.stem, "starter", preset))
+        return entries
+
     def user_presets(self) -> list[PresetEntry]:
         self.ensure_user_dir()
         entries: list[PresetEntry] = []
@@ -79,7 +95,7 @@ class PresetLibrary:
         return entries
 
     def all_presets(self) -> list[PresetEntry]:
-        return self.factory_presets() + self.user_presets()
+        return self.factory_presets() + self.starter_presets() + self.user_presets()
 
     # -- mutation -------------------------------------------------------------
 
