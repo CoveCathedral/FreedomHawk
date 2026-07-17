@@ -58,6 +58,7 @@ class TunerPanel(wx.Panel):
         root.Add(self.stop_button, 0, wx.ALL, 8)
 
         self.SetSizer(root)
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         self._load_tunings()
 
     # -- population -----------------------------------------------------------
@@ -112,6 +113,15 @@ class TunerPanel(wx.Panel):
         if self._playing_index is not None:
             self._playing_index = None
             self._announce("Stopped.")
+
+    def dispose(self) -> None:
+        """Stop any tone and remove the tuner's temp WAV file."""
+        self.player.dispose()
+
+    def _on_destroy(self, event: wx.WindowDestroyEvent) -> None:
+        if event.GetWindow() is self:
+            self.dispose()
+        event.Skip()
 
     def _announce(self, message: str) -> None:
         if self._status is not None:

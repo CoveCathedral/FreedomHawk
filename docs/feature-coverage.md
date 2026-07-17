@@ -40,7 +40,8 @@ connection + protocol validation) · 🎛️ hardware-only (not app-controllable
 | Feature | Status | Notes |
 |---|---|---|
 | Tuner | ✅ | **By-ear reference-tone tuner** — plays a sustained tone per string; instrument (6/7/8-string guitar, 4/5/6-string bass) + full tuning library. No pedal needed, and far more useful to a blind player than the pedal's light-based tuner |
-| Tap tempo | ✅ | Tempo is set on the Global page (live tap is a device action) |
+| Metronome | ✅ | **New (the pedal had none)** — adjustable tempo (30–300 BPM), time signature, subdivision, accented downbeat, and tap-tempo. Keeps running across tabs so you can practice while editing |
+| Tap tempo | ✅ | Tempo is set on the Global page (live tap is a device action); the Metronome also has its own tap-tempo |
 | Master volume / guitar-level blend | 🎛️ | Front-panel knob; not an app parameter |
 | Output Mode (Line / Amp) | 🎛️ | **Rear-panel physical switch** — not app-controllable |
 | Firmware update | — | Out of scope (risky; not an accessibility need) |
@@ -62,7 +63,9 @@ Along with Music). Only the *cloud tone-matching* part is gone.
 - Full **NVDA screen-reader accessibility** — the entire point; the original app had none.
 - **High-contrast dark mode**, large labels, keyboard-first navigation, jump hotkeys.
 - **Customizable tab order** (Settings > Arrange Tabs) — reorder any tab and it persists;
-  the Tuner defaults to the bottom so it stays out of the editing workflow.
+  the practice tools default to the bottom so they stay out of the editing workflow.
+- A **metronome** the pedal never had — adjustable tempo/time-signature/subdivision,
+  accented downbeat, tap-tempo. (A drum looper is planned on top of this.)
 - A **staged, gated** device bridge that shows the exact bytes each edit would send.
 
 ## Summary

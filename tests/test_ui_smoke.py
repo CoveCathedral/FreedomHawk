@@ -17,6 +17,7 @@ import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
 from firehawk.ui.mainframe import MainFrame
+from firehawk.ui.metronomepanel import MetronomePanel
 from firehawk.ui.presetspanel import PresetsPanel
 from firehawk.ui.tunerpanel import TunerPanel
 
@@ -45,15 +46,17 @@ def _block_page(frame, slot_id):
 
 
 def test_has_presets_page_and_all_blocks(frame):
-    # Presets + Tuner pages, plus one per slot.
-    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 2
+    # Presets + Tuner + Metronome pages, plus one per slot.
+    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 3
     assert isinstance(frame.listbook.GetPage(0), PresetsPanel)
 
 
-def test_default_order_puts_tuner_last(frame):
+def test_default_order_puts_practice_tools_last(frame):
     assert frame._view_ids[0] == "presets"
-    assert frame._view_ids[-1] == "tuner"
-    assert isinstance(frame.listbook.GetPage(frame.listbook.GetPageCount() - 1), TunerPanel)
+    assert frame._view_ids[-2:] == ["tuner", "metronome"]
+    last = frame.listbook.GetPageCount() - 1
+    assert isinstance(frame.listbook.GetPage(last), MetronomePanel)
+    assert isinstance(frame.listbook.GetPage(last - 1), TunerPanel)
 
 
 def test_reorder_rebuilds_and_persists(frame):
@@ -74,6 +77,28 @@ def test_editing_still_works_after_reorder(frame):
     amp = _block_page(frame, "amp")
     amp._on_param("Bass", 0.42)
     assert frame.buffer.get_param("amp", "Bass") == pytest.approx(0.42)
+
+
+def test_metronome_start_stop_toggles(frame):
+    m = frame.metronome_page
+    assert isinstance(m, MetronomePanel)
+    if not m.player.available:
+        pytest.skip("no audio device available")
+    m._on_start_stop(None)  # start
+    assert m.is_running()
+    assert m.start_button.GetLabel() == "&Stop"
+    m._on_start_stop(None)  # stop
+    assert not m.is_running()
+    assert m.start_button.GetLabel() == "&Start"
+
+
+def test_metronome_survives_reorder(frame):
+    # Moving the Metronome to the top must keep the same live panel object.
+    metro = frame.metronome_page
+    frame.settings.set_page_order(["metronome"] + [v for v in frame._view_ids if v != "metronome"])
+    frame._rebuild_after_reorder()
+    assert frame.metronome_page is metro
+    assert frame._view_ids[0] == "metronome"
 
 
 def test_every_control_has_accessible_name(frame):
