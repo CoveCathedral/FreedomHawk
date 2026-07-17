@@ -5,7 +5,8 @@ reliably (verified with the user's screen reader):
 
 * **checkbox** for booleans (name carried in its label);
 * **slider** for continuous values and wide integer ranges (name forced via a
-  ``wx.Accessible``; the value is spoken as the slider moves);
+  ``wx.Accessible``; its real, formatted value is both shown as text and offered to
+  the screen reader as the spoken value);
 * **dropdown** (``wx.Choice``) for small integer/enumerated ranges (name forced,
   selected option spoken; also the natural home for named choices later).
 
@@ -43,7 +44,7 @@ def accessible_label(spec: ParamSpec) -> str:
 
 
 class ParamControl:
-    """A single parameter's label + widget, wired to a change callback."""
+    """A single parameter's label, widget, and live value readout."""
 
     def __init__(
         self,
@@ -62,12 +63,26 @@ class ParamControl:
         self._smin = 0
         self._smax = 100
         self._int_lo = 0
+        self._current = value if value is not None else spec.default
+
         self.control = self._build(parent, value)
         if isinstance(self.control, wx.CheckBox):
             self.label = wx.StaticText(parent, label="")
         else:
-            self.label = wx.StaticText(parent, label=self.label_text + ":")
-            set_accessible_name(self.control, self.label_text)
+            # Sliders show their live value in the label ("Bass: 59%") and offer the
+            # same formatted value to the screen reader as the spoken value.
+            self.label = wx.StaticText(parent, label=self._label_display())
+            value_fn = self.format_value_current if self._is_slider else None
+            set_accessible_name(self.control, self.label_text, value_fn)
+
+    def _label_display(self) -> str:
+        if self._is_slider:
+            return f"{self.label_text}: {self.format_value(self._current)}"
+        return f"{self.label_text}:"
+
+    @property
+    def _is_slider(self) -> bool:
+        return self._kind in ("slider_cont", "slider_int")
 
     # -- construction ---------------------------------------------------------
 
@@ -84,7 +99,7 @@ class ParamControl:
     def _build_bool(self, parent, value) -> wx.CheckBox:
         cb = wx.CheckBox(parent, label=self.label_text)  # label = accessible name
         cb.SetValue(bool(value))
-        cb.Bind(wx.EVT_CHECKBOX, lambda e: self.on_change(self.spec.symbolic_id, e.IsChecked()))
+        cb.Bind(wx.EVT_CHECKBOX, lambda e: self._emit(e.IsChecked()))
         self._kind = "bool"
         return cb
 
@@ -97,31 +112,21 @@ class ParamControl:
         lo, hi = int(self.spec.minimum), int(self.spec.maximum)
         cur = int(value if value is not None else self.spec.default)
         if hi - lo <= _MAX_CHOICE_SPAN:
+            self._int_lo = lo
             choice = wx.Choice(parent, choices=self._int_option_labels(lo, hi))
             choice.SetSelection(max(0, min(hi - lo, cur - lo)))
-            choice.Bind(
-                wx.EVT_CHOICE,
-                lambda e: self.on_change(self.spec.symbolic_id, self._int_lo + e.GetSelection()),
-            )
+            choice.Bind(wx.EVT_CHOICE, lambda e: self._emit(self._int_lo + e.GetSelection()))
             self._kind = "choice_int"
-            self._int_lo = lo
             return choice
         slider = wx.Slider(parent, value=cur, minValue=lo, maxValue=hi, style=wx.SL_HORIZONTAL)
         self._set_slider_steps(slider, hi - lo)
-        slider.Bind(wx.EVT_SLIDER, lambda e: self.on_change(self.spec.symbolic_id, e.GetInt()))
+        slider.Bind(wx.EVT_SLIDER, lambda e: self._emit(e.GetInt()))
         self._kind = "slider_int"
         return slider
 
     def _int_option_labels(self, lo: int, hi: int) -> list[str]:
-        """Option labels for an integer/enum dropdown.
-
-        Uses the parameter's named options where known; otherwise the numbers.
-        """
         options = self.spec.options
-        labels = []
-        for i, v in enumerate(range(lo, hi + 1)):
-            labels.append(options[i] if i < len(options) else str(v))
-        return labels
+        return [options[i] if i < len(options) else str(v) for i, v in enumerate(range(lo, hi + 1))]
 
     def _build_continuous(self, parent, value) -> wx.Slider:
         lo, hi = float(self.spec.minimum), float(self.spec.maximum)
@@ -138,10 +143,7 @@ class ParamControl:
             minValue=self._smin, maxValue=self._smax, style=wx.SL_HORIZONTAL,
         )
         self._set_slider_steps(slider, self._smax - self._smin)
-        slider.Bind(
-            wx.EVT_SLIDER,
-            lambda e: self.on_change(self.spec.symbolic_id, self._from_slider(e.GetInt())),
-        )
+        slider.Bind(wx.EVT_SLIDER, lambda e: self._emit(self._from_slider(e.GetInt())))
         self._kind = "slider_cont"
         return slider
 
@@ -168,9 +170,44 @@ class ParamControl:
         frac = (pos - self._smin) / (self._smax - self._smin) if self._smax != self._smin else 0.0
         return self._lo + frac * (self._hi - self._lo)
 
-    # -- value access ---------------------------------------------------------
+    # -- value display / change -----------------------------------------------
+
+    def format_value(self, val) -> str:
+        """A readable string for the current value (with units where known)."""
+        k = self._kind
+        if k == "bool":
+            return "on" if val else "off"
+        if k == "string":
+            return "" if val is None else str(val)
+        if k == "choice_int":
+            i = int(val) - self._int_lo
+            opts = self.spec.options
+            return opts[i] if 0 <= i < len(opts) else str(int(val))
+        if k == "slider_int":
+            return str(int(val))
+        unit = _unit_for(self.spec)
+        if self._mode == "pct01":
+            return f"{round(float(val) * 100)}%"
+        if unit:
+            return f"{float(val):.1f} {unit}"
+        if self._mode == "direct":
+            return f"{float(val):.0f}"
+        return f"{float(val):.2f}"
+
+    def format_value_current(self) -> str:
+        return self.format_value(self._current)
+
+    def _emit(self, value) -> None:
+        self._current = value
+        self._refresh_readout()
+        self.on_change(self.spec.symbolic_id, value)
+
+    def _refresh_readout(self) -> None:
+        if self._is_slider:
+            self.label.SetLabel(self._label_display())
 
     def set_value(self, value) -> None:
+        self._current = value
         if self._kind == "bool":
             self.control.SetValue(bool(value))
         elif self._kind == "string":
@@ -181,3 +218,4 @@ class ParamControl:
             self.control.SetValue(int(value))
         elif self._kind == "slider_cont":
             self.control.SetValue(self._to_slider(float(value)))
+        self._refresh_readout()
