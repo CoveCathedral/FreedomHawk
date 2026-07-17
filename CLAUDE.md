@@ -16,12 +16,15 @@ unreachable to them, and the hardware they own is on a path to becoming a brick.
 ## The accessibility mandate (highest priority — never trade away)
 
 1. **Every UI control must be a standard native widget** that exposes a correct
-   accessible name, value, role, and range to NVDA. Use wxPython or PySide6/Qt built from
-   stock controls. **Never** use canvas-drawn, custom-painted, or web-embedded controls
-   for anything the user must operate.
-2. Each parameter → a labeled slider/spinbox with real `min`/`max`/`step`/`default` pulled
-   from the model metadata. Each model → a list/combo item. Each block → a checkbox with a
-   true accessible name and on/off state.
+   accessible name, value, role, and range to NVDA. Built with **wxPython** (native Win32
+   controls — the toolkit NVDA's own GUI uses). **Never** use canvas-drawn, custom-painted,
+   or web-embedded controls for anything the user must operate.
+2. **Only three control types read reliably with NVDA here — use nothing else:** a
+   **checkbox** (name in its label), a **slider** (name forced via `wx.Accessible`), and a
+   **dropdown `wx.Choice`** (name forced). **Never use spin controls** (`wx.SpinCtrl`/
+   `wx.SpinCtrlDouble`) — they announce only their value, not their label. So: continuous
+   params → slider; integer/enum params → dropdown (or slider for wide ranges); models →
+   dropdown; block toggles → checkbox. All ranges come from the model metadata.
 3. **Keyboard-first.** Everything must be reachable and operable by keyboard alone, with a
    sensible tab order. No mouse-only interactions.
 4. When responding to the user in chat, **structure every reply with Markdown heading
@@ -97,7 +100,7 @@ Two complementary ways to finish it (do both; they cross-check):
 
 ## Build conventions
 
-- **Language: Python.** UI: **wxPython or PySide6/Qt**, native controls only.
+- **Language: Python.** UI: **wxPython**, native controls only (checkbox/slider/dropdown).
 - Model metadata drives every control's label and range — never hardcode UI ranges.
 - Flat data files as source of truth (matches the user's flat-file habit).
 - Test the `model` layer with assertions that known models/params/ranges resolve correctly.
