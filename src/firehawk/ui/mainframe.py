@@ -41,7 +41,7 @@ def _is_within(window: wx.Window | None, ancestor: wx.Window) -> bool:
 class MainFrame(wx.Frame):
     def __init__(self, catalog: ModelCatalog | None = None, device_id: int | None = None,
                  dark: bool = True):
-        super().__init__(None, title=APP_TITLE, size=(900, 680))
+        super().__init__(None, title=APP_TITLE, size=(1000, 720))
         self.catalog = catalog or ModelCatalog()
         self.device_id = device_id
         self.dark_mode = dark
@@ -77,6 +77,9 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.listbook.Bind(wx.EVT_LISTBOOK_PAGE_CHANGED, self._on_page_changed)
         self._apply_theme()
+        # Re-size the sidebar once the frame is shown and first laid out (the Listbook
+        # computes its list width late, so a construction-time pass alone isn't enough).
+        wx.CallAfter(self._size_sidebar)
 
     def _on_page_changed(self, event) -> None:
         # Stop any tuner tone when navigating away from the Tuner page.
@@ -112,7 +115,33 @@ class MainFrame(wx.Frame):
 
     def _apply_theme(self) -> None:
         theme.apply(self, self.dark_mode)
+        self._size_sidebar()
         self.Refresh()
+
+    def _size_sidebar(self) -> None:
+        """Widen the tab list to fit its enlarged font, so low-vision users can read it.
+
+        The Listbook sizes its list to the old (tiny) font at creation and doesn't
+        re-widen when we enlarge it, so measure the widest tab label and force the width.
+        """
+        lv = self._list_view()
+        if lv is None:
+            return
+        font = theme.sidebar_font()
+        lv.SetFont(font)
+        titles = dict(all_views())
+        dc = wx.ClientDC(lv)
+        dc.SetFont(font)
+        widest = max((dc.GetTextExtent(titles.get(v, v)).width for v in self._view_ids),
+                     default=120)
+        width = widest + 64          # room for the item margin and selection highlight
+        try:
+            lv.SetColumnWidth(0, width)   # so long labels aren't clipped inside the list
+        except Exception:  # noqa: BLE001 - not all builds expose a report column
+            pass
+        lv.SetMinSize(wx.Size(width, -1))
+        self.listbook.SendSizeEvent()     # a size event (not Layout) makes it honor the width
+        self.Layout()
 
     # -- pages ----------------------------------------------------------------
 
@@ -657,17 +686,19 @@ class MainFrame(wx.Frame):
         wx.MessageBox(body, "Detected serial ports", wx.ICON_INFORMATION)
 
     def _on_manual(self, event) -> None:
-        """Open the user manual (docs/user-manual.md) in the default text app."""
+        """Open the user manual in the browser (HTML, navigable), falling back to Markdown."""
         import os
-        manual = Path.cwd() / "docs" / "user-manual.md"
-        if manual.is_file():
-            try:
-                os.startfile(str(manual))  # noqa: S606 - opening our own doc file
-                return
-            except OSError:
-                pass
+        docs = Path.cwd() / "docs"
+        for name in ("user-manual.html", "user-manual.md"):  # prefer the navigable HTML
+            manual = docs / name
+            if manual.is_file():
+                try:
+                    os.startfile(str(manual))  # noqa: S606 - opening our own doc file
+                    return
+                except OSError:
+                    continue
         wx.MessageBox(
-            "The manual lives at docs\\user-manual.md in the FreedomHawk folder, and "
+            "The manual lives at docs\\user-manual.html in the FreedomHawk folder, and "
             "online at github.com/CoveCathedral/FreedomHawk.",
             "User manual", wx.ICON_INFORMATION)
 

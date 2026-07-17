@@ -22,6 +22,7 @@ MUTED_FG = wx.Colour(0xE0, 0xE0, 0xE0)
 LIGHT_BG = wx.NullColour  # let the system decide in light mode
 
 LABEL_POINT_SIZE = 12
+SIDEBAR_POINT_SIZE = 15   # the tab list is navigation — larger, for low-vision reading
 
 
 def label_font() -> wx.Font:
@@ -30,6 +31,10 @@ def label_font() -> wx.Font:
 
 def input_font() -> wx.Font:
     return wx.Font(wx.FontInfo(LABEL_POINT_SIZE))
+
+
+def sidebar_font() -> wx.Font:
+    return wx.Font(wx.FontInfo(SIDEBAR_POINT_SIZE).Bold())
 
 
 def enable_native_dark_mode(app: wx.App) -> None:
@@ -65,9 +70,15 @@ def _style(win: wx.Window, dark: bool) -> None:
         win.SetForegroundColour(wx.NullColour)
         if isinstance(win, wx.StaticText):
             win.SetFont(label_font())  # keep labels large even in light mode
+        elif isinstance(win, wx.ListCtrl):
+            win.SetFont(sidebar_font())  # keep the tab sidebar large in light mode too
         return
 
-    if isinstance(win, wx.StaticText):
+    if isinstance(win, wx.ListCtrl):  # the Listbook's tab sidebar (before generic panels)
+        win.SetBackgroundColour(DARK_INPUT)
+        win.SetForegroundColour(LIGHT_FG)
+        win.SetFont(sidebar_font())
+    elif isinstance(win, wx.StaticText):
         win.SetForegroundColour(LIGHT_FG)
         win.SetBackgroundColour(DARK_BG)
         win.SetFont(label_font())
