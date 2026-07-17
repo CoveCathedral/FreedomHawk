@@ -108,13 +108,21 @@ The main **Tools** menu (Alt+T) holds the sequencer's management and sharing com
 MIDI *controller* input (crafting beats from a MIDI keyboard) is planned.
 
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
-each beat divides), and **Bars in loop** (1–4). Changing these is **non-destructive**:
-**growing the bar count repeats the existing music** across the new bars (shrinking keeps
-the first bars, and 1→N→1 restores exactly), while **changing the grid or beats re-quantizes
-every hit to its musical position** — a backbeat stays a backbeat, nothing drops out or
-drifts out of time. (Grids like triplets and sixteenths don't divide evenly, so flipping
-between them isn't bit-perfect, but the feel is preserved; per-line polymeter lengths reset
-on a grid change.) For loops longer than 4 bars, use **Fill every** on the main tab.
+each beat divides), and **Bars in loop** (1–4). **The meter is Beats per bar + Beat unit —
+the Grid is only a subdivision, not the time signature.** Changing the Grid from, say,
+sixteenths to triplets leaves a 7/8 pattern in 7/8; it just re-spaces the hits on a finer or
+coarser lattice. So if your groove reads **4/4**, that is genuinely its meter — to make it
+odd, change **Beats per bar** and **Beat unit** (e.g. 7 and 8), not the Grid. After **any**
+change here the app speaks the whole resulting state — "**7/8, sixteenth grid, 2 bars**" — so
+the meter is always reaffirmed and never silently assumed.
+
+Changing these is **non-destructive**: **growing the bar count repeats the existing music**
+across the new bars (shrinking keeps the first bars, and 1→N→1 restores exactly), while
+**changing the grid or beats re-quantizes every hit to its musical position** — a backbeat
+stays a backbeat, nothing drops out or drifts out of time. (Grids like triplets and
+sixteenths don't divide evenly, so flipping between them isn't bit-perfect, but the feel is
+preserved; per-line polymeter lengths reset on a grid change.) For loops longer than 4 bars,
+use **Fill every** on the main tab.
 
 Spoken navigation uses the `accessible_output2` library (speaks through NVDA when it is
 running, Windows speech otherwise). It installs with the app's UI dependencies.

@@ -303,6 +303,26 @@ def test_grid_meter_change(frame):
         dlg.Destroy()
 
 
+def test_grid_change_preserves_meter_and_speaks_it(frame, _silence_audio):
+    # The user's report: "change the grid and it locks to 4/4." Changing the grid is a
+    # subdivision change, NOT a meter change — the time signature must survive, and a
+    # blind user must hear it reaffirmed (never silently assumed to be 4/4).
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.beats_choice.SetSelection(6)   # 7/8 first
+        dlg.unit_choice.SetSelection(2)
+        dlg._on_meter(None)
+        assert dlg.pattern.meter_label() == "7/8"
+        _silence_audio.clear()
+        dlg.grid_choice.SetSelection(2)    # now change ONLY the grid
+        dlg._on_meter(None)
+        assert dlg.pattern.meter_label() == "7/8"      # meter did NOT lock to 4/4
+        assert "7/8" in _silence_audio[-1]             # and NVDA said so
+        assert "4/4" not in _silence_audio[-1]
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_none_silences_part(frame):
     dlg = _grid_dialog(frame)
     try:

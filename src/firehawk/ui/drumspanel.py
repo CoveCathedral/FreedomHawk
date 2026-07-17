@@ -668,12 +668,19 @@ class PatternEditorDialog(wx.Dialog):
         self.pattern = retime_pattern(self.pattern, beats, unit, grid, bars)
         self._cursor = min(self._cursor, self._line_len() - 1)
         self._rebuild_rows()
+        # Always speak the WHOLE resulting state — meter, grid, bars — after any change.
+        # The grid is a subdivision, not the time signature, so changing it leaves the
+        # meter alone; a blind user must still hear the meter reaffirmed every time, or
+        # an unchanged "4/4" reads as if the pattern were stuck there.
+        grid_name = next((label for label, g in GRID_CHOICES
+                          if g == self.pattern.steps_per_beat), "custom").lower()
+        bars_txt = f"{self.pattern.bars} bar{'s' if self.pattern.bars != 1 else ''}"
+        state = f"{self.pattern.meter_label()}, {grid_name} grid, {bars_txt}"
         note = " Per-line lengths reset." if (was_poly and grid_changed) else ""
         if grid_changed:
-            speech.speak(f"Grid changed; hits re-quantized to the new grid.{note}")
+            speech.speak(f"{state}. Hits re-quantized to the new grid.{note}")
         else:
-            speech.speak(f"Meter {self.pattern.meter_label()}, "
-                         f"{self.pattern.bars} bar{'s' if self.pattern.bars != 1 else ''}.")
+            speech.speak(f"{state}.")
         self._reaudition()
 
     def _effective_pattern(self) -> Pattern:
