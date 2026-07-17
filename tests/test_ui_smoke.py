@@ -138,8 +138,12 @@ def test_drums_panel_layout(frame):
 def _grid_dialog(frame):
     from firehawk.ui.drumspanel import PatternEditorDialog
     d = frame.drums_page
-    return PatternEditorDialog(d, d._pattern.copy(), d._kit, None, {}, set(),
-                               d.player, d.bpm, dark=True)
+    return PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
+                               set(), d.player, d.bpm, dark=True, settings=d._settings)
+
+
+def _line_index(dlg, line_id):
+    return next(i for i, ln in enumerate(dlg.lines) if ln["id"] == line_id)
 
 
 class _Key:
@@ -159,12 +163,52 @@ class _Key:
         pass
 
 
-def test_grid_rows_one_per_part(frame):
+def test_grid_rows_one_per_line(frame):
     dlg = _grid_dialog(frame)
     try:
-        assert dlg.grid_list.GetCount() == len(dlg._roles)
+        assert dlg.grid_list.GetCount() == len(dlg.lines)
         assert dlg.grid_list.GetString(0).startswith("Kick:")
         assert "sample" in dlg.grid_list.GetString(0)
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_up_down_moves_lines_and_speaks(frame, _silence_audio):
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        dlg.grid_list.SetSelection(0)
+        dlg._on_grid_key(_Key(wx.WXK_DOWN))
+        assert dlg.grid_list.GetSelection() == 1
+        assert spoken[-1].startswith("Snare:") and "Cursor:" in spoken[-1]
+        dlg._on_grid_key(_Key(wx.WXK_UP))
+        assert dlg.grid_list.GetSelection() == 0
+        assert spoken[-1].startswith("Kick:")
+        dlg._on_grid_key(_Key(wx.WXK_UP))  # clamped at the top
+        assert dlg.grid_list.GetSelection() == 0
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_add_and_delete_line(frame, _silence_audio):
+    from firehawk.practice.patternstore import make_line
+    dlg = _grid_dialog(frame)
+    try:
+        before = len(dlg.lines)
+        ln = make_line("kick", None, None, existing=dlg.lines)  # stacked synth kick
+        assert ln["id"] == "kick 2"
+        dlg.lines.append(ln)
+        dlg._rebuild_line_kit()
+        dlg._rebuild_rows()
+        assert dlg._line_kit.voice("kick 2") is not None
+        # Toggle a hit on the stacked line, then delete it.
+        dlg.grid_list.SetSelection(len(dlg.lines) - 1)
+        dlg._cursor = 4
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert 4 in dlg.pattern.hits["kick 2"]
+        dlg._on_grid_key(_Key(wx.WXK_DELETE))
+        assert len(dlg.lines) == before
+        assert "kick 2" not in dlg.pattern.hits
     finally:
         dlg.Destroy()
 
@@ -188,14 +232,15 @@ def test_grid_space_toggles_hits(frame, _silence_audio):
     spoken = _silence_audio
     dlg = _grid_dialog(frame)
     try:
-        dlg.grid_list.SetSelection(dlg._roles.index("kick"))
+        idx = _line_index(dlg, "kick")
+        dlg.grid_list.SetSelection(idx)
         dlg._cursor = 2
         dlg._on_grid_key(_Key(wx.WXK_SPACE))
         assert 2 in dlg.pattern.hits["kick"] and "Kick on" in spoken[-1]
         dlg._on_grid_key(_Key(wx.WXK_SPACE))
         assert 2 not in dlg.pattern.hits.get("kick", []) and "Kick off" in spoken[-1]
         # The row label reflects the new hit count.
-        assert dlg.grid_list.GetString(dlg._roles.index("kick")).startswith("Kick: 2 hits")
+        assert dlg.grid_list.GetString(idx).startswith("Kick: 2 hits")
     finally:
         dlg.Destroy()
 
@@ -220,7 +265,8 @@ def test_grid_none_silences_part(frame):
     try:
         dlg.silenced.add("kick")
         assert "kick" not in dlg._effective_pattern().hits  # silenced parts don't render
-        assert dlg._sample_desc("kick") == "silent"
+        kick = dlg.lines[_line_index(dlg, "kick")]
+        assert dlg._sample_desc(kick) == "silent"
     finally:
         dlg.Destroy()
 
@@ -230,16 +276,48 @@ def test_grid_save_flow(frame):
     dlg = _grid_dialog(frame)
     d = frame.drums_page
     try:
-        dlg.grid_list.SetSelection(dlg._roles.index("tom"))
+        dlg.grid_list.SetSelection(_line_index(dlg, "tom"))
         dlg._cursor = 1
         dlg._on_grid_key(_Key(wx.WXK_SPACE))
-        edited = dlg.pattern
+        edited, lines = dlg.pattern, [dict(ln) for ln in dlg.lines]
     finally:
         dlg.Destroy()
     d._pattern = edited
+    d._line_meta = lines
     d._rebuild_parts()
     assert 1 in d._pattern.hits["tom"]
     assert "Tom" in d.part_choice.GetItems()
+
+
+def test_category_filter_and_user_presets(frame):
+    from firehawk.practice.patternstore import make_line, make_record, save_user_pattern
+    d = frame.drums_page
+    all_count = len(d._groove_entries)
+    assert all_count == 200  # built-ins with no user patterns yet
+    # Filter to the Rock family only.
+    d.category_choice.SetSelection(d.category_choice.FindString("Rock"))
+    d._rebuild_groove_list()
+    assert 0 < len(d._groove_entries) < all_count
+    assert all(d.groove_choice.GetString(i).startswith("Rock")
+               for i in range(d.groove_choice.GetCount()))
+    # Save a mixed-line pattern under a new category; it appears in the list.
+    lines = [make_line("kick"), make_line("snare")]
+    lines[0]["steps"] = [0, 8]
+    from firehawk.practice.patternstore import lines_to_pattern
+    pattern = lines_to_pattern(lines, 4, 4, 4, 1, name="My Jam")
+    rec = make_record("My Jam", "Prog", 4, 4, 4, 1, lines, pattern)
+    save_user_pattern(d._settings, rec)
+    d._rebuild_categories()
+    d.category_choice.SetSelection(d.category_choice.FindString("Prog"))
+    d._rebuild_groove_list()
+    assert len(d._groove_entries) == 1 and d._groove_entries[0][0] == "user"
+    # Selecting it loads the pattern with composite voices and line-named parts.
+    d.groove_choice.SetSelection(0)
+    d._on_groove(None)
+    assert d._pattern.name == "My Jam"
+    assert d._pattern_voices is not None
+    assert d._pattern_voices.voice("kick") is not None
+    assert "Kick" in d.part_choice.GetItems()
 
 
 def test_drum_volume_and_fill_style_controls(frame):

@@ -42,6 +42,18 @@ from ..practice import (
     wav_duration,
 )
 from ..practice.drums import load_sample
+from ..practice.patternstore import (
+    MAX_LINES,
+    all_categories,
+    build_line_kit,
+    builtin_category,
+    lines_for_kit,
+    make_line,
+    make_record,
+    record_to_pattern,
+    save_user_pattern,
+    user_patterns,
+)
 from . import speech, theme
 from .accessibility import set_accessible_name
 
@@ -123,53 +135,55 @@ class _PreviewPlayer:
 
 
 class PatternEditorDialog(wx.Dialog):
-    """Tracker-style accessible pattern grid (designed with/for a blind NVDA user).
+    """Tracker-style accessible pattern grid (designed with/for its blind NVDA user).
 
-    One list row per drum part.  A shared *time cursor* moves with the arrow keys
-    and speaks its position and state directly through the screen reader:
+    One list row per **line** — and lines are free: stack several of the same drum,
+    mix samples from different libraries, up to 24 lines.  A shared time cursor
+    lives on the arrow keys, with every move spoken directly through the screen
+    reader:
 
-    - Up/Down          part lines (the list itself)
+    - Up/Down          move between lines (spoken)
     - Left/Right       one grid step        (the smallest increment)
     - Ctrl+Left/Right  one beat
     - Ctrl+Shift+L/R   one bar              (Home/End: start / last step)
-    - Space            toggle a hit for this part at the cursor
-    - Enter            sample options for this part (choose a sample, or None)
-    - P                preview this part's sound
+    - Space            toggle a hit for this line at the cursor
+    - Enter            sample options for this line (pick a sample, or None)
+    - Delete           remove an added line
+    - P                preview this line's sound
     - F1               speak this key list
 
-    Works on its own copies; Save returns them, Cancel (or Escape) discards.  Play
-    auditions the edited loop while you work.
+    Buttons: Add Line (any part, from the synth or any kit library), Load Groove
+    (any built-in or saved pattern), Save as Preset (name + category), Play/Pause,
+    Save, Cancel.  Works on its own copies; Save returns them, Cancel discards.
     """
 
     AUTO = "(automatic default)"
 
-    def __init__(self, parent: wx.Window, pattern: Pattern, kit, kit_dir,
-                 sample_choices: dict[str, str] | None, silenced: set[str] | None,
-                 player: DrumLoopPlayer, bpm: int, dark: bool = True):
+    def __init__(self, parent: wx.Window, pattern: Pattern, lines: list[dict],
+                 kits_dir, silenced: set[str] | None, player: DrumLoopPlayer,
+                 bpm: int, dark: bool = True, settings=None):
         super().__init__(parent, title="Pattern Editor",
-                         size=(620, 560), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+                         size=(660, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.pattern = pattern
-        self._kit = kit
-        self._kit_dir = Path(kit_dir) if kit_dir else None
-        self.sample_choices = dict(sample_choices or {})
+        self.lines = [dict(ln) for ln in lines]
         self.silenced: set[str] = set(silenced or ())
+        self._kits_dir = Path(kits_dir)
+        self._settings = settings
         self._player = player
         self._bpm = bpm
+        self._dark = dark
         self._auditioning = False
         self._cursor = 0
         self._preview = _PreviewPlayer()
-        self._role_files = list_role_files(self._kit_dir) if self._kit_dir else {}
-
-        kit_roles = kit.roles() if kit else []
-        self._roles = [r for r in ROLES if r in kit_roles or r in pattern.hits]
+        self._line_kit = build_line_kit(self.lines, self._kits_dir)
 
         root = wx.BoxSizer(wx.VERTICAL)
         intro = wx.StaticText(self, label=(
-            "One line per part. Left/Right move by step, Ctrl+Left/Right by beat, "
-            "Ctrl+Shift by bar; Space toggles a hit; Enter picks this part's sample "
-            "(or None); P previews it; F1 speaks this list. Play auditions while you "
-            "edit; Save keeps changes, Cancel or Escape discards."))
-        intro.Wrap(580)
+            "One line per part; add lines to stack drums or mix libraries. Up/Down "
+            "move between lines; Left/Right move by step, Ctrl by beat, Ctrl+Shift "
+            "by bar; Space toggles a hit; Enter picks the line's sample (or None); "
+            "Delete removes a line; P previews; F1 speaks the keys."))
+        intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
 
         self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
@@ -200,6 +214,15 @@ class PatternEditorDialog(wx.Dialog):
         root.Add(meter, 0, wx.ALL, 10)
 
         btns = wx.BoxSizer(wx.HORIZONTAL)
+        add_btn = wx.Button(self, label="Add &Line...")
+        add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add_line())
+        btns.Add(add_btn, 0, wx.RIGHT, 8)
+        load_btn = wx.Button(self, label="Load &Groove...")
+        load_btn.Bind(wx.EVT_BUTTON, lambda e: self._load_groove())
+        btns.Add(load_btn, 0, wx.RIGHT, 8)
+        preset_btn = wx.Button(self, label="Save as Prese&t...")
+        preset_btn.Bind(wx.EVT_BUTTON, lambda e: self._save_as_preset())
+        btns.Add(preset_btn, 0, wx.RIGHT, 8)
         self.play_btn = wx.Button(self, label="&Play")
         self.play_btn.Bind(wx.EVT_BUTTON, self._on_play)
         btns.Add(self.play_btn, 0, wx.RIGHT, 8)
@@ -214,22 +237,21 @@ class PatternEditorDialog(wx.Dialog):
         self.SetSizer(root)
         self.Bind(wx.EVT_CLOSE, self._on_close)
         # Grid keys arrive via the dialog's char hook: a dialog preprocesses Enter
-        # (default button) and Space before a list's own key handler ever runs, so
-        # binding EVT_KEY_DOWN on the list silently loses those keys.
+        # (default button) and Space before a list's own key handler ever runs.
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         theme.apply(self, dark)
 
         self._sync_meter_controls()
         self._rebuild_rows()
-        if self._roles:
+        if self.lines:
             self.grid_list.SetSelection(0)
         wx.CallAfter(self.grid_list.SetFocus)
 
     # -- state ----------------------------------------------------------------
 
-    def _current_role(self) -> str | None:
+    def _current_line(self) -> dict | None:
         sel = self.grid_list.GetSelection()
-        return self._roles[sel] if 0 <= sel < len(self._roles) else None
+        return self.lines[sel] if 0 <= sel < len(self.lines) else None
 
     def _per_bar(self) -> int:
         return max(1, self.pattern.steps // max(1, self.pattern.bars))
@@ -238,31 +260,36 @@ class PatternEditorDialog(wx.Dialog):
         p = self.pattern
         return max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
 
-    def _sample_desc(self, role: str) -> str:
-        if role in self.silenced:
+    def _sample_desc(self, line: dict) -> str:
+        if line["id"] in self.silenced:
             return "silent"
-        if self._kit_dir is not None and role in self._role_files:
-            chosen = self.sample_choices.get(role)
-            if chosen:
-                return Path(chosen).stem
-            pick = default_sample_for(role, self._role_files[role])
+        if line.get("kit"):
+            if line.get("sample"):
+                return Path(line["sample"]).stem
+            files = list_role_files(self._kits_dir / line["kit"]).get(line["role"], [])
+            pick = default_sample_for(line["role"], files)
             return pick.stem if pick else "none"
         return "synth sound"
 
-    def _row_label(self, role: str) -> str:
-        n = len(self.pattern.hits.get(role, []))
+    def _row_label(self, line: dict) -> str:
+        n = len(self.pattern.hits.get(line["id"], []))
         hits = "no hits" if n == 0 else ("1 hit" if n == 1 else f"{n} hits")
-        return f"{ROLE_LABELS.get(role, role)}: {hits}, sample {self._sample_desc(role)}"
+        return f"{line['label']}: {hits}, sample {self._sample_desc(line)}"
 
     def _rebuild_rows(self) -> None:
         keep = max(0, self.grid_list.GetSelection())
-        self.grid_list.Set([self._row_label(r) for r in self._roles])
-        if self._roles:
-            self.grid_list.SetSelection(min(keep, len(self._roles) - 1))
+        self.grid_list.Set([self._row_label(ln) for ln in self.lines])
+        if self.lines:
+            self.grid_list.SetSelection(min(keep, len(self.lines) - 1))
 
-    def _refresh_row(self, role: str) -> None:
-        if role in self._roles:
-            self.grid_list.SetString(self._roles.index(role), self._row_label(role))
+    def _refresh_row(self, line: dict) -> None:
+        for i, ln in enumerate(self.lines):
+            if ln is line:
+                self.grid_list.SetString(i, self._row_label(line))
+                return
+
+    def _rebuild_line_kit(self) -> None:
+        self._line_kit = build_line_kit(self.lines, self._kits_dir)
 
     def _sync_meter_controls(self) -> None:
         p = self.pattern
@@ -277,17 +304,32 @@ class PatternEditorDialog(wx.Dialog):
     # -- the grid keys ---------------------------------------------------------
 
     def _speak_cursor(self) -> None:
-        role = self._current_role()
-        state = "hit" if role and self._cursor in self.pattern.hits.get(role, []) else "empty"
+        line = self._current_line()
+        state = ("hit" if line and self._cursor in self.pattern.hits.get(line["id"], [])
+                 else "empty")
         speech.speak(f"{step_label(self.pattern, self._cursor)}, {state}")
 
     def _move_cursor(self, delta: int) -> None:
         self._cursor = max(0, min(self.pattern.steps - 1, self._cursor + delta))
         self._speak_cursor()
 
-    _GRID_KEYS = frozenset({wx.WXK_LEFT, wx.WXK_RIGHT, wx.WXK_HOME, wx.WXK_END,
-                            wx.WXK_SPACE, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER,
-                            wx.WXK_F1, ord("P"), ord("p")})
+    def _move_line(self, delta: int) -> None:
+        """Move between lines and speak the landing line ourselves — up/down is fully
+        owned, so navigation is deterministic whatever the native list would do."""
+        if not self.lines:
+            return
+        sel = max(0, self.grid_list.GetSelection())
+        new = max(0, min(len(self.lines) - 1, sel + delta))
+        self.grid_list.SetSelection(new)
+        line = self.lines[new]
+        state = "hit" if self._cursor in self.pattern.hits.get(line["id"], []) else "empty"
+        speech.speak(f"{self._row_label(line)}. Cursor: "
+                     f"{step_label(self.pattern, self._cursor)}, {state}")
+
+    _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
+                            wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
+                            wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
+                            ord("P"), ord("p")})
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -300,7 +342,9 @@ class PatternEditorDialog(wx.Dialog):
     def _on_grid_key(self, event: wx.KeyEvent) -> None:
         code = event.GetKeyCode()
         ctrl, shift = event.ControlDown(), event.ShiftDown()
-        if code in (wx.WXK_LEFT, wx.WXK_RIGHT):
+        if code in (wx.WXK_UP, wx.WXK_DOWN):
+            self._move_line(1 if code == wx.WXK_DOWN else -1)
+        elif code in (wx.WXK_LEFT, wx.WXK_RIGHT):
             sign = 1 if code == wx.WXK_RIGHT else -1
             if ctrl and shift:
                 self._move_cursor(sign * self._per_bar())
@@ -318,23 +362,27 @@ class PatternEditorDialog(wx.Dialog):
             self._toggle_hit()
         elif code in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             self._sample_options()
+        elif code == wx.WXK_DELETE:
+            self._delete_line()
         elif code in (ord("P"), ord("p")):
-            self._preview_part()
+            self._preview_line()
         elif code == wx.WXK_F1:
             speech.speak(
-                "Left and Right move by step. Control Left and Right move by beat. "
-                "Control Shift Left and Right move by bar. Home and End jump to the "
-                "start and end. Space toggles a hit. Enter picks this part's sample "
-                "or None. P previews the part. Tab reaches the meter controls and "
-                "the Play, Save and Cancel buttons.")
+                "Up and Down move between lines. Left and Right move by step. "
+                "Control Left and Right move by beat. Control Shift Left and Right "
+                "move by bar. Home and End jump to the start and end. Space toggles "
+                "a hit. Enter picks this line's sample or None. Delete removes a "
+                "line. P previews the line. Tab reaches Add Line, Load Groove, "
+                "Save as Preset, the meter controls, and Play, Save and Cancel.")
         else:
             event.Skip()
 
     def _toggle_hit(self) -> None:
-        role = self._current_role()
-        if role is None:
+        line = self._current_line()
+        if line is None:
             return
-        steps = set(self.pattern.hits.get(role, []))
+        line_id = line["id"]
+        steps = set(self.pattern.hits.get(line_id, []))
         if self._cursor in steps:
             steps.discard(self._cursor)
             spoken = "off"
@@ -342,68 +390,188 @@ class PatternEditorDialog(wx.Dialog):
             steps.add(self._cursor)
             spoken = "on"
         if steps:
-            self.pattern.hits[role] = sorted(steps)
+            self.pattern.hits[line_id] = sorted(steps)
         else:
-            self.pattern.hits.pop(role, None)
-        self._refresh_row(role)
-        speech.speak(f"{ROLE_LABELS.get(role, role)} {spoken}, "
-                     f"{step_label(self.pattern, self._cursor)}")
+            self.pattern.hits.pop(line_id, None)
+        self._refresh_row(line)
+        speech.speak(f"{line['label']} {spoken}, {step_label(self.pattern, self._cursor)}")
+        self._reaudition()
+
+    # -- line management -------------------------------------------------------
+
+    def _add_line(self) -> None:
+        if len(self.lines) >= MAX_LINES:
+            speech.speak(f"Limit of {MAX_LINES} lines reached.")
+            return
+        role_labels = [ROLE_LABELS[r] for r in ROLES]
+        dlg = wx.SingleChoiceDialog(self, "Which part?", "Add line", role_labels)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        role = ROLES[dlg.GetSelection()]
+        dlg.Destroy()
+
+        kit_names = [d.name for d in sorted(self._kits_dir.iterdir())
+                     if d.is_dir()] if self._kits_dir.is_dir() else []
+        sources = [SYNTH_LABEL] + kit_names
+        dlg = wx.SingleChoiceDialog(self, f"Sound source for {ROLE_LABELS[role]}:",
+                                    "Add line", sources)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        source = sources[dlg.GetSelection()]
+        dlg.Destroy()
+
+        kit_name, sample = None, None
+        if source != SYNTH_LABEL:
+            kit_name = source
+            files = list_role_files(self._kits_dir / kit_name).get(role, [])
+            if files:
+                stems = [self.AUTO] + [f.stem for f in files]
+                dlg = wx.SingleChoiceDialog(self, "Which sample?", "Add line", stems)
+                theme.apply(dlg, self._dark)
+                if dlg.ShowModal() == wx.ID_OK and dlg.GetSelection() > 0:
+                    sample = files[dlg.GetSelection() - 1].name
+                dlg.Destroy()
+            else:
+                speech.speak(f"{kit_name} has no {ROLE_LABELS[role]} samples; "
+                             "using the synth sound.")
+                kit_name = None
+        line = make_line(role, kit_name, sample, existing=self.lines)
+        self.lines.append(line)
+        self._rebuild_line_kit()
+        self._rebuild_rows()
+        self.grid_list.SetSelection(len(self.lines) - 1)
+        speech.speak(f"Added {line['label']}")
+
+    def _delete_line(self) -> None:
+        line = self._current_line()
+        if line is None:
+            return
+        if len(self.lines) <= 1:
+            speech.speak("Cannot remove the last line.")
+            return
+        self.lines.remove(line)
+        self.pattern.hits.pop(line["id"], None)
+        self.silenced.discard(line["id"])
+        self._rebuild_line_kit()
+        self._rebuild_rows()
+        speech.speak(f"Removed {line['label']}")
         self._reaudition()
 
     def _sample_options(self) -> None:
-        role = self._current_role()
-        if role is None:
+        line = self._current_line()
+        if line is None:
             return
-        label = ROLE_LABELS.get(role, role)
-        if self._kit_dir is not None and role in self._role_files:
-            files = self._role_files[role]
-            options = [self.AUTO] + [f.stem for f in files] + ["None (silence this part)"]
+        if line.get("kit"):
+            files = list_role_files(self._kits_dir / line["kit"]).get(line["role"], [])
+            options = [self.AUTO] + [f.stem for f in files] + ["None (silence this line)"]
         else:
-            options = ["Synth sound", "None (silence this part)"]
-        dlg = wx.SingleChoiceDialog(self, f"Sound for {label}:", f"{label} sample", options)
-        theme.apply(dlg, True)
+            files = []
+            options = ["Synth sound", "None (silence this line)"]
+        dlg = wx.SingleChoiceDialog(self, f"Sound for {line['label']}:",
+                                    f"{line['label']} sample", options)
+        theme.apply(dlg, self._dark)
         if dlg.ShowModal() == wx.ID_OK:
             sel = dlg.GetSelection()
             if options[sel].startswith("None"):
-                self.silenced.add(role)
+                self.silenced.add(line["id"])
             else:
-                self.silenced.discard(role)
-                if self._kit_dir is not None and role in self._role_files:
-                    if sel == 0:
-                        self.sample_choices.pop(role, None)
-                    else:
-                        self.sample_choices[role] = self._role_files[role][sel - 1].name
-                    self._reload_kit()
-            self._refresh_row(role)
-            speech.speak(f"{label}: {self._sample_desc(role)}")
+                self.silenced.discard(line["id"])
+                if line.get("kit"):
+                    line["sample"] = None if sel == 0 else files[sel - 1].name
+                    self._rebuild_line_kit()
+            self._refresh_row(line)
+            speech.speak(f"{line['label']}: {self._sample_desc(line)}")
             self._reaudition()
         dlg.Destroy()
 
-    def _reload_kit(self) -> None:
-        if self._kit_dir is not None:
-            try:
-                self._kit = load_kit_from_folder(self._kit_dir, choices=self.sample_choices)
-            except Exception:  # noqa: BLE001 - keep the previous kit on failure
-                pass
-
-    def _preview_part(self) -> None:
-        role = self._current_role()
-        if role is None:
+    def _preview_line(self) -> None:
+        line = self._current_line()
+        if line is None:
             return
-        label = ROLE_LABELS.get(role, role)
-        if role in self.silenced:
-            speech.speak(f"{label} is silent")
+        if line["id"] in self.silenced:
+            speech.speak(f"{line['label']} is silent")
             return
-        voice = self._kit.voice(role) if self._kit else None
+        voice = self._line_kit.voice(line["id"])
         if voice is None or len(voice) == 0:
-            speech.speak(f"No sound for {label}")
+            speech.speak(f"No sound for {line['label']}")
             return
         if self._auditioning:
             self._stop_audition()  # the preview needs the audio channel
         if self._preview.play_voice(voice):
-            speech.speak(label)
+            speech.speak(line["label"])
         else:
-            speech.speak(f"{label}: preview not available")
+            speech.speak(f"{line['label']}: preview not available")
+
+    # -- grooves & presets -----------------------------------------------------
+
+    def _load_groove(self) -> None:
+        """Replace the editor contents with any built-in or saved pattern."""
+        user = user_patterns(self._settings)
+        names = [p.name for p in PATTERN_LIBRARY]
+        names += [f"{r['name']}  [{r.get('category', 'My patterns')}]" for r in user]
+        dlg = wx.SingleChoiceDialog(self, "Load which groove?", "Load groove", names)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        sel = dlg.GetSelection()
+        dlg.Destroy()
+        if sel < len(PATTERN_LIBRARY):
+            pattern = PATTERN_LIBRARY[sel].copy()
+            self.lines = lines_for_kit(pattern, self._line_kit, None)
+            for ln in self.lines:
+                ln["kit"] = None  # built-ins load onto the synth; retune via Enter
+            self.pattern = pattern
+        else:
+            record = user[sel - len(PATTERN_LIBRARY)]
+            self.pattern = record_to_pattern(record)
+            self.lines = [dict(ln) for ln in record.get("lines", [])]
+        self.silenced.clear()
+        self._cursor = 0
+        self._rebuild_line_kit()
+        self._sync_meter_controls()
+        self._rebuild_rows()
+        if self.lines:
+            self.grid_list.SetSelection(0)
+        speech.speak(f"Loaded {self.pattern.name}: {self.pattern.meter_label()}, "
+                     f"{len(self.lines)} lines")
+        self._reaudition()
+
+    def _save_as_preset(self) -> None:
+        if self._settings is None:
+            wx.MessageBox("Saving presets isn't available here.", "Save as preset",
+                          wx.ICON_INFORMATION)
+            return
+        with wx.TextEntryDialog(self, "Preset name:", "Save as preset") as dlg:
+            theme.apply(dlg, self._dark)
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name = dlg.GetValue().strip()
+        if not name:
+            return
+        cats = all_categories(self._settings) + ["New category..."]
+        dlg = wx.SingleChoiceDialog(self, "Category:", "Save as preset", cats)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        category = cats[dlg.GetSelection()]
+        dlg.Destroy()
+        if category == "New category...":
+            with wx.TextEntryDialog(self, "New category name:", "Save as preset") as dlg2:
+                theme.apply(dlg2, self._dark)
+                if dlg2.ShowModal() != wx.ID_OK:
+                    return
+                category = dlg2.GetValue().strip() or "My patterns"
+        record = make_record(name, category, self.pattern.beats_per_bar,
+                             self.pattern.beat_unit, self.pattern.steps_per_beat,
+                             self.pattern.bars, self.lines, self.pattern)
+        save_user_pattern(self._settings, record)
+        speech.speak(f"Saved preset {name} in {category}")
 
     # -- meter / transport -----------------------------------------------------
 
@@ -433,15 +601,16 @@ class PatternEditorDialog(wx.Dialog):
         if self._auditioning:
             self._stop_audition()
             return
-        if self._kit is None or not self._player.available:
+        if not self._player.available:
             return
         self._auditioning = True
-        self._player.play(render_loop(self._effective_pattern(), self._kit, self._bpm))
+        self._player.play(render_loop(self._effective_pattern(), self._line_kit, self._bpm))
         self.play_btn.SetLabel("&Pause")
 
     def _reaudition(self) -> None:
-        if self._auditioning and self._kit is not None:
-            self._player.play(render_loop(self._effective_pattern(), self._kit, self._bpm))
+        if self._auditioning:
+            self._player.play(render_loop(self._effective_pattern(), self._line_kit,
+                                          self._bpm))
 
     def _stop_audition(self) -> None:
         if self._auditioning:
@@ -595,8 +764,11 @@ class DrumsPanel(wx.Panel):
         self._kit = synth_kit() if NUMPY_AVAILABLE else None
         self._kit_dir: Path | None = None  # None while the synth kit is active
         self._pattern = PATTERN_LIBRARY[0].copy()
+        self._line_meta: list[dict] | None = None  # set for mix-and-match patterns
+        self._pattern_voices = None                # composite kit for line patterns
         self._muted: set[str] = set()
         self._playing = False
+        self._groove_entries: list[tuple[str, object]] = []
 
         root = wx.BoxSizer(wx.VERTICAL)
         hint = wx.StaticText(
@@ -623,9 +795,15 @@ class DrumsPanel(wx.Panel):
         kit_row.Add(self.import_button, 0)
         grid.Add(kit_row, 0, wx.EXPAND)
 
+        # Genre filter: built-in families plus the user's own categories.
+        grid.Add(wx.StaticText(self, label="Category:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.category_choice = wx.Choice(self)
+        set_accessible_name(self.category_choice, "Category filter")
+        self.category_choice.Bind(wx.EVT_CHOICE, lambda e: self._rebuild_groove_list())
+        grid.Add(self.category_choice, 0, wx.EXPAND)
+
         grid.Add(wx.StaticText(self, label="Groove:"), 0, wx.ALIGN_CENTER_VERTICAL)
-        self.groove_choice = wx.Choice(self, choices=[p.name for p in PATTERN_LIBRARY])
-        self.groove_choice.SetSelection(0)
+        self.groove_choice = wx.Choice(self)
         set_accessible_name(self.groove_choice, "Groove")
         self.groove_choice.Bind(wx.EVT_CHOICE, self._on_groove)
         grid.Add(self.groove_choice, 0, wx.EXPAND)
@@ -695,6 +873,8 @@ class DrumsPanel(wx.Panel):
         self.SetSizer(root)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
+        self._rebuild_categories()
+        self._rebuild_groove_list()
         self._rebuild_parts()
         if not NUMPY_AVAILABLE:
             self.start_button.Disable()
@@ -736,13 +916,53 @@ class DrumsPanel(wx.Panel):
         return self._part_roles[sel] if 0 <= sel < len(self._part_roles) else None
 
     def _rebuild_parts(self) -> None:
-        kit_roles = self._kit.roles() if self._kit else []
-        self._part_roles = [r for r in ROLES if r in kit_roles or r in self._pattern.hits]
-        self.part_choice.Set([ROLE_LABELS.get(r, r) for r in self._part_roles])
+        if self._line_meta is not None:
+            # Mix-and-match pattern: parts are its lines, labelled from the metadata.
+            self._part_roles = [ln["id"] for ln in self._line_meta]
+            labels = [ln["label"] for ln in self._line_meta]
+        else:
+            kit_roles = self._kit.roles() if self._kit else []
+            self._part_roles = [r for r in ROLES if r in kit_roles or r in self._pattern.hits]
+            labels = [ROLE_LABELS.get(r, r) for r in self._part_roles]
+        self.part_choice.Set(labels)
         if self._part_roles:
             self.part_choice.SetSelection(0)
         role = self._current_part()
         self.mute_cb.SetValue(role in self._muted)
+
+    # -- groove list & categories ----------------------------------------------
+
+    def _rebuild_categories(self) -> None:
+        keep = self.category_choice.GetStringSelection() or "All categories"
+        cats = ["All categories"] + all_categories(self._settings)
+        self.category_choice.Set(cats)
+        idx = self.category_choice.FindString(keep)
+        self.category_choice.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+
+    def _rebuild_groove_list(self) -> None:
+        """Populate the Groove dropdown: built-ins plus saved patterns, filtered."""
+        category = self.category_choice.GetStringSelection()
+        show_all = not category or category == "All categories"
+        self._groove_entries = []
+        names = []
+        for i, p in enumerate(PATTERN_LIBRARY):
+            if show_all or builtin_category(p.name) == category:
+                self._groove_entries.append(("builtin", i))
+                names.append(p.name)
+        for rec in user_patterns(self._settings):
+            if show_all or rec.get("category") == category:
+                self._groove_entries.append(("user", rec))
+                names.append(f"{rec['name']}  [{rec.get('category', 'My patterns')}]")
+        self.groove_choice.Set(names)
+        if names:
+            self.groove_choice.SetSelection(0)
+
+    def _load_user_record(self, record: dict) -> None:
+        self._pattern = record_to_pattern(record)
+        self._line_meta = [dict(ln) for ln in record.get("lines", [])]
+        self._pattern_voices = build_line_kit(self._line_meta, self._kits_dir(),
+                                              base_kit=self._kit)
+        self._muted = set()
 
     # -- events ---------------------------------------------------------------
 
@@ -841,7 +1061,16 @@ class DrumsPanel(wx.Panel):
         self._apply()
 
     def _on_groove(self, event: wx.CommandEvent) -> None:
-        self._pattern = PATTERN_LIBRARY[self.groove_choice.GetSelection()].copy()
+        sel = self.groove_choice.GetSelection()
+        if not (0 <= sel < len(self._groove_entries)):
+            return
+        kind, ref = self._groove_entries[sel]
+        if kind == "builtin":
+            self._pattern = PATTERN_LIBRARY[ref].copy()
+            self._line_meta = None
+            self._pattern_voices = None
+        else:
+            self._load_user_record(ref)
         self._rebuild_parts()
         self._apply()
         self._announce(f"Groove: {self._pattern.name} ({self._pattern.meter_label()}).")
@@ -884,17 +1113,39 @@ class DrumsPanel(wx.Panel):
         self._apply()
 
     def _on_edit_pattern(self, event: wx.CommandEvent) -> None:
+        self.open_editor(blank=False)
+
+    def _current_lines(self) -> list[dict]:
+        """The current pattern as editor lines (existing metadata, or one per part)."""
+        if self._line_meta is not None:
+            return [dict(ln) for ln in self._line_meta]
+        kit_name = self._kit_dir.name if self._kit_dir else None
+        choices = self._saved_choices(kit_name) if kit_name else {}
+        return lines_for_kit(self._pattern, self._kit, kit_name, choices)
+
+    def open_editor(self, blank: bool = False) -> None:
+        """Open the Pattern Editor — on the current groove, or empty (Ctrl+D)."""
         if self._kit is None:
-            self._announce("The drum looper isn't available on this system.")
+            wx.MessageBox("The drum looper needs numpy installed (pip install numpy).",
+                          "Pattern Editor", wx.ICON_INFORMATION)
             return
         was_playing = self._playing
         if was_playing:
             self.player.stop()  # the editor auditions on the same player
         dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
-        saved = self._saved_choices(self._kit_dir.name) if self._kit_dir else {}
+        if blank:
+            pattern = Pattern("new pattern", self._pattern.steps,
+                              self._pattern.steps_per_beat, {},
+                              self._pattern.beats_per_bar, self._pattern.beat_unit,
+                              self._pattern.bars)
+            lines = lines_for_kit(pattern, self._kit,
+                                  self._kit_dir.name if self._kit_dir else None)
+            muted: set[str] = set()
+        else:
+            pattern, lines, muted = self._pattern.copy(), self._current_lines(), set(self._muted)
         try:
-            dlg = PatternEditorDialog(self, self._pattern.copy(), self._kit, self._kit_dir,
-                                      saved, set(self._muted), self.player, self.bpm, dark)
+            dlg = PatternEditorDialog(self, pattern, lines, self._kits_dir(), muted,
+                                      self.player, self.bpm, dark, settings=self._settings)
         except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
             wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
                           "Pattern Editor", wx.ICON_ERROR)
@@ -903,23 +1154,19 @@ class DrumsPanel(wx.Panel):
             return
         if dlg.ShowModal() == wx.ID_OK:
             self._pattern = dlg.pattern
-            self._muted = set(dlg.silenced)  # "None" sample choices = muted parts
-            if self._kit_dir is not None and dlg.sample_choices != saved:
-                if self._settings is not None:
-                    all_choices = dict(self._settings.get("drum_kit_sounds") or {})
-                    all_choices[self._kit_dir.name] = dlg.sample_choices
-                    self._settings.set("drum_kit_sounds", all_choices)
-                try:
-                    self._kit = load_kit_from_folder(self._kit_dir,
-                                                     choices=dlg.sample_choices)
-                except Exception:  # noqa: BLE001 - keep the current kit on failure
-                    pass
+            self._line_meta = [dict(ln) for ln in dlg.lines]
+            self._pattern_voices = build_line_kit(self._line_meta, self._kits_dir(),
+                                                  base_kit=self._kit)
+            self._muted = set(dlg.silenced)  # "None" sample choices = muted lines
             self._rebuild_parts()
             self._announce(
                 f"Pattern saved: {self._pattern.meter_label()}, {self._pattern.steps} steps.")
         else:
             self._announce("Pattern edits discarded.")
         dlg.Destroy()
+        # Presets may have been saved from inside the editor either way.
+        self._rebuild_categories()
+        self._rebuild_groove_list()
         if was_playing:  # resume the loop (new pattern if saved, previous if cancelled)
             self._render_and_play()
 
@@ -946,7 +1193,8 @@ class DrumsPanel(wx.Panel):
             effective = improvised_loop(effective, cycle, cycles)
         elif fill_bars:
             effective = expand_with_fill(effective, fill_bars)
-        self.player.play(render_loop(effective, self._kit, self.bpm,
+        kit = self._pattern_voices or self._kit  # composite voices for line patterns
+        self.player.play(render_loop(effective, kit, self.bpm,
                                      volume=self.volume_slider.GetValue() / 100.0))
 
     def _apply(self) -> None:

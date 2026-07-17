@@ -123,15 +123,19 @@ All screen-reader-first, native controls only.
 - **Metronome** — DONE. Tempo 30–300 BPM (announced as real BPM, not a percentage), time
   signature incl. **odd/prog meters** with accent grouping (e.g. 2+2+3 for 7/8), subdivision,
   tap-tempo. Synthesized clicks; keeps running across tabs.
-- **Drum Looper** — DONE. Built-in synth kit (now incl. crash/ride/perc) or user-imported
-  drum libraries via a dedicated **Import Drum Kit button** (kits also auto-discovered from
-  `Samples/`); a **200-groove library** (hand-made bases + deterministic seeded variations,
-  ~half with meter-sized drum fills and a restart crash); a **Pattern Editor dialog** —
-  Step dropdown (beat-named steps) + per-part checkboxes + Play/Save/Cancel — holding the
-  time-signature controls (odd/prog meters: 5/4, 7/8, djent 7/16 polymeter). Per-part live
-  mute on the main tab. Loop is pre-mixed so any-length sample lands exactly on the beat
-  (`practice/drums.py`); numpy for audio. See `docs/drum-kits.md`. Next: per-role sample
-  choice, save custom grooves, swing/shuffle.
+- **Drum Looper** — DONE, several iterations with Kaylea live-testing. Built-in synth kit
+  (kick/snare/hats/clap/808/tom/perc/ride/crash) or user drum libraries (Import Drum Kit
+  button; kits auto-discovered from `Samples/`; per-part sample choice via Kit Sounds).
+  **200-groove library** + **user-saved patterns** with genre **categories and filtering**
+  (user-defined categories included). **Tracker-grid Pattern Editor** (Kaylea's design):
+  one list line per drum line, spoken time cursor (step/beat/bar granularity via direct
+  screen-reader speech), Space toggles, Enter per-line sample options incl. None, Delete,
+  P preview, F1 key help; **drum stacking + mix-and-match across libraries** (up to 24
+  lines); Add Line / Load Groove / Save as Preset; **Ctrl+D** opens a blank editor from
+  anywhere. **Improvised fills** (rule-bound randomness, meter-aware, fill-every-N up to
+  16 bars) and a drum master volume. Loop is pre-mixed so any-length sample lands exactly
+  on the beat (`practice/drums.py`, `patternstore.py`); numpy + accessible_output2.
+  See `docs/drum-kits.md`. Next ideas: swing/shuffle, per-line volume.
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;

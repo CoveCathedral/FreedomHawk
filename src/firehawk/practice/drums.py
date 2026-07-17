@@ -239,7 +239,10 @@ class DrumKit:
         return self.voices.get(role)
 
     def roles(self) -> list[str]:
-        return [r for r in ROLES if r in self.voices]
+        # Canonical roles in display order, then any custom line ids (mix-and-match
+        # patterns key voices by line id, e.g. "kick 2").
+        known = [r for r in ROLES if r in self.voices]
+        return known + sorted(k for k in self.voices if k not in ROLES)
 
 
 def synth_kit(rate: int = RATE) -> DrumKit:

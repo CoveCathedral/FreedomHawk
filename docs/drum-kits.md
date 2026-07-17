@@ -21,7 +21,8 @@ a tone. Press **Stop** (or close the app) to end it.
 |---------|--------------|
 | **Kit** | The sound set: "Synth (built-in)" plus any kit folder found in `Samples/`. Arrowing through this list only switches kits — it never opens a dialog. |
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
-| **Groove** | One of 200 built-in patterns: the classic bases (Rock, Funk, Trap, 5/4, 7/8…) plus numbered variations. Names ending in "fill" include a drum fill sized to the meter, with a crash landing back on the one. First-letter navigation works in the list. |
+| **Category** | Filters the Groove list by genre family (Rock, Funk, Trap, 5/4…) — plus any categories you create when saving your own patterns. |
+| **Groove** | 200 built-in patterns (the classic bases plus numbered variations — names ending in "fill" include a drum fill), followed by **your saved patterns** shown with their category. First-letter navigation works in the list. |
 | **Fill every** | For jamming: stretches the groove so the fill only comes around every 2, 4, 8, 12, or 16 bars — plain groove until then, fill as the turnaround, crash on the restart. "Pattern length" plays the groove exactly as written. |
 | **Fill style** | "As written" plays the groove's own fill. **"Improvised"** generates fresh fills on every render — varying length (short, long, occasionally a whole bar) and density, Diablo-style rule-bound randomness — so the groove rarely repeats itself exactly. Fills follow the **Fill every** cadence (a 4-bar cycle when it's unset) and always land on the meter, odd time signatures included. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
@@ -31,28 +32,41 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |
 | **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. |
 
-## The Pattern Editor (Edit Pattern…)
+## The Pattern Editor (Edit Pattern… — or Ctrl+D from anywhere)
 
-A tracker-style grid built for keyboard-and-ears editing. One list line per drum part
-("Kick: 4 hits, sample Kick ;P"), and a shared **time cursor** you move with the arrow
-keys — every move is **spoken directly through your screen reader** ("Bar 2, Beat 3.2,
-hit"):
+A tracker-style grid built for keyboard-and-ears editing. One list line per **drum
+line** ("Kick: 4 hits, sample Kick ;P") — and lines are free: **stack several of the
+same drum** and **mix samples from different libraries** in one pattern (synth kick,
+Bloodlust snare, a friend's crash), up to 24 lines. A shared **time cursor** lives on
+the arrow keys — every move is **spoken directly through your screen reader** ("Bar 2,
+Beat 3.2, hit"):
 
 | Key | Action |
 |-----|--------|
-| **Up / Down** | Move between part lines (Kick, Snare, …). |
+| **Up / Down** | Move between lines (spoken: the line, then the cursor's state on it). |
 | **Left / Right** | Move the cursor by one grid step — the smallest increment. |
 | **Ctrl + Left / Right** | Move by one beat. |
 | **Ctrl + Shift + Left / Right** | Move by one bar. |
 | **Home / End** | Jump to the start / last step. |
-| **Space** | Toggle a hit for this part at the cursor ("Kick on, Beat 2"). |
-| **Enter** | Sample options for this part: pick any sample from its folder, the automatic default, or **None** (silence the part). |
-| **P** | Preview this part's sound. |
+| **Space** | Toggle a hit for this line at the cursor ("Kick on, Beat 2"). |
+| **Enter** | Sample options for this line: any sample from its kit folder, the automatic default, or **None** (silence the line). |
+| **Delete** | Remove the selected line. |
+| **P** | Preview this line's sound. |
 | **F1** | Speak this key list. |
 
-**Play/Pause** auditions the loop while you edit (changes heard on the next loop);
-**Save** keeps everything — pattern, sample choices, silenced parts; **Cancel** or Escape
-discards.
+Buttons (all a Tab away):
+
+- **Add Line…** — add another line: pick the part (Kick, Snare, …), the source (the
+  synth, or **any kit library you have**), and the sample. This is how you stack drums
+  and mix libraries.
+- **Load Groove…** — replace the editor contents with any built-in or saved pattern.
+- **Save as Preset…** — name the pattern, put it in a category (existing or a **new one
+  you type**), and it appears in the main tab's Groove list permanently.
+- **Play/Pause** auditions the loop while you edit (changes heard on the next loop);
+  **Save** keeps everything; **Cancel** or Escape discards.
+
+**Ctrl+D** anywhere in the app opens a fresh, empty editor on the Drum Looper tab —
+build a pattern from scratch mid-session, save it as a preset, jam on.
 
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
 each beat divides), and **Bars in loop** (1–4). **Growing the bar count repeats the

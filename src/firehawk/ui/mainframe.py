@@ -316,6 +316,10 @@ class MainFrame(wx.Frame):
         device_item = settings_menu.Append(wx.ID_ANY, "De&vice Settings and Modes...")
         menubar.Append(settings_menu, "&Settings")
 
+        tools_menu = wx.Menu()
+        drum_editor_item = tools_menu.Append(wx.ID_ANY, "&Drum Pattern Editor...\tCtrl+D")
+        menubar.Append(tools_menu, "&Tools")
+
         device_menu = wx.Menu()
         connect_item = device_menu.Append(wx.ID_ANY, "&Connect to Pedal...")
         ports_item = device_menu.Append(wx.ID_ANY, "Detect &Ports...")
@@ -343,6 +347,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_reset, reset_item)
         self.Bind(wx.EVT_MENU, lambda e: self._goto_view("presets"), back_item)
         self.Bind(wx.EVT_MENU, lambda e: self.Close(), exit_item)
+        self.Bind(wx.EVT_MENU, self._on_drum_editor, drum_editor_item)
         self.Bind(wx.EVT_MENU, self._on_toggle_dark, self.dark_item)
         self.Bind(wx.EVT_MENU, self._on_arrange_tabs, arrange_item)
         self.Bind(wx.EVT_MENU, self._on_presets_folder, folder_item)
@@ -448,6 +453,13 @@ class MainFrame(wx.Frame):
         self.dark_mode = self.dark_item.IsChecked()
         self._apply_theme()
         self.status.SetStatusText("Dark mode on." if self.dark_mode else "Dark mode off.")
+
+    def _on_drum_editor(self, event) -> None:
+        """Ctrl+D from anywhere: jump to the Drum Looper and open an empty editor."""
+        if self.drums_page is None:
+            return
+        self._goto_view("drums")
+        self.drums_page.open_editor(blank=True)
 
     def _on_arrange_tabs(self, event) -> None:
         """Accessible reorder dialog: a list where Alt+Up / Alt+Down move the selected tab."""
@@ -629,6 +641,7 @@ class MainFrame(wx.Frame):
             ("Ctrl+S", "Save preset to your library"),
             ("Ctrl+1 .. Ctrl+9", f"Jump to the first nine tabs ({jump_targets})"),
             ("Ctrl+B", "Back to the Presets list"),
+            ("Ctrl+D", "Open a blank Drum Pattern Editor (Tools menu)"),
             ("Escape", "Back one level: page controls -> block list -> Presets"),
             ("Tab / Shift+Tab", "Move between controls on a page"),
             ("Up / Down arrows", "Move through the block list, or a dropdown's options"),
@@ -676,11 +689,14 @@ class MainFrame(wx.Frame):
             "   First-letter navigation works in the list. 'Fill every' stretches the\n"
             "   groove for jamming: plain bars until the fill comes around every 2 to 16\n"
             "   bars, with the crash landing on the restart.\n"
-            "3. Edit Pattern... opens the tracker grid: one line per part; Left/Right\n"
-            "   move the spoken time cursor by step, Ctrl by beat, Ctrl+Shift by bar;\n"
-            "   Space toggles a hit; Enter picks the part's sample (or None); P previews;\n"
-            "   F1 speaks the keys. Play auditions while you edit; Save keeps it, Cancel\n"
-            "   or Escape discards. The time signature (odd meters too) is set here.\n"
+            "3. Edit Pattern (or Ctrl+D anywhere for a blank one) opens the tracker\n"
+            "   grid: one line per drum - stack drums and mix libraries with Add Line.\n"
+            "   Up/Down move between lines; Left/Right move the spoken cursor by step,\n"
+            "   Ctrl by beat, Ctrl+Shift by bar; Space toggles a hit; Enter picks the\n"
+            "   line's sample (or None); Delete removes a line; P previews; F1 speaks\n"
+            "   the keys. Save as Preset stores your pattern under a category (make\n"
+            "   your own); Load Groove pulls in any built-in or saved pattern. The\n"
+            "   time signature (odd meters too) is set here.\n"
             "4. Fill style 'Improvised' generates fresh fills every render - short, long,\n"
             "   varying density - so the groove rarely repeats itself exactly.\n"
             "5. Kit Sounds... picks which sample each part uses (sample kits): choose a\n"
