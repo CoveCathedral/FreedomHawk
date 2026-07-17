@@ -125,7 +125,27 @@ TypedValue = uint16 type  +  value
   value — **continuous params as an IEEE-754 float** (normalised 0.0–1.0), bools as 0.0/1.0,
   ints coerced likewise in this path.
 
-So a "set edit-buffer parameter" reduces to: frame( transportHeader + [ PSKey(4) +
-TypedValue(type, float) ] ). **Remaining fine details** (confirmable from one capture, now
-trivially, or by decompiling the type jump table): the exact per-type TypedValue byte
-layout and the PSKey↔(group,param) numbering.
+So a "set edit-buffer parameter" reduces to: frame( transportHeader + [ key(4) +
+TypedValue(type, float) ] ).
+
+### Parameter addressing — two schemes (from the PSKey table @ vaddr 0x22e9e0)
+
+The static PSKey table `{paramID*, groupID*, psKey, valueType}` decompiled from
+`PSKeyToParamIDandGroupID` was located and read out of the binary. It covers the
+**structural / control parameters only** — every block's `@enabled`, `@mix`, `@post`,
+`@mixtype`, `@stereo`, the block enables, plus `global` (`@tempo`→3, `@tweakmin`→7,
+`@tweakmax`→8, `@pedal2assign`→9) and `variax` (`@string1tuning`→0x1c … `@string6tuning`→
+0x21). These get a fixed numeric **psKey** (structural keys live in the ~0x1c4c00–0x1c4e90
+range; global/variax are small).
+
+The **model knobs** (Bass, Drive, Treble, …) are **not** in this table — they are addressed
+through the **symbol table** (`defaultSymbolTable.bin`, already decoded) by symbol index
+within the currently selected model.
+
+### Remaining (one capture, or one more targeted static pass)
+
+The exact single-`SetEditBufferParam` message — which of the two addressing schemes a given
+set uses on the wire, and whether it is wrapped in slot/section directives — is the last
+detail. It falls out of one Bluetooth HCI capture of a known edit (now trivial to read
+given everything above), or a static pass on the `nativeSetEditBufferParam` call path.
+Frame, CRC, transport header, and value encoding are implemented in `firehawk.protocol`.
