@@ -2,9 +2,9 @@
 """
 crc_hunt.py - Identify the CRC-16 variant and checksummed span from captured frame(s).
 
-Contributed by Cove (the project's helper agent). Kept as a capture-side cross-check:
-when we get a real captured frame for a known action, this confirms — against actual
-bytes — what static analysis already read out of the pedal's CRC16_Process.
+Contributed by Claudia (Web Chat Opus). Kept as a capture-side cross-check: when we
+get a real captured frame for a known action, this confirms — against actual bytes —
+what static analysis already read out of the pedal's CRC16_Process.
 
 What Ghidra already established (see ../docs/protocol.md), for reference:
   * The CRC is **CRC-16/CCITT-FALSE** (poly 0x1021, init 0xFFFF, non-reflected).
