@@ -361,6 +361,26 @@ def test_line_volume_trims_and_speaks(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_count_in_defers_loop_and_stop_cancels(frame, monkeypatch):
+    d = frame.drums_page
+    if not d.player.available:
+        pytest.skip("no audio on this system")
+    monkeypatch.setattr(d._countin_player, "play_voice", lambda buf: True)  # force success
+    d.countin_cb.SetValue(True)
+    d._start()
+    # The loop hasn't started yet — a count-in timer is pending and Stop is showing.
+    assert d._playing and d._countin_timer is not None
+    assert d.start_button.GetLabel() == "&Stop"
+    d._begin_loop()                                  # timer fires
+    assert d._countin_timer is None and d.player.playing
+    d.stop()
+    # Starting the count-in and stopping mid-count cancels the pending loop.
+    d.countin_cb.SetValue(True)
+    d._start()
+    d.stop()
+    assert d._countin_timer is None and not d._playing
+
+
 def test_line_choke_group_cycles_and_speaks(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

@@ -913,6 +913,36 @@ def scale_voice(voice, gain: float):
     return (voice * gain).astype(np.float32)
 
 
+def _click_array(freq: float, rate: int, ms: float = 35.0, volume: float = 0.6):
+    """A short percussive click: a fast-decaying sine with a soft attack (no pop)."""
+    n = max(1, int(rate * ms / 1000.0))
+    t = np.arange(n) / rate
+    env = np.exp(-t / ((ms / 1000.0) / 4.0))
+    attack = max(1, int(rate * 0.001))
+    env[:attack] *= np.linspace(0.0, 1.0, attack, dtype=np.float64)
+    return (np.sin(2 * np.pi * freq * t) * env * volume).astype(np.float32)
+
+
+def render_count_in(beats: int, beat_unit: int, bpm: float, rate: int = RATE):
+    """One bar of clicks for a count-in as a (float32 samples, duration_seconds) pair.
+
+    Clicks the bar's beats at the current tempo, accenting beat one, so a player can
+    come in on the downbeat.  Returned as raw samples so it plays on a one-shot channel.
+    """
+    if np is None:
+        return None, 0.0
+    beats = max(1, beats)
+    beat_dur = 60.0 / max(1.0, bpm) * (4.0 / max(1, beat_unit))  # a beat of the meter's unit
+    total = beats * beat_dur
+    buf = np.zeros(max(1, int(round(total * rate))), dtype=np.float32)
+    for b in range(beats):
+        click = _click_array(1600.0 if b == 0 else 1100.0, rate)  # accent the downbeat
+        off = int(round(b * beat_dur * rate))
+        end = min(len(buf), off + len(click))
+        buf[off:end] += click[: end - off]
+    return buf, total
+
+
 def _truncate_voice(v, max_len: int, rate: int):
     """A copy of *v* cut to *max_len* samples with a short fade so it doesn't click.
 

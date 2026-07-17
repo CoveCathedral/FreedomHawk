@@ -151,9 +151,11 @@ All screen-reader-first, native controls only.
   spoken; baked into the voice; balances the mix under the master Drum volume). **Choke
   groups** (`C` puts a line in a group; lines in a group cut each other's ring — closed hat
   chokes open hat — with a short fade; render-time in `render_loop`; saved/shared).
-  **Planned next (Kaylea approved):** count-in · tempo trainer · song mode (pattern
-  chaining) · audition-step & speak-rhythm keys · **MIDI controller input** (craft beats
-  from a keyboard). Long-term: spin
+  **Count-in** (main-tab checkbox; one accented bar of clicks at tempo/meter before the
+  loop, on its own one-shot channel; `render_count_in`).
+  **Planned next (Kaylea approved):** tempo trainer · song mode (pattern chaining) ·
+  audition-step & speak-rhythm keys · **MIDI controller input** (craft beats from a
+  keyboard). Long-term: spin
   the sequencer out as its own open-source project (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.

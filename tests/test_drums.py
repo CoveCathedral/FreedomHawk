@@ -387,6 +387,16 @@ def test_choke_group_cuts_the_ring():
         energy(0.55, 0.70, None), rel=0.05)
 
 
+def test_count_in_matches_meter_and_tempo():
+    # One bar of clicks: duration is beats x the meter-unit beat length.
+    buf, dur = drums.render_count_in(4, 4, 120)
+    assert dur == pytest.approx(2.0, abs=0.001)          # 4 quarters at 120 BPM
+    assert len(buf) == pytest.approx(2.0 * drums.RATE, rel=0.001)
+    buf7, dur7 = drums.render_count_in(7, 8, 140)
+    assert dur7 == pytest.approx(7 * (60 / 140) * (4 / 8), abs=0.001)
+    assert float(np.max(np.abs(buf7))) > 0.0             # it actually clicks
+
+
 def test_render_volume_scales_output():
     kit = drums.synth_kit()
     p = drums.GENRE_PATTERNS[0]

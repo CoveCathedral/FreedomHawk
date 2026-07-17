@@ -45,7 +45,7 @@ from ..practice import (
     synth_kit,
     wav_duration,
 )
-from ..practice.drums import RATE, load_sample
+from ..practice.drums import RATE, load_sample, render_count_in
 from ..practice.patternstore import (
     MAX_CHOKE_GROUP,
     MAX_GAIN_DB,
@@ -988,6 +988,8 @@ class DrumsPanel(wx.Panel):
         self._settings = settings
         self._status = status
         self.player = DrumLoopPlayer()
+        self._countin_player = _PreviewPlayer()   # one-shot channel for the count-in
+        self._countin_timer: wx.CallLater | None = None
         self._kit = synth_kit() if NUMPY_AVAILABLE else None
         self._kit_dir: Path | None = None  # None while the synth kit is active
         self._pattern = PATTERN_LIBRARY[0].copy()
@@ -1109,6 +1111,9 @@ class DrumsPanel(wx.Panel):
         self.sounds_button = wx.Button(self, label="&Kit Sounds...")
         self.sounds_button.Bind(wx.EVT_BUTTON, self._on_kit_sounds)
         buttons.Add(self.sounds_button, 0, wx.RIGHT, 8)
+        self.countin_cb = wx.CheckBox(self, label="Count-&in")
+        self.countin_cb.SetToolTip("Play one bar of clicks before the loop starts")
+        buttons.Add(self.countin_cb, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         self.start_button = wx.Button(self, label="&Start")
         self.start_button.Bind(wx.EVT_BUTTON, self._on_start_stop)
         buttons.Add(self.start_button, 0)
@@ -1483,11 +1488,31 @@ class DrumsPanel(wx.Panel):
             self._announce("The drum looper isn't available on this system.")
             return
         self._playing = True
-        self._render_and_play()
         self.start_button.SetLabel("&Stop")
+        if self.countin_cb.GetValue():           # a bar of clicks, then the loop
+            beats = self._pattern.beats_per_bar
+            buf, dur = render_count_in(beats, self._pattern.beat_unit, self.bpm)
+            if buf is not None and self._countin_player.play_voice(buf):
+                self._announce(f"Counting in, {beats} beat{'s' if beats != 1 else ''}.")
+                self._countin_timer = wx.CallLater(max(1, int(dur * 1000)), self._begin_loop)
+                return
+        self._begin_loop()
+
+    def _begin_loop(self) -> None:
+        self._countin_timer = None
+        if not self._playing:                    # stopped during the count-in
+            return
+        self._render_and_play()
         self._announce(f"Drum loop started: {self._pattern.name}, {self.bpm} BPM.")
 
+    def _cancel_countin(self) -> None:
+        if self._countin_timer is not None:
+            self._countin_timer.Stop()
+            self._countin_timer = None
+        self._countin_player.stop()
+
     def stop(self) -> None:
+        self._cancel_countin()
         self.player.stop()
         self._playing = False
         self.start_button.SetLabel("&Start")
@@ -1495,6 +1520,8 @@ class DrumsPanel(wx.Panel):
 
     def dispose(self) -> None:
         # Teardown-safe: stop audio and free the temp file, touch no UI.
+        self._cancel_countin()
+        self._countin_player.dispose()
         self.player.dispose()
         self._playing = False
 

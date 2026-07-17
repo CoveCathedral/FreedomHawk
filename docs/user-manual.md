@@ -146,6 +146,8 @@ your own sample libraries, is in `docs/drum-kits.md`; this is the tour.
   feel; humanize adds subtle per-hit timing and volume drift so a loop feels less
   mechanical. Both apply live and to WAV exports.
 - **Part** + **Mute this part** — silence any part live without erasing its steps.
+- **Count-in** — when checked, Start plays one accented bar of clicks at your tempo and
+  meter before the loop, so you can come in on the downbeat. Stop during it cancels.
 - **Start/Stop** — the loop keeps playing across tabs, like the metronome.
 
 ### The Pattern Editor
