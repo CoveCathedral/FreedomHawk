@@ -79,7 +79,7 @@ The main **Tools** menu (Alt+T) holds the sequencer's management and sharing com
 | **Export Drum Loop as WAV…** | Renders the current loop exactly as it plays — mutes, fill cadence, improvised fills, volume — to a `.wav` you can drop in a DAW, record over, or share. |
 | **Export / Import Drum Pattern…** | Patterns as small shareable files (`.fhdrum.json`) — trade grooves with other users. Imports land in the "Imported" category (or the one the file names) and become the current groove. |
 | **Export Pattern as MIDI…** | The pattern as a standard `.mid` file on the General MIDI drum channel — opens in any DAW with any drum sounds, meter included (odd meters too). |
-| **Import MIDI File…** | Reads a `.mid` file's drum notes (General MIDI mapping, quantized to the grid, up to 4 bars) and makes it the current groove — then edit it, save it as a preset, jam on it. |
+| **Import MIDI File…** | Reads a `.mid` file's drum notes (General MIDI mapping, quantized to the grid, up to 4 bars) and **opens it straight in the Pattern Editor** — press Play to hear it, tweak it, then Save to make it the current groove or Save as Preset to keep it. The import summary is spoken as the editor opens. |
 
 MIDI *controller* input (crafting beats from a MIDI keyboard) is planned.
 

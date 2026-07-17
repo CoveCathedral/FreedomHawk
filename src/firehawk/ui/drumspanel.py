@@ -1129,8 +1129,10 @@ class DrumsPanel(wx.Panel):
         choices = self._saved_choices(kit_name) if kit_name else {}
         return lines_for_kit(self._pattern, self._kit, kit_name, choices)
 
-    def open_editor(self, blank: bool = False) -> None:
-        """Open the Pattern Editor — on the current groove, or empty (Ctrl+D)."""
+    def open_editor(self, blank: bool = False, pattern: Pattern | None = None,
+                    lines: list[dict] | None = None) -> None:
+        """Open the Pattern Editor — on the current groove, empty (Ctrl+D), or
+        seeded with a given pattern (e.g. straight from a MIDI import)."""
         if self._kit is None:
             wx.MessageBox("The drum looper needs numpy installed (pip install numpy).",
                           "Pattern Editor", wx.ICON_INFORMATION)
@@ -1139,14 +1141,17 @@ class DrumsPanel(wx.Panel):
         if was_playing:
             self.player.stop()  # the editor auditions on the same player
         dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
-        if blank:
+        kit_name = self._kit_dir.name if self._kit_dir else None
+        muted: set[str] = set()
+        if pattern is not None:
+            if lines is None:
+                lines = lines_for_kit(pattern, self._kit, kit_name)
+        elif blank:
             pattern = Pattern("new pattern", self._pattern.steps,
                               self._pattern.steps_per_beat, {},
                               self._pattern.beats_per_bar, self._pattern.beat_unit,
                               self._pattern.bars)
-            lines = lines_for_kit(pattern, self._kit,
-                                  self._kit_dir.name if self._kit_dir else None)
-            muted: set[str] = set()
+            lines = lines_for_kit(pattern, self._kit, kit_name)
         else:
             pattern, lines, muted = self._pattern.copy(), self._current_lines(), set(self._muted)
         try:
@@ -1362,23 +1367,18 @@ class DrumsPanel(wx.Panel):
             wx.MessageBox(f"Could not import {path.name}:\n{exc}", "Import MIDI",
                           wx.ICON_ERROR)
             return
-        self._pattern = pattern
-        self._line_meta = None
-        self._pattern_voices = None
-        self._muted = set()
-        self._rebuild_parts()
-        self._apply()
         notes = [f"{info['notes']} notes", f"{pattern.meter_label()}",
                  f"{pattern.bars} bar(s)"]
         if info.get("no_drum_channel"):
             notes.append("no drum channel found, so all notes were mapped")
         if info.get("dropped"):
             notes.append(f"{info['dropped']} notes beyond 4 bars were dropped")
-        wx.MessageBox(
-            f"Imported {path.name}: " + ", ".join(notes) + ".\n\n"
-            "It is now the current groove — open Edit Pattern to adjust it, or "
-            "Save as Preset there to keep it.",
-            "Import MIDI", wx.ICON_INFORMATION)
+        summary = f"Imported {path.name}: " + ", ".join(notes)
+        # Straight into the editor — hear it (Play), tweak it, then Save to make it
+        # the current groove or Save as Preset to keep it. No extra tab-hopping.
+        speech.speak(summary + ". Opening the Pattern Editor.")
+        self._announce(summary)
+        self.open_editor(pattern=pattern)
 
     def _select_user_pattern(self, name: str) -> None:
         for i, (kind, ref) in enumerate(self._groove_entries):

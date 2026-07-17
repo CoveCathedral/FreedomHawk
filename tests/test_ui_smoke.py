@@ -376,17 +376,41 @@ def test_drum_library_dialog(frame, _silence_audio):
         dlg.Destroy()
 
 
-def test_midi_import_becomes_current_groove(frame):
-    from firehawk.practice.midifile import midi_to_pattern, pattern_to_midi
+def test_midi_import_opens_editor_and_saves(frame, monkeypatch, tmp_path,
+                                            _silence_audio):
+    # Importing a MIDI file must land straight in the Pattern Editor (live-tested
+    # regression: it silently became the current pattern while the Groove dropdown
+    # still displayed the old selection, which read as "nothing imported").
+    import firehawk.ui.drumspanel as dp
+    from firehawk.practice.midifile import pattern_to_midi
     d = frame.drums_page
-    mid = pattern_to_midi(d._pattern, 120, {})
-    pattern, info = midi_to_pattern(mid)
-    d._pattern = pattern
-    d._line_meta = None
-    d._pattern_voices = None
-    d._rebuild_parts()
+    midi_path = tmp_path / "beat.mid"
+    midi_path.write_bytes(pattern_to_midi(d._pattern, 120, {}))
+
+    class _FakeFileDialog:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def ShowModal(self):
+            return wx.ID_OK
+
+        def GetPath(self):
+            return str(midi_path)
+
+    monkeypatch.setattr(wx, "FileDialog", _FakeFileDialog)
+    monkeypatch.setattr(dp.PatternEditorDialog, "ShowModal", lambda self: wx.ID_OK)
+    d.import_midi()
+    # The editor opened (seeded with the import) and its Save applied the pattern.
     assert d._pattern.name == "MIDI import"
+    assert d._line_meta is not None
     assert "Kick" in d.part_choice.GetItems()
+    assert any("Imported" in s for s in _silence_audio)
 
 
 def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
