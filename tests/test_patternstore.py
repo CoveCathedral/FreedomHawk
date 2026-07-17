@@ -71,6 +71,54 @@ def test_store_save_replace_and_categories():
     assert all(p.name in cats for p in GENRE_PATTERNS)
 
 
+def _seed(s, name="A", category="Prog"):
+    rec = {"name": name, "category": category, "beats": 4, "unit": 4, "grid": 4,
+           "bars": 1, "lines": [dict(ps.make_line("kick"), steps=[0])]}
+    ps.save_user_pattern(s, rec)
+    return rec
+
+
+def test_library_management_ops():
+    s = _StubSettings()
+    _seed(s, "A", "Prog")
+    _seed(s, "B", "Prog")
+    # Rename (with collision protection).
+    assert ps.rename_pattern(s, "A", "Alpha")
+    assert not ps.rename_pattern(s, "B", "Alpha")  # name taken
+    assert not ps.rename_pattern(s, "missing", "X")
+    # Category change and whole-category rename.
+    assert ps.set_pattern_category(s, "Alpha", "Djent")
+    assert ps.rename_category(s, "Prog", "Progressive") == 1  # only B
+    cats = {r["category"] for r in ps.user_patterns(s)}
+    assert cats == {"Djent", "Progressive"}
+    # Delete.
+    assert ps.delete_pattern(s, "Alpha")
+    assert not ps.delete_pattern(s, "Alpha")
+    assert [r["name"] for r in ps.user_patterns(s)] == ["B"]
+
+
+def test_pattern_file_round_trip_and_validation():
+    import json
+    s = _StubSettings()
+    rec = _seed(s)
+    doc = ps.record_to_file_dict(rec)
+    back = ps.record_from_file_dict(json.loads(json.dumps(doc)))
+    assert back["name"] == rec["name"]
+    assert back["lines"][0]["steps"] == [0]
+    # Malformed documents are rejected with readable reasons.
+    for bad in ({}, {"format": "wrong"},
+                dict(doc, name=""),
+                dict(doc, lines=[]),
+                dict(doc, beats="lots")):
+        with pytest.raises(ValueError):
+            ps.record_from_file_dict(bad)
+    # Out-of-range steps and unknown roles are sanitized, not fatal.
+    weird = dict(doc, lines=[{"id": "z", "role": "kazoo", "steps": [0, 999]}])
+    clean = ps.record_from_file_dict(weird)
+    assert clean["lines"][0]["role"] == "perc"
+    assert clean["lines"][0]["steps"] == [0]
+
+
 def test_lines_for_kit_covers_pattern_and_kit():
     from firehawk.practice import synth_kit
     p = Pattern("t", 16, 4, {"kick": [0], "fx": [4]}, 4, 4, 1)

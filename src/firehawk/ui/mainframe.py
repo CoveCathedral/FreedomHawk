@@ -318,6 +318,13 @@ class MainFrame(wx.Frame):
 
         tools_menu = wx.Menu()
         drum_editor_item = tools_menu.Append(wx.ID_ANY, "&Drum Pattern Editor...\tCtrl+D")
+        drum_library_item = tools_menu.Append(wx.ID_ANY, "Drum Pattern &Library...")
+        tools_menu.AppendSeparator()
+        wav_export_item = tools_menu.Append(wx.ID_ANY, "Export Drum Loop as &WAV...")
+        pattern_export_item = tools_menu.Append(wx.ID_ANY, "&Export Drum Pattern...")
+        pattern_import_item = tools_menu.Append(wx.ID_ANY, "&Import Drum Pattern...")
+        midi_export_item = tools_menu.Append(wx.ID_ANY, "Export Pattern as &MIDI...")
+        midi_import_item = tools_menu.Append(wx.ID_ANY, "Import MIDI &File...")
         menubar.Append(tools_menu, "&Tools")
 
         device_menu = wx.Menu()
@@ -348,6 +355,12 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self._goto_view("presets"), back_item)
         self.Bind(wx.EVT_MENU, lambda e: self.Close(), exit_item)
         self.Bind(wx.EVT_MENU, self._on_drum_editor, drum_editor_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("open_library"), drum_library_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("export_wav"), wav_export_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("export_pattern_file"), pattern_export_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("import_pattern_file"), pattern_import_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("export_midi"), midi_export_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("import_midi"), midi_import_item)
         self.Bind(wx.EVT_MENU, self._on_toggle_dark, self.dark_item)
         self.Bind(wx.EVT_MENU, self._on_arrange_tabs, arrange_item)
         self.Bind(wx.EVT_MENU, self._on_presets_folder, folder_item)
@@ -460,6 +473,15 @@ class MainFrame(wx.Frame):
             return
         self._goto_view("drums")
         self.drums_page.open_editor(blank=True)
+
+    def _drums_action(self, method: str):
+        """A menu handler that jumps to the Drum Looper and runs one of its actions."""
+        def handler(event) -> None:
+            if self.drums_page is None:
+                return
+            self._goto_view("drums")
+            getattr(self.drums_page, method)()
+        return handler
 
     def _on_arrange_tabs(self, event) -> None:
         """Accessible reorder dialog: a list where Alt+Up / Alt+Down move the selected tab."""
@@ -703,6 +725,9 @@ class MainFrame(wx.Frame):
             "   part, arrow through its samples - each plays as you land on it - and Save.\n"
             "6. Part + Mute this part silences a part live without erasing its steps.\n"
             "7. Set the Tempo and Drum volume, then press Start.\n\n"
+            "The Tools menu (Alt+T) holds the Drum Pattern Library (rename, delete,\n"
+            "recategorize your saved patterns), WAV export of the playing loop, drum\n"
+            "pattern file sharing, and MIDI export/import.\n\n"
             "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
             "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
             "Using the Drum Looper", wx.ICON_INFORMATION)

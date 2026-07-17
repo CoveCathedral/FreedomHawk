@@ -352,6 +352,43 @@ def test_grid_char_hook_routes_enter_and_p(frame, monkeypatch, _silence_audio):
         dlg.Destroy()
 
 
+def test_drum_library_dialog(frame, _silence_audio):
+    from firehawk.practice.patternstore import (lines_to_pattern, make_line,
+                                                make_record, save_user_pattern,
+                                                user_patterns)
+    from firehawk.ui.drumspanel import DrumLibraryDialog
+    d = frame.drums_page
+    lines = [make_line("kick")]
+    lines[0]["steps"] = [0]
+    p = lines_to_pattern(lines, 4, 4, 4, 1, "Lib Test")
+    save_user_pattern(d._settings, make_record("Lib Test", "Prog", 4, 4, 4, 1, lines, p))
+    dlg = DrumLibraryDialog(d, d._settings, dark=True)
+    try:
+        assert dlg.pattern_list.GetCount() == 1
+        assert dlg.pattern_list.GetString(0).startswith("Lib Test")
+        # Store-backed delete reflected after reload.
+        from firehawk.practice.patternstore import delete_pattern
+        delete_pattern(d._settings, "Lib Test")
+        dlg._reload()
+        assert dlg.pattern_list.GetCount() == 0
+        assert user_patterns(d._settings) == []
+    finally:
+        dlg.Destroy()
+
+
+def test_midi_import_becomes_current_groove(frame):
+    from firehawk.practice.midifile import midi_to_pattern, pattern_to_midi
+    d = frame.drums_page
+    mid = pattern_to_midi(d._pattern, 120, {})
+    pattern, info = midi_to_pattern(mid)
+    d._pattern = pattern
+    d._line_meta = None
+    d._pattern_voices = None
+    d._rebuild_parts()
+    assert d._pattern.name == "MIDI import"
+    assert "Kick" in d.part_choice.GetItems()
+
+
 def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
     # A 1-bar cycle would put a fill in every bar and wreck the meter (live-tested
     # regression); with Fill every unset, improv must run on a 4-bar cycle.

@@ -47,11 +47,17 @@ from ..practice.patternstore import (
     all_categories,
     build_line_kit,
     builtin_category,
+    delete_pattern,
     lines_for_kit,
     make_line,
     make_record,
+    record_from_file_dict,
+    record_to_file_dict,
     record_to_pattern,
+    rename_category,
+    rename_pattern,
     save_user_pattern,
+    set_pattern_category,
     user_patterns,
 )
 from . import speech, theme
@@ -1230,3 +1236,294 @@ class DrumsPanel(wx.Panel):
     def _announce(self, message: str) -> None:
         if self._status is not None:
             self._status(message)
+
+    # -- sharing: WAV / pattern files / MIDI (Tools menu) ----------------------
+
+    def _dark(self) -> bool:
+        return getattr(wx.GetTopLevelParent(self), "dark_mode", True)
+
+    def _export_effective_pattern(self) -> Pattern:
+        """The pattern exactly as it would play: mutes, fill cadence, fill style."""
+        effective = Pattern(
+            self._pattern.name, self._pattern.steps, self._pattern.steps_per_beat,
+            {r: s for r, s in self._pattern.hits.items() if r not in self._muted},
+            self._pattern.beats_per_bar, self._pattern.beat_unit, self._pattern.bars)
+        fill_bars = self._fill_every_bars()
+        if self.fillstyle_choice.GetSelection() == 1:
+            cycle = fill_bars or max(4, effective.bars)
+            effective = improvised_loop(effective, cycle, 2 if cycle >= 12 else 4)
+        elif fill_bars:
+            effective = expand_with_fill(effective, fill_bars)
+        return effective
+
+    def export_wav(self) -> None:
+        """Render the current loop (fills and all) to a WAV file."""
+        if self._kit is None:
+            wx.MessageBox("The drum looper needs numpy installed.", "Export WAV",
+                          wx.ICON_INFORMATION)
+            return
+        with wx.FileDialog(self, "Export drum loop as WAV",
+                           wildcard="WAV audio (*.wav)|*.wav",
+                           defaultFile=f"{self._pattern.name}.wav",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = Path(dlg.GetPath())
+        try:
+            kit = self._pattern_voices or self._kit
+            wav = render_loop(self._export_effective_pattern(), kit, self.bpm,
+                              volume=self.volume_slider.GetValue() / 100.0)
+            path.write_bytes(wav)
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not export:\n{exc}", "Export WAV", wx.ICON_ERROR)
+            return
+        self._announce(f"Exported loop to {path.name}")
+
+    def export_pattern_file(self) -> None:
+        """Save the current pattern as a shareable .fhdrum.json file."""
+        import json
+        name = self._pattern.name if self._pattern.name not in ("custom",) else "My Pattern"
+        with wx.TextEntryDialog(self, "Pattern name for the file:", "Export pattern",
+                                name) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name = dlg.GetValue().strip() or name
+        record = make_record(name, "Shared", self._pattern.beats_per_bar,
+                             self._pattern.beat_unit, self._pattern.steps_per_beat,
+                             self._pattern.bars, self._current_lines(), self._pattern)
+        with wx.FileDialog(self, "Export drum pattern",
+                           wildcard="Drum pattern (*.fhdrum.json)|*.fhdrum.json",
+                           defaultFile=f"{name}.fhdrum.json",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = Path(dlg.GetPath())
+        try:
+            path.write_text(json.dumps(record_to_file_dict(record), indent=2),
+                            encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not export:\n{exc}", "Export pattern", wx.ICON_ERROR)
+            return
+        self._announce(f"Exported pattern to {path.name}")
+
+    def import_pattern_file(self) -> None:
+        """Load a shared pattern file into the library and select it."""
+        import json
+        with wx.FileDialog(self, "Import drum pattern",
+                           wildcard="Drum pattern (*.fhdrum.json;*.json)|*.fhdrum.json;*.json",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = Path(dlg.GetPath())
+        try:
+            record = record_from_file_dict(json.loads(path.read_text(encoding="utf-8")))
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not import {path.name}:\n{exc}", "Import pattern",
+                          wx.ICON_ERROR)
+            return
+        save_user_pattern(self._settings, record)
+        self._rebuild_categories()
+        self._rebuild_groove_list()
+        self._select_user_pattern(record["name"])
+        wx.MessageBox(f"Imported '{record['name']}' into category "
+                      f"'{record['category']}'. It is now the current groove.",
+                      "Import pattern", wx.ICON_INFORMATION)
+
+    def export_midi(self) -> None:
+        """Save the current pattern as a .mid file (GM drum channel)."""
+        from ..practice.midifile import pattern_to_midi
+        role_of = {ln["id"]: ln["role"] for ln in self._current_lines()}
+        with wx.FileDialog(self, "Export pattern as MIDI",
+                           wildcard="MIDI file (*.mid)|*.mid",
+                           defaultFile=f"{self._pattern.name}.mid",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = Path(dlg.GetPath())
+        try:
+            path.write_bytes(pattern_to_midi(self._pattern, self.bpm, role_of))
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not export:\n{exc}", "Export MIDI", wx.ICON_ERROR)
+            return
+        self._announce(f"Exported MIDI to {path.name}")
+
+    def import_midi(self) -> None:
+        """Read a .mid file's drum notes into the current groove."""
+        from ..practice.midifile import midi_to_pattern
+        with wx.FileDialog(self, "Import MIDI file",
+                           wildcard="MIDI files (*.mid;*.midi)|*.mid;*.midi",
+                           style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = Path(dlg.GetPath())
+        try:
+            pattern, info = midi_to_pattern(path.read_bytes())
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not import {path.name}:\n{exc}", "Import MIDI",
+                          wx.ICON_ERROR)
+            return
+        self._pattern = pattern
+        self._line_meta = None
+        self._pattern_voices = None
+        self._muted = set()
+        self._rebuild_parts()
+        self._apply()
+        notes = [f"{info['notes']} notes", f"{pattern.meter_label()}",
+                 f"{pattern.bars} bar(s)"]
+        if info.get("no_drum_channel"):
+            notes.append("no drum channel found, so all notes were mapped")
+        if info.get("dropped"):
+            notes.append(f"{info['dropped']} notes beyond 4 bars were dropped")
+        wx.MessageBox(
+            f"Imported {path.name}: " + ", ".join(notes) + ".\n\n"
+            "It is now the current groove — open Edit Pattern to adjust it, or "
+            "Save as Preset there to keep it.",
+            "Import MIDI", wx.ICON_INFORMATION)
+
+    def _select_user_pattern(self, name: str) -> None:
+        for i, (kind, ref) in enumerate(self._groove_entries):
+            if kind == "user" and ref.get("name") == name:
+                self.groove_choice.SetSelection(i)
+                self._on_groove(None)
+                return
+
+    def open_library(self) -> None:
+        """The pattern/category manager (Tools > Drum Pattern Library)."""
+        dlg = DrumLibraryDialog(self, self._settings, self._dark())
+        dlg.ShowModal()
+        dlg.Destroy()
+        self._rebuild_categories()
+        self._rebuild_groove_list()
+
+
+class DrumLibraryDialog(wx.Dialog):
+    """Manage saved drum patterns and their categories.
+
+    A list of your patterns ("name — category") with Rename, Change Category,
+    Delete, and Rename Category.  Built-in grooves and their genre families are
+    fixed and don't appear here.
+    """
+
+    def __init__(self, parent: wx.Window, settings, dark: bool = True):
+        super().__init__(parent, title="Drum Pattern Library",
+                         size=(520, 460), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._settings = settings
+        self._dark = dark
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        intro = wx.StaticText(self, label=(
+            "Your saved drum patterns. Rename or delete a pattern, move it to another "
+            "category, or rename a whole category. Built-in grooves are not listed — "
+            "they are permanent."))
+        intro.Wrap(480)
+        root.Add(intro, 0, wx.ALL, 10)
+
+        self.pattern_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        set_accessible_name(self.pattern_list, "Saved patterns")
+        root.Add(self.pattern_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        btns = wx.WrapSizer(wx.HORIZONTAL)
+        for label, handler in (("&Rename...", self._on_rename),
+                               ("Change &Category...", self._on_change_category),
+                               ("&Delete", self._on_delete),
+                               ("Rename Ca&tegory...", self._on_rename_category)):
+            b = wx.Button(self, label=label)
+            b.Bind(wx.EVT_BUTTON, handler)
+            btns.Add(b, 0, wx.RIGHT | wx.BOTTOM, 6)
+        root.Add(btns, 0, wx.ALL, 10)
+        root.Add(self.CreateButtonSizer(wx.CLOSE), 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        self.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_CLOSE), id=wx.ID_CLOSE)
+
+        self.SetSizer(root)
+        theme.apply(self, dark)
+        self._reload()
+        wx.CallAfter(self.pattern_list.SetFocus)
+
+    def _reload(self) -> None:
+        keep = max(0, self.pattern_list.GetSelection())
+        self._records = user_patterns(self._settings)
+        self.pattern_list.Set(
+            [f"{r['name']}  —  {r.get('category', 'My patterns')}" for r in self._records])
+        if self._records:
+            self.pattern_list.SetSelection(min(keep, len(self._records) - 1))
+
+    def _current(self) -> dict | None:
+        sel = self.pattern_list.GetSelection()
+        return self._records[sel] if 0 <= sel < len(self._records) else None
+
+    def _on_rename(self, event) -> None:
+        rec = self._current()
+        if rec is None:
+            return
+        with wx.TextEntryDialog(self, "New name:", "Rename pattern", rec["name"]) as dlg:
+            theme.apply(dlg, self._dark)
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            new = dlg.GetValue().strip()
+        if not new or new == rec["name"]:
+            return
+        if not rename_pattern(self._settings, rec["name"], new):
+            wx.MessageBox(f"A pattern named '{new}' already exists.",
+                          "Rename pattern", wx.ICON_INFORMATION)
+            return
+        self._reload()
+        speech.speak(f"Renamed to {new}")
+
+    def _on_change_category(self, event) -> None:
+        rec = self._current()
+        if rec is None:
+            return
+        cats = all_categories(self._settings) + ["New category..."]
+        dlg = wx.SingleChoiceDialog(self, f"Category for '{rec['name']}':",
+                                    "Change category", cats)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        category = cats[dlg.GetSelection()]
+        dlg.Destroy()
+        if category == "New category...":
+            with wx.TextEntryDialog(self, "New category name:", "Change category") as dlg2:
+                theme.apply(dlg2, self._dark)
+                if dlg2.ShowModal() != wx.ID_OK:
+                    return
+                category = dlg2.GetValue().strip() or "My patterns"
+        set_pattern_category(self._settings, rec["name"], category)
+        self._reload()
+        speech.speak(f"{rec['name']} moved to {category}")
+
+    def _on_delete(self, event) -> None:
+        rec = self._current()
+        if rec is None:
+            return
+        if wx.MessageBox(f"Delete the pattern '{rec['name']}'? This cannot be undone.",
+                         "Delete pattern", wx.YES_NO | wx.ICON_WARNING) != wx.YES:
+            return
+        delete_pattern(self._settings, rec["name"])
+        self._reload()
+        speech.speak(f"Deleted {rec['name']}")
+
+    def _on_rename_category(self, event) -> None:
+        user_cats = sorted({r.get("category", "My patterns") for r in self._records})
+        if not user_cats:
+            wx.MessageBox("No saved patterns yet, so there are no categories to rename.",
+                          "Rename category", wx.ICON_INFORMATION)
+            return
+        dlg = wx.SingleChoiceDialog(self, "Which category?", "Rename category", user_cats)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            return
+        old = user_cats[dlg.GetSelection()]
+        dlg.Destroy()
+        with wx.TextEntryDialog(self, f"New name for '{old}':", "Rename category",
+                                old) as dlg2:
+            theme.apply(dlg2, self._dark)
+            if dlg2.ShowModal() != wx.ID_OK:
+                return
+            new = dlg2.GetValue().strip()
+        if not new or new == old:
+            return
+        count = rename_category(self._settings, old, new)
+        self._reload()
+        speech.speak(f"Renamed {old} to {new} on {count} pattern(s)")

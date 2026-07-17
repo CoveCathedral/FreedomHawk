@@ -173,3 +173,108 @@ def all_categories(settings) -> list[str]:
         if rec.get("category"):
             cats.add(rec["category"])
     return sorted(cats)
+
+
+# -- library management (the category/pattern manager) -----------------------------
+
+def delete_pattern(settings, name: str) -> bool:
+    records = user_patterns(settings)
+    kept = [r for r in records if r.get("name") != name]
+    if len(kept) == len(records):
+        return False
+    settings.set(_STORE_KEY, kept)
+    return True
+
+def rename_pattern(settings, old_name: str, new_name: str) -> bool:
+    new_name = new_name.strip()
+    if not new_name:
+        return False
+    records = user_patterns(settings)
+    if any(r.get("name") == new_name for r in records):
+        return False  # names are the store key; keep them unique
+    changed = False
+    for r in records:
+        if r.get("name") == old_name:
+            r["name"] = new_name
+            changed = True
+    if changed:
+        settings.set(_STORE_KEY, records)
+    return changed
+
+def set_pattern_category(settings, name: str, category: str) -> bool:
+    records = user_patterns(settings)
+    changed = False
+    for r in records:
+        if r.get("name") == name:
+            r["category"] = category.strip() or "My patterns"
+            changed = True
+    if changed:
+        settings.set(_STORE_KEY, records)
+    return changed
+
+def rename_category(settings, old: str, new: str) -> int:
+    """Rename a user category on every pattern in it; returns how many changed."""
+    new = new.strip()
+    if not new:
+        return 0
+    records = user_patterns(settings)
+    count = 0
+    for r in records:
+        if r.get("category") == old:
+            r["category"] = new
+            count += 1
+    if count:
+        settings.set(_STORE_KEY, records)
+    return count
+
+
+# -- pattern file import/export (shareable JSON) -----------------------------------
+
+_FILE_FORMAT = "freedomhawk-drum-pattern"
+_FILE_VERSION = 1
+
+def record_to_file_dict(record: dict) -> dict:
+    """A saved pattern as a self-describing, shareable JSON document."""
+    return {"format": _FILE_FORMAT, "version": _FILE_VERSION, **record}
+
+def record_from_file_dict(data: dict) -> dict:
+    """Validate an imported pattern document and return a clean record.
+
+    Raises ValueError with a human-readable reason on anything malformed.
+    """
+    if not isinstance(data, dict) or data.get("format") != _FILE_FORMAT:
+        raise ValueError("not a FreedomHawk drum pattern file")
+    name = str(data.get("name") or "").strip()
+    if not name:
+        raise ValueError("the pattern has no name")
+    try:
+        beats = int(data.get("beats", 4))
+        unit = int(data.get("unit", 4))
+        grid = int(data.get("grid", 4))
+        bars = int(data.get("bars", 1))
+    except (TypeError, ValueError):
+        raise ValueError("the pattern's meter values are not numbers") from None
+    if not (1 <= beats <= 16 and unit in (2, 4, 8, 16)
+            and 1 <= grid <= 4 and 1 <= bars <= 4):
+        raise ValueError("the pattern's meter is out of range")
+    lines_in = data.get("lines")
+    if not isinstance(lines_in, list) or not lines_in:
+        raise ValueError("the pattern has no lines")
+    total = steps_per_bar(beats, unit, grid) * bars
+    lines: list[dict] = []
+    for ln in lines_in[:MAX_LINES]:
+        if not isinstance(ln, dict) or not ln.get("id"):
+            continue
+        role = ln.get("role") if ln.get("role") in ROLES else "perc"
+        steps = sorted({int(s) for s in ln.get("steps", [])
+                        if isinstance(s, (int, float)) and 0 <= int(s) < total})
+        lines.append({
+            "id": str(ln["id"]), "label": str(ln.get("label") or ln["id"]),
+            "role": role, "kit": (str(ln["kit"]) if ln.get("kit") else None),
+            "sample": (str(ln["sample"]) if ln.get("sample") else None),
+            "steps": steps,
+        })
+    if not lines:
+        raise ValueError("the pattern's lines are unreadable")
+    return {"name": name, "category": str(data.get("category") or "Imported"),
+            "beats": beats, "unit": unit, "grid": grid, "bars": bars, "lines": lines}

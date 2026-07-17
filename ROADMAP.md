@@ -135,7 +135,15 @@ All screen-reader-first, native controls only.
   anywhere. **Improvised fills** (rule-bound randomness, meter-aware, fill-every-N up to
   16 bars) and a drum master volume. Loop is pre-mixed so any-length sample lands exactly
   on the beat (`practice/drums.py`, `patternstore.py`); numpy + accessible_output2.
-  See `docs/drum-kits.md`. Next ideas: swing/shuffle, per-line volume.
+  **Sharing & management (Tools menu):** Drum Pattern Library manager (rename/delete/
+  recategorize patterns, rename categories); WAV export of the playing loop; shareable
+  pattern files (`.fhdrum.json`) import/export; **MIDI export/import** (GM drum channel,
+  meter-aware, dependency-free SMF in `practice/midifile.py`). See `docs/drum-kits.md`.
+  **Planned next (Kaylea approved, in order):** accents/ghost notes · swing/shuffle ·
+  humanize · song mode (pattern chaining) · per-line tuning (808 to key) · tempo trainer ·
+  count-in · audition-step & speak-rhythm keys · choke groups · **MIDI controller input**
+  (craft beats from a keyboard). Long-term: spin the sequencer out as its own open-source
+  project (engine already firehawk-independent for extraction).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Queued (sequenced next):** Setlist / gig mode (ordered presets, Next/Prev hotkeys;

@@ -68,6 +68,21 @@ Buttons (all a Tab away):
 **Ctrl+D** anywhere in the app opens a fresh, empty editor on the Drum Looper tab —
 build a pattern from scratch mid-session, save it as a preset, jam on.
 
+## The Tools menu: library, sharing, MIDI
+
+The main **Tools** menu (Alt+T) holds the sequencer's management and sharing commands:
+
+| Command | What it does |
+|---------|--------------|
+| **Drum Pattern Editor… (Ctrl+D)** | Opens a blank editor. |
+| **Drum Pattern Library…** | Manage your saved patterns: rename or delete a pattern, move it to another category, or rename a whole category at once. Built-in grooves are permanent and not listed. |
+| **Export Drum Loop as WAV…** | Renders the current loop exactly as it plays — mutes, fill cadence, improvised fills, volume — to a `.wav` you can drop in a DAW, record over, or share. |
+| **Export / Import Drum Pattern…** | Patterns as small shareable files (`.fhdrum.json`) — trade grooves with other users. Imports land in the "Imported" category (or the one the file names) and become the current groove. |
+| **Export Pattern as MIDI…** | The pattern as a standard `.mid` file on the General MIDI drum channel — opens in any DAW with any drum sounds, meter included (odd meters too). |
+| **Import MIDI File…** | Reads a `.mid` file's drum notes (General MIDI mapping, quantized to the grid, up to 4 bars) and makes it the current groove — then edit it, save it as a preset, jam on it. |
+
+MIDI *controller* input (crafting beats from a MIDI keyboard) is planned.
+
 The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
 each beat divides), and **Bars in loop** (1–4). **Growing the bar count repeats the
 existing music across the new bars** (no silent gaps — edit the copies afterwards if you
