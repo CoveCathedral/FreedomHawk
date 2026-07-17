@@ -39,7 +39,7 @@ connection + protocol validation) · 🎛️ hardware-only (not app-controllable
 
 | Feature | Status | Notes |
 |---|---|---|
-| Tuner | 🔜 | Protocol has EngageTuner / tuner events; a Tuner page is the next add |
+| Tuner | ✅ | **By-ear reference-tone tuner** — plays a sustained tone per string; instrument (6/7/8-string guitar, 4/5/6-string bass) + full tuning library. No pedal needed, and far more useful to a blind player than the pedal's light-based tuner |
 | Tap tempo | ✅ | Tempo is set on the Global page (live tap is a device action) |
 | Master volume / guitar-level blend | 🎛️ | Front-panel knob; not an app parameter |
 | Output Mode (Line / Amp) | 🎛️ | **Rear-panel physical switch** — not app-controllable |
@@ -51,8 +51,11 @@ connection + protocol validation) · 🎛️ hardware-only (not app-controllable
 | Feature | Notes |
 |---|---|
 | Cloud Search / My Tones (Line 6 account) | ☁️ The dead cloud — the whole reason this project exists |
-| Music Library playback + Tone Matching | ☁️ Streams music through the pedal and matches cloud tones |
-| Levels (guitar-vs-music blend) | ☁️ Part of the music-player feature |
+| Automatic cloud Tone Matching (song → tone) | ☁️ Needs the dead cloud |
+
+Note: **music play-along still works** — the Firehawk is a Bluetooth speaker, so once paired
+you can set it as the Windows playback device and play any song through it (Help → Playing
+Along with Music). Only the *cloud tone-matching* part is gone.
 
 ## Beyond the original app (our additions)
 

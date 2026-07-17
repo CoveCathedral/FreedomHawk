@@ -21,6 +21,7 @@ from . import theme
 from .accessibility import set_accessible_name
 from .blockpanel import BlockPanel
 from .presetspanel import PresetsPanel
+from .tunerpanel import TunerPanel
 
 APP_TITLE = "Firehawk Accessible Controller"
 
@@ -67,7 +68,14 @@ class MainFrame(wx.Frame):
 
         self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        self.listbook.Bind(wx.EVT_LISTBOOK_PAGE_CHANGED, self._on_page_changed)
         self._apply_theme()
+
+    def _on_page_changed(self, event) -> None:
+        # Stop any tuner tone when navigating away from the Tuner page.
+        if self.listbook.GetPage(self.listbook.GetSelection()) is not self.tuner_page:
+            self.tuner_page.stop()
+        event.Skip()
 
     # -- unsaved-changes tracking --------------------------------------------
 
@@ -111,6 +119,10 @@ class MainFrame(wx.Frame):
         )
         self.listbook.AddPage(presets, "Presets")
         self._view_ids.append("presets")
+
+        self.tuner_page = TunerPanel(self.listbook, status=self.status.SetStatusText)
+        self.listbook.AddPage(self.tuner_page, "Tuner")
+        self._view_ids.append("tuner")
 
         for slot in SLOT_LAYOUT:
             page = BlockPanel(
@@ -184,6 +196,7 @@ class MainFrame(wx.Frame):
         if event.CanVeto() and not self._confirm_discard():
             event.Veto()
             return
+        self.tuner_page.stop()
         if self.session.transport is not None:
             try:
                 self.session.transport.close()
@@ -236,6 +249,7 @@ class MainFrame(wx.Frame):
 
         help_menu = wx.Menu()
         keys_item = help_menu.Append(wx.ID_ANY, "&Keyboard Commands\tF1")
+        music_item = help_menu.Append(wx.ID_ANY, "Playing Along with &Music...")
         about_item = help_menu.Append(wx.ID_ABOUT, "&About")
         menubar.Append(help_menu, "&Help")
 
@@ -255,6 +269,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_toggle_transmit, self.transmit_item)
         self.Bind(wx.EVT_MENU, self._on_view_messages, messages_item)
         self.Bind(wx.EVT_MENU, self._on_keys, keys_item)
+        self.Bind(wx.EVT_MENU, self._on_music, music_item)
         self.Bind(wx.EVT_MENU, self._on_about, about_item)
 
     # -- preset actions -------------------------------------------------------
@@ -487,6 +502,21 @@ class MainFrame(wx.Frame):
         dlg.SetSizer(sizer)
         dlg.ShowModal()
         dlg.Destroy()
+
+    def _on_music(self, event) -> None:
+        wx.MessageBox(
+            "Play along with your own music through the pedal\n\n"
+            "The Firehawk FX is also a Bluetooth speaker. Once it's paired to this computer,\n"
+            "you can send any audio to it — no setting in this app is needed:\n\n"
+            "  1. Pair the Firehawk over Bluetooth (Windows Settings > Bluetooth & devices).\n"
+            "  2. Open Windows Sound settings (right-click the speaker icon > Sound settings).\n"
+            "  3. Set the Firehawk as the output/playback device.\n"
+            "  4. Play a song in any media player — it comes out through the pedal, and you\n"
+            "     play along on your guitar.\n\n"
+            "This is separate from the control connection this app uses, so editing your tone\n"
+            "and streaming music can happen at the same time. (The cloud-based automatic\n"
+            "tone-matching from the old app is gone, but the play-along itself works.)",
+            "Playing along with music", wx.ICON_INFORMATION)
 
     def _on_about(self, event) -> None:
         wx.MessageBox(

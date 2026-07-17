@@ -41,8 +41,8 @@ def _block_page(frame, slot_id):
 
 
 def test_has_presets_page_and_all_blocks(frame):
-    # Presets page plus one per slot.
-    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 1
+    # Presets + Tuner pages, plus one per slot.
+    assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 2
     assert isinstance(frame.listbook.GetPage(0), PresetsPanel)
 
 
