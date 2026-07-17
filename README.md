@@ -24,10 +24,33 @@ minus the cloud.
 - **Offline editing (works now):** browse the full signal chain, swap models, and edit
   every parameter with correctly labelled controls; create, load, save, and organise
   presets as local files.
+- **Practice tools (work now):** a by-ear **tuner** (sustained reference tones; 6/7/8-string
+  guitars and 4/5/6-string basses, full tuning libraries), a **metronome** (odd meters with
+  accent grouping, tap tempo), and a full **accessible drum machine** — see below.
 - **Live pedal control (in progress):** talking to the pedal over its Bluetooth serial
   link. The confirmed protocol pieces (CRC-16, transport header) are implemented; the
   remaining on-wire frame format is being finalised (`docs/protocol.md`). **Nothing is
   written to the pedal** until that is validated against a real capture.
+
+## The accessible drum machine
+
+Possibly the first genuinely screen-reader-first step sequencer anywhere — designed
+hands-on with its blind user, and headed for a standalone open-source project of its own:
+
+- **200 built-in grooves** (rock to trap to 5/4, 7/8, and djent polymeters) plus your own
+  saved patterns, organised by genre **categories you can create and manage**.
+- A **tracker-style Pattern Editor** (Ctrl+D from anywhere): one line per drum, a time
+  cursor on the arrow keys (step / beat / bar granularity), every move **spoken directly
+  through the screen reader**. Space toggles hits, Enter picks a line's sample, P
+  previews — and lines can **stack drums and mix samples from different libraries**.
+- **Improvised drum fills** — rule-bound randomness that generates fresh fills every
+  render, always on the meter, with fill cadences up to 16 bars for jamming.
+- **Bring your own drum kits** as plain WAV folders; audition and choose every part's
+  sample by ear (no third-party audio ships with the app).
+- **Share everything:** export loops as WAV, trade patterns as small JSON files, and
+  export/import **MIDI** (General MIDI drum mapping, odd meters preserved).
+
+See [docs/drum-kits.md](docs/drum-kits.md) for the full guide.
 
 ## Accessibility
 
@@ -39,12 +62,18 @@ control types are used, each one confirmed to read well with a screen reader:
 - a **slider** for each continuous value (announces its value as you move it),
 - a **dropdown** for each model choice and stepped/enumerated value.
 
+Where a task outgrows standard widgets — the drum machine's pattern grid — the app
+**speaks through the screen reader directly** (NVDA when running, Windows speech
+otherwise), the same technique accessible DAW tools use, so even tracker-style editing
+is fully non-visual.
+
 Everything is keyboard-navigable. Highlights:
 
 - **Escape** steps back (a page's controls → the block list → Presets).
 - **Ctrl+1…Ctrl+9** jump straight to a section; **Ctrl+B** returns to Presets.
-- **Ctrl+N / Ctrl+O / Ctrl+S** — new / open / save a preset.
+- **Ctrl+N / Ctrl+O / Ctrl+S** — new / open / save a preset; **Ctrl+D** — drum editor.
 - **F1** opens the full keyboard-command list.
+- Tabs are **reorderable** (Settings → Arrange Tabs) and the order persists.
 - A high-contrast **dark mode with large white labels** is on by default (toggle in
   Settings).
 
@@ -91,13 +120,17 @@ Double-click **`Firehawk.bat`**, or from a terminal:
 ```
 src/firehawk/
   model/       tone model: models, parameters, ranges, symbols, preset/edit-buffer state
-  protocol/    CRC-16 + transport header (confirmed); frame + value encoding (in progress)
+  protocol/    the reverse-engineered wire protocol: frames, CRC, message encoders
+  device/      the gated bridge from UI edits to protocol messages (transmit off by default)
   transport/   raw byte I/O: Bluetooth SPP COM port, plus an offline simulator
-  ui/          the accessible wxPython interface
+  practice/    the musician tools engine: tuner math, metronome, drum machine, MIDI,
+               pattern store — deliberately UI-free (future standalone sequencer project)
+  ui/          the accessible wxPython interface, incl. direct screen-reader speech
   data/        tone data — generated locally by tools/extract_assets.py, not in the repo
-tests/         model, protocol, transport, and UI smoke tests
-docs/          protocol.md — reverse-engineering notes
+tests/         model, protocol, device, practice, and UI smoke tests (headless)
+docs/          user-manual.md, drum-kits.md, protocol.md, capture-guide.md, and more
 tools/         extract_assets.py, plus reverse-engineering helpers (symbol decoder, etc.)
+Samples/       your own drum kits live here (git-ignored; nothing is redistributed)
 ```
 
 ## Why this is legitimate
@@ -110,6 +143,16 @@ the notes in `docs/` and `tools/` are working notes toward an independent, clean
 reimplementation. US law makes explicit room for both purposes (the DMCA §1201 exemptions
 for assistive technology and for interoperability, and the long interoperability line of
 precedent).
+
+## Documentation
+
+- **[User manual](docs/user-manual.md)** — the full guide, structured for screen-reader
+  navigation (also in-app: Help → User Manual).
+- **[Drum machine guide](docs/drum-kits.md)** — grooves, the pattern editor, your own
+  kits, sharing and MIDI.
+- **[Feature coverage](docs/feature-coverage.md)** — everything vs. the original app.
+- **[Protocol notes](docs/protocol.md)** and the **[capture guide](docs/capture-guide.md)**
+  — the reverse-engineering record and how live control gets validated.
 
 ## Contributing
 

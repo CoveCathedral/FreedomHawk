@@ -337,6 +337,7 @@ class MainFrame(wx.Frame):
         menubar.Append(device_menu, "De&vice")
 
         help_menu = wx.Menu()
+        manual_item = help_menu.Append(wx.ID_ANY, "&User Manual...")
         keys_item = help_menu.Append(wx.ID_ANY, "&Keyboard Commands\tF1")
         metronome_help_item = help_menu.Append(wx.ID_ANY, "Using the Me&tronome...")
         drums_help_item = help_menu.Append(wx.ID_ANY, "Using the &Drum Looper...")
@@ -369,6 +370,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_ports, ports_item)
         self.Bind(wx.EVT_MENU, self._on_toggle_transmit, self.transmit_item)
         self.Bind(wx.EVT_MENU, self._on_view_messages, messages_item)
+        self.Bind(wx.EVT_MENU, self._on_manual, manual_item)
         self.Bind(wx.EVT_MENU, self._on_keys, keys_item)
         self.Bind(wx.EVT_MENU, self._on_metronome_help, metronome_help_item)
         self.Bind(wx.EVT_MENU, self._on_drums_help, drums_help_item)
@@ -653,6 +655,21 @@ class MainFrame(wx.Frame):
             "loading and saving presets all work now."
         )
         wx.MessageBox(body, "Detected serial ports", wx.ICON_INFORMATION)
+
+    def _on_manual(self, event) -> None:
+        """Open the user manual (docs/user-manual.md) in the default text app."""
+        import os
+        manual = Path.cwd() / "docs" / "user-manual.md"
+        if manual.is_file():
+            try:
+                os.startfile(str(manual))  # noqa: S606 - opening our own doc file
+                return
+            except OSError:
+                pass
+        wx.MessageBox(
+            "The manual lives at docs\\user-manual.md in the FreedomHawk folder, and "
+            "online at github.com/CoveCathedral/FreedomHawk.",
+            "User manual", wx.ICON_INFORMATION)
 
     def _on_keys(self, event) -> None:
         titles = dict(all_views())

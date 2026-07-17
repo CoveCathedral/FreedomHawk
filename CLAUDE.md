@@ -33,6 +33,33 @@ unreachable to them, and the hardware they own is on a path to becoming a brick.
 5. Verify accessibility with NVDA in the loop, not just visually. A control that looks fine
    but announces nothing to NVDA is broken.
 
+### Hard-won rules from live NVDA testing (follow these; each fixed a real failure)
+
+- **The status bar is inaudible.** NVDA never announces `SetStatusText`. Anything a button
+  press must tell the user goes in a spoken `wx.MessageBox` or moves focus into a dialog.
+  Status text is passive supplementary info only.
+- **Sliders announce percent-of-range by default.** Pass a `value_fn` to
+  `set_accessible_name` so NVDA speaks the real value ("60 BPM", "-54.5 dB") — required
+  for every slider whose unit isn't literally percent.
+- **Dialogs steal Enter (default button) and Space** before a child control's
+  `EVT_KEY_DOWN` runs. Custom key handling inside a dialog must bind `EVT_CHAR_HOOK` on
+  the dialog, route only its keys and only while the target control has focus, and
+  `Skip()` everything else.
+- **Dialogs must land focus on their primary control** on open (`wx.CallAfter(SetFocus)`)
+  and wrap construction in try/except that shows an error dialog — a swallowed exception
+  is a silent dead button.
+- **For dense editing surfaces** (the drum pattern grid, and anything grid-like in the
+  future) use the **tracker model** the user designed: a ListBox with one row per item, a
+  shared cursor on fully-owned arrow keys (plain = smallest step, Ctrl = next unit,
+  Ctrl+Shift = largest), every move **spoken directly** via `ui/speech.py`
+  (accessible_output2: NVDA, then SAPI, no-op degrade). Do not build dropdown+checkbox
+  forms for grids — "tabbing through all those is a nightmare."
+- **winsound `SND_MEMORY` is unreliable on real hardware.** Always play audio via a temp
+  WAV file + `SND_FILENAME|SND_ASYNC` (see `_PreviewPlayer`), and pair audio actions with
+  spoken feedback so a playback failure is still audible as words.
+- **Teardown code must touch no UI** (no `SetStatusText` during window destruction), and
+  audio/timers need explicit `dispose()` paths.
+
 ## What this project is (legitimacy)
 
 This is **interoperability and assistive-technology reverse engineering of hardware the
@@ -55,28 +82,35 @@ Do not redistribute Line 6 code.
    at startup: every model, parameter, range, and value type. This is the source of truth
    for what is editable and how values map. Keep it as flat data files.
 
+Additional layers that grew from the build:
+4. **`device`** — the gated bridge: subscribes to edit-buffer changes, encodes each edit
+   via the protocol layer, logs to an outbox; transmits ONLY when explicitly enabled
+   (off by default, confirmation-gated) — nothing touches hardware until validated.
+5. **`practice`** — the musician tools engine (tuner math, metronome, drum machine,
+   pattern store, MIDI files). **Deliberately UI-free and firehawk-independent**: the
+   accessible step sequencer is planned to spin out as its own open-source project, so
+   keep these modules extraction-clean (flat JSON data, no pedal imports).
+
 State model: a `FirehawkEditBuffer` object mirroring `default_preset.json`. UI reads/writes
 it; the `protocol` layer turns writes into frames. Ship incrementally: get "recall preset +
 toggle a block + move one parameter" working first, then widen coverage.
 
 ## Solved vs. remaining
 
-**Already solved (static data shipped in the APK):** the entire tone model — every amp,
-cab, effect, reverb, and wah with numeric IDs, parameter names, ranges, and value types —
-in readable JSON plus a decoded binary symbol table. 261 models with numeric IDs. The
-symbol table (`defaultSymbolTable.bin`) is fully decoded and validated (see `symtable.py`,
-`firehawk_symbols.json`).
+**Solved — the tone model:** all 261 models with parameters, ranges, value types; the
+symbol table fully decoded (`firehawk_symbols.json`).
 
-**The one remaining unknown:** the exact **on-wire byte framing** of a "set parameter"
-message — frame delimiting, transport header layout, how (group, param) is addressed, how
-values are encoded, and the CRC-16 parameters (polynomial/init/reflect/xor). This is
-produced by the native library `libAmplifiRemoteNdk.so`, not Java.
+**Solved — the wire protocol (2026-07, via Ghidra; full writeup in `docs/protocol.md`):**
+CRC-16/CCITT-FALSE; serial frame (sync `55 55` + 12-byte header + payload); 8-byte
+transport header; both write paths — bulk preset save (key→TypedValue stream) and live
+single-parameter set (ToneMatch commands: SetDspModelParam / SetPresetPSKeyParam / tempo /
+LoadDspModel); model-knob addressing via symbol-table indices. All implemented and unit-
+tested in `firehawk.protocol`.
 
-Two complementary ways to finish it (do both; they cross-check):
-- **A. Static (Ghidra)** on the named functions in `native_protocol_symbols.txt` — start at
-  `MsgTransportHeader_Pack`, `RobustSerialMsgChannel_*`, `CRC16_Process`. No hardware needed.
-- **B. Dynamic capture** — Bluetooth HCI snoop of one known parameter change, aligned to the
-  known semantics, filtered in `tshark`. Validates A.
+**Remaining:** just **two inferred constants** (the float type tag and the ToneMatch
+transport port), both flagged in code. One Bluetooth HCI capture of the old app changing a
+parameter confirms both (beginner walkthrough in `docs/capture-guide.md`) — then transmit
+can be validated and enabled.
 
 ## Where the files are
 

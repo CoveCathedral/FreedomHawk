@@ -158,5 +158,8 @@ All screen-reader-first, native controls only.
 ```
 # from the project root
 .venv\Scripts\python -m firehawk           # launch the accessible app (or double-click Firehawk.bat)
-.venv\Scripts\python -m pytest             # run the test suite (49 tests)
+.venv\Scripts\python -m pytest             # run the test suite (191 tests)
 ```
+
+User documentation: `docs/user-manual.md` (the manual), `docs/drum-kits.md` (drum machine
+guide), plus in-app Help (F1 and the Help menu).

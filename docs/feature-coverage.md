@@ -67,8 +67,13 @@ Along with Music). Only the *cloud tone-matching* part is gone.
   the practice tools default to the bottom so they stay out of the editing workflow.
 - A **metronome** the pedal never had — adjustable tempo/time-signature/subdivision,
   accented downbeat, tap-tempo.
-- A **drum looper** the pedal never had — synth kit or your own sample libraries, genre
-  grooves, accessible step editing, with sample-accurate timing regardless of sample length.
+- A full **accessible drum machine** the pedal never had — 200 grooves + saved patterns
+  with categories, a tracker-grid editor with a spoken cursor (drum stacking, library
+  mixing, Ctrl+D from anywhere), improvised fills, per-part sample choice, and sharing via
+  WAV, pattern files, and MIDI both ways. Sample-accurate timing regardless of sample
+  length. See `docs/drum-kits.md`.
+- **Direct screen-reader speech** for surfaces beyond standard widgets (the pattern grid),
+  via accessible_output2 — NVDA first, Windows speech fallback.
 - A **staged, gated** device bridge that shows the exact bytes each edit would send.
 
 ## Summary
