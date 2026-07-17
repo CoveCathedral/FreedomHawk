@@ -120,20 +120,89 @@ def test_metronome_survives_reorder(frame):
     assert frame._view_ids[0] == "metronome"
 
 
-def test_drums_panel_present_and_editable(frame):
+def test_drums_panel_layout(frame):
     d = frame.drums_page
     assert isinstance(d, DrumsPanel)
-    # Default synth kit gives editable parts and 16 step toggles.
     assert d.part_choice.GetCount() >= 1
-    assert len(d._step_boxes) == 16
-    # Toggling a step updates the pattern model for the selected part.
-    role = d._current_part()
-    box = d._step_boxes[1]
-    box.SetValue(True)
-    evt = wx.CommandEvent(wx.EVT_CHECKBOX.typeId, box.GetId())
-    evt.SetInt(1)  # so event.IsChecked() reads True
-    d._on_step(1, evt)
-    assert 1 in d._pattern.hits[role]
+    # 200 grooves in the dropdown; the kit dropdown holds only kits (import is a
+    # separate button, so arrowing through kits never springs a folder dialog).
+    assert d.groove_choice.GetCount() == 200
+    assert all("..." not in item for item in d.kit_choice.GetItems())
+    assert d.import_button.GetLabel() == "&Import Drum Kit..."
+
+
+def test_pattern_editor_dialog_edits_steps(frame):
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    d = frame.drums_page
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    try:
+        # One step-dropdown entry per step, labelled by beat.
+        assert dlg.step_choice.GetCount() == dlg.pattern.steps
+        assert dlg.step_choice.GetString(0) == "Beat 1"
+        # Checking a part on a step updates the pattern; unchecking removes it.
+        dlg.step_choice.SetSelection(2)
+        dlg._on_part_toggle("kick", True)
+        assert 2 in dlg.pattern.hits["kick"]
+        dlg._on_part_toggle("kick", False)
+        assert 2 not in dlg.pattern.hits.get("kick", [])
+        # The part boxes reflect the selected step's contents.
+        dlg.step_choice.SetSelection(0)
+        dlg._refresh_part_boxes()
+        assert dlg._part_boxes["kick"].GetValue() == (0 in dlg.pattern.hits.get("kick", []))
+    finally:
+        dlg.Destroy()
+
+
+def test_pattern_editor_dialog_meter_change(frame):
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    d = frame.drums_page
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    try:
+        dlg.beats_choice.SetSelection(6)   # 7 beats
+        dlg.unit_choice.SetSelection(2)    # /8
+        dlg.grid_choice.SetSelection(1)    # eighth grid
+        dlg.bars_choice.SetSelection(0)    # 1 bar
+        dlg._on_meter(None)
+        assert dlg.pattern.meter_label() == "7/8"
+        assert dlg.pattern.steps == 7
+        assert dlg.step_choice.GetCount() == 7
+    finally:
+        dlg.Destroy()
+
+
+def test_pattern_editor_save_flow(frame):
+    # Simulate the panel's save path without ShowModal.
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    d = frame.drums_page
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._kit, d.player, d.bpm, dark=True)
+    try:
+        dlg.step_choice.SetSelection(1)
+        dlg._on_part_toggle("tom", True)
+        edited = dlg.pattern
+    finally:
+        dlg.Destroy()
+    d._pattern = edited
+    d._rebuild_parts()
+    assert 1 in d._pattern.hits["tom"]
+    assert "Tom" in d.part_choice.GetItems()
+
+
+def test_metronome_odd_meter_toggle(frame):
+    m = frame.metronome_page
+    # Standard timing by default: odd-meter controls hidden.
+    assert not m.grouping_text.IsShown() and not m.unit_choice.IsShown()
+    m.odd_cb.SetValue(True)
+    m._on_odd_toggle(None)
+    assert m.grouping_text.IsShown() and m.unit_choice.IsShown()
+    m.beats_choice.SetSelection(6)  # 7 beats
+    m.grouping_text.SetValue("2+2+3")
+    m._update_groups()
+    assert m._group_starts == {0, 2, 4}
+    # Turning it off resets to standard: unit 4, downbeat-only accents, hidden again.
+    m.odd_cb.SetValue(False)
+    m._on_odd_toggle(None)
+    assert not m.grouping_text.IsShown()
+    assert m._group_starts == {0}
 
 
 def test_drums_start_stop_toggles(frame):

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import os
+import random
 import struct
 import tempfile
 import wave
@@ -207,6 +208,26 @@ def synth_tom(rate: int = RATE) -> "np.ndarray":
     return _norm(np.sin(phase) * np.exp(-t * 12.0))
 
 
+def synth_crash(rate: int = RATE) -> "np.ndarray":
+    t = _t(1.1, rate)
+    rng = np.random.default_rng(5)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)  # bright wash
+    return _norm(noise * np.exp(-t * 3.0), 0.75)
+
+
+def synth_ride(rate: int = RATE) -> "np.ndarray":
+    t = _t(0.6, rate)
+    rng = np.random.default_rng(6)
+    ping = np.sin(2 * np.pi * 950.0 * t) * np.exp(-t * 9.0)
+    shimmer = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0) * np.exp(-t * 7.0)
+    return _norm(0.55 * ping + 0.45 * shimmer, 0.7)
+
+
+def synth_perc(rate: int = RATE) -> "np.ndarray":
+    t = _t(0.09, rate)  # short woodblock-style blip
+    return _norm(np.sin(2 * np.pi * 620.0 * t) * np.exp(-t * 40.0), 0.8)
+
+
 # -- kits ------------------------------------------------------------------------
 
 @dataclass
@@ -225,7 +246,8 @@ def synth_kit(rate: int = RATE) -> DrumKit:
     return DrumKit("Synth (built-in)", {
         "kick": synth_kick(rate), "snare": synth_snare(rate), "hihat": synth_hihat(rate),
         "openhat": synth_openhat(rate), "clap": synth_clap(rate), "808": synth_808(rate),
-        "tom": synth_tom(rate),
+        "tom": synth_tom(rate), "perc": synth_perc(rate), "ride": synth_ride(rate),
+        "crash": synth_crash(rate),
     })
 
 
@@ -329,6 +351,104 @@ GENRE_PATTERNS = [
     _p("Djent 7/16 (poly)", {"kick": [0, 1, 2, 4, 5], "808": [0, 4], "snare": [3]},
        beats=7, unit=16, grid=4),
 ]
+
+
+# -- the pattern library (200 grooves: hand-made bases + seeded variations) --------
+
+def _metrical_beat_len(p: Pattern) -> int:
+    """Grid steps in one metrical beat of the pattern (e.g. an eighth in 7/8)."""
+    return max(1, round(p.steps_per_beat * 4.0 / max(1, p.beat_unit)))
+
+
+def _two_bars(base: Pattern, name: str) -> Pattern:
+    """The base groove repeated over two bars (so a fill can live in bar 2)."""
+    per = base.steps
+    hits = {r: sorted({s + b * per for b in range(2) for s in steps})
+            for r, steps in base.hits.items()}
+    return Pattern(name, per * 2, base.steps_per_beat, hits,
+                   base.beats_per_bar, base.beat_unit, 2)
+
+
+def _generate_variation(base: Pattern, seed: int, with_fill: bool, name: str) -> Pattern:
+    """A deterministic musical variation of *base* (same seed -> same groove forever)."""
+    rng = random.Random(seed)
+    p = _two_bars(base, name)
+    total = p.steps
+    beat_len = _metrical_beat_len(p)
+
+    # Hat movement: drop or add a few hat steps so the ride pattern breathes.
+    hat = set(p.hits.get("hihat", []))
+    if hat:
+        for _ in range(rng.randint(1, 3)):
+            s = rng.randrange(total)
+            if s in hat and rng.random() < 0.5:
+                hat.discard(s)
+            else:
+                hat.add(s)
+        p.hits["hihat"] = sorted(hat)
+    if rng.random() < 0.45:  # occasional open hat, replacing the closed one there
+        s = rng.randrange(total)
+        p.hits.setdefault("openhat", [])
+        p.hits["openhat"] = sorted(set(p.hits["openhat"]) | {s})
+        if "hihat" in p.hits:
+            p.hits["hihat"] = [x for x in p.hits["hihat"] if x != s]
+
+    # Kick syncopation: up to two extra kicks, avoiding the backbeat snares.
+    snare = set(p.hits.get("snare", []))
+    kicks = set(p.hits.get("kick", []))
+    for _ in range(rng.randint(0, 2)):
+        s = rng.randrange(total)
+        if s not in snare:
+            kicks.add(s)
+    p.hits["kick"] = sorted(kicks)
+    if "808" in base.hits:  # trap-style: the sub shadows the kick
+        p.hits["808"] = sorted(kicks)
+
+    if rng.random() < 0.4:  # light percussion sprinkle
+        p.hits["perc"] = sorted(rng.sample(range(total), k=rng.randint(1, 3)))
+
+    if with_fill:
+        # Fill: clear the last beat(s) of bar 2 and run snare/tom through it, with a
+        # crash landing on the loop restart. Sized from the meter, so it always fits.
+        fill_beats = rng.choice((1, 2)) if p.beats_per_bar >= 4 else 1
+        start = total - min(total, beat_len * fill_beats)
+        for role in ("snare", "hihat", "openhat", "clap", "tom", "perc"):
+            if role in p.hits:
+                p.hits[role] = [s for s in p.hits[role] if s < start]
+        for s in range(start, total):
+            if rng.random() < 0.85:
+                p.hits.setdefault(rng.choice(("snare", "tom", "tom", "snare")), []).append(s)
+        for role in ("snare", "tom"):
+            if role in p.hits:
+                p.hits[role] = sorted(set(p.hits[role]))
+        p.hits["crash"] = sorted(set(p.hits.get("crash", [])) | {0})
+
+    p.hits = {r: s for r, s in p.hits.items() if s}  # drop emptied roles
+    return p
+
+
+def build_pattern_library(total: int = 200) -> list[Pattern]:
+    """The full groove list: the hand-made bases plus seeded variations up to *total*.
+
+    Seeds are fixed, so the library is identical every launch — pattern 137 today is
+    pattern 137 forever.
+    """
+    library = [p.copy() for p in GENRE_PATTERNS]
+    counters: dict[str, int] = {}
+    i = 0
+    while len(library) < total:
+        base = GENRE_PATTERNS[i % len(GENRE_PATTERNS)]
+        n = counters.get(base.name, 2)  # the base itself is number 1
+        counters[base.name] = n + 1
+        with_fill = i % 2 == 1
+        name = f"{base.name} {n:02d}" + (" fill" if with_fill else "")
+        library.append(_generate_variation(base, seed=1000 + i, with_fill=with_fill, name=name))
+        i += 1
+    return library
+
+
+#: Built once at import; deterministic (see build_pattern_library).
+PATTERN_LIBRARY = build_pattern_library()
 
 
 # -- rendering (the compensator) -------------------------------------------------

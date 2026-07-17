@@ -7,33 +7,47 @@ libraries** for higher-fidelity sounds.
 ## Quick start
 
 1. Open the **Drum Looper** tab.
-2. Leave **Kit** on "Synth (built-in)", pick a **Groove**, set the **Tempo**, and press
-   **Start**.
-3. To customize, choose a part under **Edit part** (Kick, Snare, …) and toggle its steps.
-   Use **Mute this part** to silence a part without erasing its steps.
+2. Leave **Kit** on "Synth (built-in)", pick a **Groove** (200 built in — basics plus
+   generated variations, many with drum fills), set the **Tempo**, and press **Start**.
+3. To customize a groove, press **Edit Pattern…** — see the Pattern Editor below.
+4. Use **Part** + **Mute this part** to silence a part live without erasing its steps.
 
 The loop keeps playing while you switch to other tabs, so you can jam over it while editing
 a tone. Press **Stop** (or close the app) to end it.
 
-## The controls
+## The main tab
 
 | Control | What it does |
 |---------|--------------|
-| **Kit** | The sound set: "Synth (built-in)", any kit folder found in `Samples/`, or "Browse for a kit folder…". |
-| **Groove** | A starting pattern. Picking one loads its meter and steps; edit from there. |
-| **Beats per bar** / **Beat unit** | The time signature (e.g. 7 and 8 = 7/8). See odd meters below. |
-| **Grid (steps per beat)** | How finely each beat is divided: Quarter, Eighth, Triplet, or Sixteenth. More steps = finer placement. |
-| **Bars in loop** | How many bars the loop spans (1–4), for phrases longer than one bar. |
+| **Kit** | The sound set: "Synth (built-in)" plus any kit folder found in `Samples/`. Arrowing through this list only switches kits — it never opens a dialog. |
+| **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
+| **Groove** | One of 200 built-in patterns: the classic bases (Rock, Funk, Trap, 5/4, 7/8…) plus numbered variations. Names ending in "fill" include a drum fill sized to the meter, with a crash landing back on the one. First-letter navigation works in the list. |
 | **Tempo** | 30–300 BPM. (A screen reader announces the real BPM, not a percentage.) |
-| **Edit part** + **Steps** | Pick a part, then toggle its step checkboxes. Steps are labelled by beat (e.g. "Beat 3", "Beat 3.2", "Bar 2 Beat 1") so odd meters stay easy to navigate. |
-| **Mute this part** | Silences the selected part without erasing its steps. |
-| **Start / Stop** | Begins/ends the loop. Edits while playing take effect on the next loop. |
+| **Part** + **Mute this part** | Pick a part and mute/unmute it live, without touching its steps. |
+| **Edit Pattern…** | Opens the Pattern Editor dialog. |
+| **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. |
+
+## The Pattern Editor (Edit Pattern…)
+
+Built for keyboard-and-ears editing — no tabbing through dozens of step checkboxes:
+
+1. **Step** dropdown: every step, named by its place in the bar ("Beat 3", "Beat 3.2",
+   "Bar 2, Beat 1"). **Arrow through it** to move around the pattern — focus stays put.
+2. **Parts on this step**: a checkbox per part (Kick, Snare, Hi-hat…). Check what should
+   hit on the selected step.
+3. **Play/Pause** auditions the loop while you edit — changes are heard on the next loop.
+4. **Save** keeps your edits; **Cancel** (or Escape) discards them and returns to the
+   groove as it was.
+
+The time signature also lives here: **Beats per bar**, **Beat unit**, **Grid** (how finely
+each beat divides), and **Bars in loop** (1–4). Programmed hits that still fit are kept
+when you change the meter.
 
 ## Odd & prog time signatures
 
-Set **Beats per bar** and **Beat unit** to anything you like — 5/4, 7/8, 9/8, 6/8, 5/8,
-and so on. The step grid resizes to fit the meter, and the steps stay labelled by beat so
-you always know where you are.
+In the Pattern Editor, set **Beats per bar** and **Beat unit** to anything you like — 5/4,
+7/8, 9/8, 6/8, 5/8, and so on. The Step dropdown resizes to fit the meter, and steps stay
+named by beat so you always know where you are.
 
 Because the whole loop is one repeating unit, an **odd-length loop naturally cycles against
 your playing** — the "lands outside the bar" feel of bands like Meshuggah or Tool. For a
@@ -41,8 +55,9 @@ tight djent-style polymeter, try a short loop like **7/16** (Beat unit 16, 7 bea
 straight 4/4 pulse. Built-in odd grooves to start from: **5/4, 7/8 (2+2+3), 6/8, 5/8 (3+2),
 and Djent 7/16 (poly)**.
 
-Tip: the **Metronome** tab has a matching **Accent grouping** field (e.g. `2+2+3` for a 7)
-so its click accents the groups the same way.
+Tip: on the **Metronome** tab, check **Non-standard meter** to reveal the beat unit and a
+matching **Accent grouping** field (e.g. `2+2+3` for a 7) so its click accents the groups
+the same way. Leave it unchecked for a shorter, simpler tab in everyday 4/4 use.
 
 ## Bringing your own kit
 

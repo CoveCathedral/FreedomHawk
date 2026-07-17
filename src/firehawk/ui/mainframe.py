@@ -655,11 +655,13 @@ class MainFrame(wx.Frame):
         wx.MessageBox(
             "Using the Metronome\n\n"
             "1. Set the Tempo (30-300 BPM). A screen reader announces the real BPM.\n"
-            "2. Set the time signature: Beats per measure and Beat unit (e.g. 7 and 8\n"
-            "   for 7/8). Subdivision adds eighth/triplet/sixteenth clicks between beats.\n"
-            "3. Odd meters: type an Accent grouping like 2+2+3 (for a 7) to place the\n"
-            "   accents on the groups. The numbers must add up to the beats per measure.\n"
-            "4. Tap Tempo sets the speed from your taps. Start/Stop begins and ends it.\n\n"
+            "2. Set Beats per measure; Subdivision adds eighth/triplet/sixteenth clicks\n"
+            "   between beats. Tap Tempo sets the speed from your taps.\n"
+            "3. For odd meters, check 'Non-standard meter' to reveal the Beat unit and an\n"
+            "   Accent grouping field: type 2+2+3 (for a 7) to accent the groups. The\n"
+            "   numbers must add up to the beats per measure. Unchecking it returns to\n"
+            "   standard timing.\n"
+            "4. Start/Stop begins and ends the click.\n\n"
             "The metronome keeps playing while you switch to other tabs, so you can keep\n"
             "time while editing a tone. Press Stop or close the app to end it.",
             "Using the Metronome", wx.ICON_INFORMATION)
@@ -667,14 +669,17 @@ class MainFrame(wx.Frame):
     def _on_drums_help(self, event) -> None:
         wx.MessageBox(
             "Using the Drum Looper\n\n"
-            "1. Kit: 'Synth (built-in)' works with no files. Kit folders in your Samples\n"
-            "   folder appear here too, or pick 'Browse for a kit folder...'.\n"
-            "2. Groove: choose a starting pattern (Rock, Funk, Trap, 5/4, 7/8, ...).\n"
-            "3. Time signature: set Beats per bar / Beat unit for odd meters (7/8, 5/4).\n"
-            "   Grid sets how finely each beat divides; Bars makes longer loops.\n"
-            "4. Edit part: pick a part (Kick, Snare, ...) and toggle its step checkboxes\n"
-            "   (labelled by beat). Mute this part silences it without erasing its steps.\n"
-            "5. Set the Tempo and press Start. Edits while playing apply on the next loop.\n\n"
+            "1. Kit: 'Synth (built-in)' works with no files; kit folders in Samples appear\n"
+            "   in the list too. 'Import Drum Kit...' loads a kit folder from anywhere.\n"
+            "2. Groove: 200 built-in patterns - the classics (Rock, Funk, Trap, 5/4, 7/8,\n"
+            "   ...) plus numbered variations; names ending in 'fill' include a drum fill.\n"
+            "   First-letter navigation works in the list.\n"
+            "3. Edit Pattern... opens the step editor: pick a step with the Step dropdown\n"
+            "   (arrow keys - steps are named by beat, like 'Bar 2, Beat 3'), then check\n"
+            "   which parts hit there. Play auditions while you edit; Save keeps it,\n"
+            "   Cancel or Escape discards. The time signature (odd meters too) is set here.\n"
+            "4. Part + Mute this part silences a part live without erasing its steps.\n"
+            "5. Set the Tempo and press Start. Changes apply on the next loop.\n\n"
             "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
             "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
             "Using the Drum Looper", wx.ICON_INFORMATION)

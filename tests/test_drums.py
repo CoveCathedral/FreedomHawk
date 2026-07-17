@@ -169,3 +169,37 @@ def test_all_genre_patterns_hits_in_range():
     for p in drums.GENRE_PATTERNS:
         for role, steps in p.hits.items():
             assert all(0 <= s < p.steps for s in steps), f"{p.name}/{role} out of range"
+
+
+def test_pattern_library_size_and_uniqueness():
+    lib = drums.PATTERN_LIBRARY
+    assert len(lib) == 200
+    names = [p.name for p in lib]
+    assert len(set(names)) == 200
+    # The hand-made bases come first, unchanged.
+    assert names[: len(drums.GENRE_PATTERNS)] == [p.name for p in drums.GENRE_PATTERNS]
+
+
+def test_pattern_library_is_valid_and_deterministic():
+    for p in drums.PATTERN_LIBRARY:
+        assert p.hits, f"{p.name} is empty"
+        assert 1 <= p.steps <= drums.MAX_STEPS
+        for role, steps in p.hits.items():
+            assert all(0 <= s < p.steps for s in steps), f"{p.name}/{role} out of range"
+    # Same seeds -> the same library forever (pattern N is stable across launches).
+    again = drums.build_pattern_library()
+    assert all(a.name == b.name and a.hits == b.hits
+               for a, b in zip(drums.PATTERN_LIBRARY, again))
+
+
+def test_pattern_library_fills_land_on_the_meter():
+    fills = [p for p in drums.PATTERN_LIBRARY if p.name.endswith("fill")]
+    assert len(fills) > 50
+    for p in fills:
+        # Every fill puts a crash on the loop restart (step 0).
+        assert 0 in p.hits.get("crash", []), f"{p.name} missing restart crash"
+
+
+def test_synth_kit_covers_fill_roles():
+    kit = drums.synth_kit()
+    assert {"kick", "snare", "tom", "crash", "ride", "perc"} <= set(kit.roles())

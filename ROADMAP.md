@@ -123,10 +123,13 @@ All screen-reader-first, native controls only.
 - **Metronome** — DONE. Tempo 30–300 BPM (announced as real BPM, not a percentage), time
   signature incl. **odd/prog meters** with accent grouping (e.g. 2+2+3 for 7/8), subdivision,
   tap-tempo. Synthesized clicks; keeps running across tabs.
-- **Drum Looper** — DONE. Built-in synth kit or user-imported drum libraries; genre +
-  **odd/prog grooves** (5/4, 7/8, 6/8, djent 7/16 polymeter); variable time signature / grid
-  / bars; accessible step editing (part chooser + beat-labelled step toggles + per-part
-  mute). Loop is pre-mixed so any-length sample lands exactly on the beat
+- **Drum Looper** — DONE. Built-in synth kit (now incl. crash/ride/perc) or user-imported
+  drum libraries via a dedicated **Import Drum Kit button** (kits also auto-discovered from
+  `Samples/`); a **200-groove library** (hand-made bases + deterministic seeded variations,
+  ~half with meter-sized drum fills and a restart crash); a **Pattern Editor dialog** —
+  Step dropdown (beat-named steps) + per-part checkboxes + Play/Save/Cancel — holding the
+  time-signature controls (odd/prog meters: 5/4, 7/8, djent 7/16 polymeter). Per-part live
+  mute on the main tab. Loop is pre-mixed so any-length sample lands exactly on the beat
   (`practice/drums.py`); numpy for audio. See `docs/drum-kits.md`. Next: per-role sample
   choice, save custom grooves, swing/shuffle.
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to

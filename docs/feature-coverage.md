@@ -41,7 +41,7 @@ connection + protocol validation) · 🎛️ hardware-only (not app-controllable
 |---|---|---|
 | Tuner | ✅ | **By-ear reference-tone tuner** — plays a sustained tone per string; instrument (6/7/8-string guitar, 4/5/6-string bass) + full tuning library. No pedal needed, and far more useful to a blind player than the pedal's light-based tuner |
 | Metronome | ✅ | **New (the pedal had none)** — tempo (30–300 BPM, announced as real BPM), time signature incl. **odd/prog meters** with accent grouping (e.g. 2+2+3 for 7/8), subdivision, tap-tempo. Keeps running across tabs |
-| Drum Looper | ✅ | **New (the pedal had none)** — synth kit or your own drum libraries; genre + **odd/prog grooves** (5/4, 7/8, djent 7/16 polymeter), variable time signature/grid/bars, accessible step editing; pre-mixed so any-length samples land exactly on the beat. See `docs/drum-kits.md` |
+| Drum Looper | ✅ | **New (the pedal had none)** — synth kit or your own drum libraries (Import button); **200-groove library** with fills; **Pattern Editor** dialog (step dropdown + per-part checkboxes, odd/prog meters, Play/Save/Cancel); pre-mixed so any-length samples land exactly on the beat. See `docs/drum-kits.md` |
 | Tap tempo | ✅ | Tempo is set on the Global page (live tap is a device action); the Metronome also has its own tap-tempo |
 | Master volume / guitar-level blend | 🎛️ | Front-panel knob; not an app parameter |
 | Output Mode (Line / Amp) | 🎛️ | **Rear-panel physical switch** — not app-controllable |

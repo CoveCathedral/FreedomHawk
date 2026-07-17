@@ -77,8 +77,9 @@ class MetronomePanel(wx.Panel):
         self.beats_choice.Bind(wx.EVT_CHOICE, self._on_structure)
         grid.Add(self.beats_choice, 0, wx.EXPAND)
 
-        # Beat unit (bottom of the time signature)
-        grid.Add(wx.StaticText(self, label="Beat unit (note value):"), 0, wx.ALIGN_CENTER_VERTICAL)
+        # Beat unit (bottom of the time signature) — hidden until Non-standard meter is on
+        self._unit_label = wx.StaticText(self, label="Beat unit (note value):")
+        grid.Add(self._unit_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.unit_choice = wx.Choice(self, choices=[str(n) for n in BEAT_UNITS])
         self.unit_choice.SetSelection(BEAT_UNITS.index(4))
         set_accessible_name(self.unit_choice, "Beat unit, note value")
@@ -93,15 +94,22 @@ class MetronomePanel(wx.Panel):
         self.subdiv_choice.Bind(wx.EVT_CHOICE, self._on_structure)
         grid.Add(self.subdiv_choice, 0, wx.EXPAND)
 
-        # Accent grouping for odd meters (e.g. 2+2+3 for a 7)
-        grid.Add(wx.StaticText(self, label="Accent grouping (e.g. 2+2+3):"),
-                 0, wx.ALIGN_CENTER_VERTICAL)
+        # Accent grouping for odd meters — hidden until Non-standard meter is on
+        self._grouping_label = wx.StaticText(self, label="Accent grouping (e.g. 2+2+3):")
+        grid.Add(self._grouping_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.grouping_text = wx.TextCtrl(self)
         set_accessible_name(self.grouping_text, "Accent grouping, for example 2 plus 2 plus 3")
         self.grouping_text.Bind(wx.EVT_TEXT, self._on_grouping)
         grid.Add(self.grouping_text, 0, wx.EXPAND)
 
         root.Add(grid, 0, wx.EXPAND | wx.ALL, 8)
+
+        # Standard vs. non-standard timing: the odd-meter controls stay out of the way
+        # until asked for, so the everyday tab path is short.
+        self.odd_cb = wx.CheckBox(
+            self, label="Non-standard meter (show beat unit and accent grouping)")
+        self.odd_cb.Bind(wx.EVT_CHECKBOX, self._on_odd_toggle)
+        root.Add(self.odd_cb, 0, wx.LEFT | wx.RIGHT, 8)
 
         self.accent_cb = wx.CheckBox(self, label="Accent the downbeat and grouped beats")
         self.accent_cb.SetValue(True)
@@ -117,6 +125,7 @@ class MetronomePanel(wx.Panel):
         root.Add(buttons, 0, wx.ALL, 8)
 
         self.SetSizer(root)
+        self._show_odd_controls(False)
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
         if not self.player.available:
             self._announce("Audio playback isn't available on this system.")
@@ -157,6 +166,22 @@ class MetronomePanel(wx.Panel):
     def _on_grouping(self, event: wx.CommandEvent) -> None:
         # Accent grouping only changes which beats accent, so it applies live (no restart).
         self._update_groups()
+
+    def _show_odd_controls(self, shown: bool) -> None:
+        for w in (self._unit_label, self.unit_choice, self._grouping_label, self.grouping_text):
+            w.Show(shown)
+        self.Layout()
+
+    def _on_odd_toggle(self, event: wx.CommandEvent) -> None:
+        shown = self.odd_cb.GetValue()
+        if not shown:
+            # Back to standard timing: quarter-note unit, downbeat-only accents.
+            self.unit_choice.SetSelection(BEAT_UNITS.index(4))
+            self.grouping_text.ChangeValue("")  # no EVT_TEXT; we update groups ourselves
+            self._update_groups()
+        self._show_odd_controls(shown)
+        self._announce("Non-standard meter controls shown." if shown
+                       else "Standard timing: beat unit reset to 4, accents on the downbeat.")
 
     def _update_groups(self) -> None:
         text = self.grouping_text.GetValue().strip()
