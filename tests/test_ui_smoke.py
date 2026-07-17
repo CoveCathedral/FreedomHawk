@@ -420,6 +420,44 @@ def test_grid_char_hook_routes_enter_and_p(frame, monkeypatch, _silence_audio):
         dlg.Destroy()
 
 
+def test_kit_change_revoices_saved_pattern(frame):
+    # Regression: a saved pattern's follow-global lines must re-voice when the main
+    # Kit dropdown changes (they used to be frozen to the kit active at save time).
+    import numpy as np
+    from firehawk.practice import DrumKit
+    from firehawk.practice.patternstore import (lines_to_pattern, make_line,
+                                                make_record, save_user_pattern)
+    d = frame.drums_page
+    lines = [make_line("kick")]
+    lines[0]["steps"] = [0, 8]
+    p = lines_to_pattern(lines, 4, 4, 4, 1, "Saved")
+    save_user_pattern(d._settings, make_record("Saved", "Prog", 4, 4, 4, 1, lines, p))
+    d._rebuild_categories(); d._rebuild_groove_list()
+    idx = next(i for i, (k, _r) in enumerate(d._groove_entries) if k == "user")
+    d.groove_choice.SetSelection(idx); d._on_groove(None)
+    before = np.array(d._pattern_voices.voice("kick")[:1500])
+    d._set_kit(DrumKit("Fake", {"kick": np.full(1500, 0.6, dtype=np.float32)}))
+    after = np.array(d._pattern_voices.voice("kick")[:1500])
+    assert not np.array_equal(before, after)
+
+
+def test_editor_audition_applies_fills(frame):
+    # Regression (issue A): the editor's Play applies the panel's fill/improv and swing.
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    d = frame.drums_page
+    d.fillstyle_choice.SetSelection(1)  # improvised
+    dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
+                              set(), d.player, d.bpm, dark=True, settings=d._settings,
+                              swing=0.4, base_kit=d._kit, apply_fills=d._apply_fills)
+    try:
+        assert dlg._apply_fills is not None and dlg._swing == 0.4
+        base_crashes = len(dlg._effective_pattern().hits.get("crash", []))
+        withfills = dlg._apply_fills(dlg._effective_pattern())
+        assert len(withfills.hits.get("crash", [])) >= base_crashes
+    finally:
+        dlg.Destroy()
+
+
 def test_drum_library_dialog(frame, _silence_audio):
     from firehawk.practice.patternstore import (lines_to_pattern, make_line,
                                                 make_record, save_user_pattern,

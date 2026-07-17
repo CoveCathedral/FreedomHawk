@@ -64,6 +64,7 @@ from ..practice.patternstore import (
     set_pattern_category,
     user_patterns,
 )
+from ..practice.patternstore import SYNTH_KIT_NAME
 from . import speech, theme
 from .accessibility import set_accessible_name
 
@@ -75,6 +76,7 @@ except ImportError:  # non-Windows
 TEMPO_MIN = 30
 TEMPO_MAX = 300
 SYNTH_LABEL = "Synth (built-in)"
+FOLLOW_LABEL = "Follow the selected kit"
 
 
 def step_label(pattern: Pattern, i: int) -> str:
@@ -172,7 +174,8 @@ class PatternEditorDialog(wx.Dialog):
     def __init__(self, parent: wx.Window, pattern: Pattern, lines: list[dict],
                  kits_dir, silenced: set[str] | None, player: DrumLoopPlayer,
                  bpm: int, dark: bool = True, settings=None,
-                 swing: float = 0.0, humanize: float = 0.0):
+                 swing: float = 0.0, humanize: float = 0.0, base_kit=None,
+                 apply_fills=None):
         super().__init__(parent, title="Pattern Editor",
                          size=(660, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.pattern = pattern
@@ -184,11 +187,13 @@ class PatternEditorDialog(wx.Dialog):
         self._bpm = bpm
         self._swing = swing        # match the main tab's feel while auditioning
         self._humanize = humanize
+        self._base_kit = base_kit  # the globally selected kit (follow-global lines use it)
+        self._apply_fills = apply_fills  # panel's fill/improv transform, so audition matches
         self._dark = dark
         self._auditioning = False
         self._cursor = 0
         self._preview = _PreviewPlayer()
-        self._line_kit = build_line_kit(self.lines, self._kits_dir)
+        self._line_kit = build_line_kit(self.lines, self._kits_dir, base_kit=self._base_kit)
 
         root = wx.BoxSizer(wx.VERTICAL)
         intro = wx.StaticText(self, label=(
@@ -281,13 +286,17 @@ class PatternEditorDialog(wx.Dialog):
     def _sample_desc(self, line: dict) -> str:
         if line["id"] in self.silenced:
             return "silent"
-        if line.get("kit"):
-            if line.get("sample"):
-                return Path(line["sample"]).stem
-            files = list_role_files(self._kits_dir / line["kit"]).get(line["role"], [])
-            pick = default_sample_for(line["role"], files)
-            return pick.stem if pick else "none"
-        return "synth sound"
+        kit_name = line.get("kit")
+        if kit_name is None:                 # follows the globally selected kit
+            base = self._base_kit.name if self._base_kit else "synth"
+            return f"from {base}"
+        if kit_name == SYNTH_KIT_NAME:
+            return "synth"
+        if line.get("sample"):
+            return Path(line["sample"]).stem
+        files = list_role_files(self._kits_dir / kit_name).get(line["role"], [])
+        pick = default_sample_for(line["role"], files)
+        return pick.stem if pick else "none"
 
     def _row_label(self, line: dict) -> str:
         n = len(self.pattern.hits.get(line["id"], []))
@@ -309,7 +318,7 @@ class PatternEditorDialog(wx.Dialog):
                 return
 
     def _rebuild_line_kit(self) -> None:
-        self._line_kit = build_line_kit(self.lines, self._kits_dir)
+        self._line_kit = build_line_kit(self.lines, self._kits_dir, base_kit=self._base_kit)
 
     def _sync_meter_controls(self) -> None:
         p = self.pattern
@@ -473,7 +482,7 @@ class PatternEditorDialog(wx.Dialog):
 
         kit_names = [d.name for d in sorted(self._kits_dir.iterdir())
                      if d.is_dir()] if self._kits_dir.is_dir() else []
-        sources = [SYNTH_LABEL] + kit_names
+        sources = [FOLLOW_LABEL, SYNTH_LABEL] + kit_names
         dlg = wx.SingleChoiceDialog(self, f"Sound source for {ROLE_LABELS[role]}:",
                                     "Add line", sources)
         theme.apply(dlg, self._dark)
@@ -483,8 +492,10 @@ class PatternEditorDialog(wx.Dialog):
         source = sources[dlg.GetSelection()]
         dlg.Destroy()
 
-        kit_name, sample = None, None
-        if source != SYNTH_LABEL:
+        kit_name, sample = None, None  # None follows the globally selected kit
+        if source == SYNTH_LABEL:
+            kit_name = SYNTH_KIT_NAME
+        elif source != FOLLOW_LABEL:
             kit_name = source
             files = list_role_files(self._kits_dir / kit_name).get(role, [])
             if files:
@@ -526,24 +537,31 @@ class PatternEditorDialog(wx.Dialog):
         line = self._current_line()
         if line is None:
             return
-        if line.get("kit"):
-            files = list_role_files(self._kits_dir / line["kit"]).get(line["role"], [])
-            options = [self.AUTO] + [f.stem for f in files] + ["None (silence this line)"]
+        kit_name = line.get("kit")
+        files: list = []
+        if kit_name is None or kit_name == SYNTH_KIT_NAME:
+            # A follow-global or synth line: source choices, not individual samples
+            # (its samples come from the main Kit / Kit Sounds).
+            options = [FOLLOW_LABEL, "Synth (built-in)", "None (silence this line)"]
         else:
-            files = []
-            options = ["Synth sound", "None (silence this line)"]
+            files = list_role_files(self._kits_dir / kit_name).get(line["role"], [])
+            options = [self.AUTO] + [f.stem for f in files] + ["None (silence this line)"]
         dlg = wx.SingleChoiceDialog(self, f"Sound for {line['label']}:",
                                     f"{line['label']} sample", options)
         theme.apply(dlg, self._dark)
         if dlg.ShowModal() == wx.ID_OK:
-            sel = dlg.GetSelection()
-            if options[sel].startswith("None"):
+            choice = options[dlg.GetSelection()]
+            if choice.startswith("None"):
                 self.silenced.add(line["id"])
             else:
                 self.silenced.discard(line["id"])
-                if line.get("kit"):
-                    line["sample"] = None if sel == 0 else files[sel - 1].name
-                    self._rebuild_line_kit()
+                if kit_name is None or kit_name == SYNTH_KIT_NAME:
+                    line["kit"] = None if choice == FOLLOW_LABEL else SYNTH_KIT_NAME
+                    line["sample"] = None
+                else:
+                    line["sample"] = None if choice == self.AUTO else \
+                        files[dlg.GetSelection() - 1].name
+                self._rebuild_line_kit()
             self._refresh_row(line)
             speech.speak(f"{line['label']}: {self._sample_desc(line)}")
             self._reaudition()
@@ -679,7 +697,10 @@ class PatternEditorDialog(wx.Dialog):
         self.play_btn.SetLabel("&Pause")
 
     def _render(self):
-        return render_loop(self._effective_pattern(), self._line_kit, self._bpm,
+        effective = flatten_polymeter(self._effective_pattern())
+        if self._apply_fills is not None:  # match the main tab's fill cadence / improv
+            effective = self._apply_fills(effective)
+        return render_loop(effective, self._line_kit, self._bpm,
                            swing=self._swing, humanize=self._humanize)
 
     def _reaudition(self) -> None:
@@ -1148,6 +1169,9 @@ class DrumsPanel(wx.Panel):
 
     def _set_kit(self, kit) -> None:
         self._kit = kit
+        if self._line_meta is not None:  # re-voice follow-global lines through the new kit
+            self._pattern_voices = build_line_kit(self._line_meta, self._kits_dir(),
+                                                  base_kit=self._kit)
         self._rebuild_parts()
         self._apply()
 
@@ -1249,7 +1273,8 @@ class DrumsPanel(wx.Panel):
             dlg = PatternEditorDialog(self, pattern, lines, self._kits_dir(), muted,
                                       self.player, self.bpm, dark, settings=self._settings,
                                       swing=self.swing_slider.GetValue() / 100.0,
-                                      humanize=self.humanize_slider.GetValue() / 100.0)
+                                      humanize=self.humanize_slider.GetValue() / 100.0,
+                                      base_kit=self._kit, apply_fills=self._apply_fills)
         except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
             wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
                           "Pattern Editor", wx.ICON_ERROR)

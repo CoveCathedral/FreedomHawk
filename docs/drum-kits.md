@@ -19,7 +19,7 @@ a tone. Press **Stop** (or close the app) to end it.
 
 | Control | What it does |
 |---------|--------------|
-| **Kit** | The sound set: "Synth (built-in)" plus any kit folder found in `Samples/`. Arrowing through this list only switches kits — it never opens a dialog. |
+| **Kit** | The sound set for the **whole pattern**: "Synth (built-in)" plus any kit folder found in `Samples/`. It applies globally — every part follows it, including any groove or saved pattern you load — unless you deliberately give a line its own source in the editor. Arrowing this list only switches kits; it never opens a dialog. |
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
 | **Category** | Filters the Groove list by genre family (Rock, Funk, Trap, 5/4…) — plus any categories you create when saving your own patterns. |
 | **Groove** | 200 built-in patterns (the classic bases plus numbered variations — names ending in "fill" include a drum fill), followed by **your saved patterns** shown with their category. First-letter navigation works in the list. |
@@ -75,9 +75,12 @@ hats stay at 16 and they phase against each other, realigning after a while — 
 
 Buttons (all a Tab away):
 
-- **Add Line…** — add another line: pick the part (Kick, Snare, …), the source (the
-  synth, or **any kit library you have**), and the sample. This is how you stack drums
-  and mix libraries.
+- **Add Line…** — add another line: pick the part (Kick, Snare, …) and a source —
+  **"Follow the selected kit"** (the default: it plays through whatever the main Kit
+  dropdown is), the synth, or **any kit library you have** with a specific sample. Give
+  lines different sources to stack drums and mix libraries; leave them following the kit
+  and they all change together when you switch kits. **Enter** on a line re-picks its
+  source/sample the same way.
 - **Load Groove…** — replace the editor contents with any built-in or saved pattern.
 - **Save as Preset…** — name the pattern, put it in a category (existing or a **new one
   you type**), and it appears in the main tab's Groove list permanently.
@@ -133,8 +136,10 @@ the same way. Leave it unchecked for a shorter, simpler tab in everyday 4/4 use.
 ## Choosing each part's sample (Kit Sounds…)
 
 A part folder often holds dozens of samples, and producer kits mix true drum hits with
-**vocal chops** ("AHH", "HEY"), bells, and sound effects. The **Kit Sounds…** dialog lets
-you pick each part's sample by ear:
+**vocal chops** ("AHH", "HEY"), bells, and sound effects. **Kit Sounds… is the bulk way
+to pick sounds**: it sets which sample a part uses **for the whole kit at once** — so
+"reassign every kick to this sound" is just choosing the Kick's sample here, not editing
+each drum line. Every part follows this globally.
 
 1. Pick a **Part** (Kick, Snare, Perc, …).
 2. Arrow through its **Samples** — **each one plays as you land on it**, with its length

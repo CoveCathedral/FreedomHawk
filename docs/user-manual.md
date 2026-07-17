@@ -165,7 +165,10 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   give the kick 7 steps while the hats stay at 16 and the parts phase against each
   other and realign — the stacked-meter prog/djent feel. The pulse stays shared, and
   each line is edited as its own loop.
-- **Add Line…** — stack drums and mix libraries: any part, from the synth or any kit
+- The **Kit** applies to the whole pattern; lines follow it unless you give one its own
+  source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
+  once (e.g. reassign every kick to one sound).
+- **Add Line…** — stack drums and mix libraries: any part, following the kit, from synth, or any kit
   you have, up to 24 lines.
 - The **time signature** lives here: beats per bar, beat unit, grid resolution, bars
   (1–4). Odd meters welcome — 5/4, 7/8, whatever you play. Growing the bar count

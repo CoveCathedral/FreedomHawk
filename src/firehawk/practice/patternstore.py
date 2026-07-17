@@ -36,6 +36,10 @@ from .drums import (
 
 MAX_LINES = 24  # keep the grid navigable
 
+#: A line's `kit` field: None means "follow the globally selected kit"; this sentinel
+#: means "explicitly the built-in synth"; any other string is an explicit kit folder.
+SYNTH_KIT_NAME = "Synth (built-in)"
+
 _STORE_KEY = "drum_patterns"
 
 
@@ -58,7 +62,7 @@ def make_line(role: str, kit: str | None = None, sample: str | None = None,
 
 def lines_for_kit(pattern: Pattern, kit, kit_name: str | None,
                   sample_choices: dict | None = None) -> list[dict]:
-    """One line per part for an ordinary single-kit pattern (ids match roles)."""
+    """One line per part (ids match roles).  Lines follow the global kit (kit=None)."""
     kit_roles = kit.roles() if kit else []
     roles = [r for r in ROLES if r in kit_roles or r in pattern.hits]
     roles += [r for r in pattern.hits if r not in roles]
@@ -67,7 +71,7 @@ def lines_for_kit(pattern: Pattern, kit, kit_name: str | None,
         lines.append({
             "id": role, "label": ROLE_LABELS.get(role, role),
             "role": role if role in ROLES else "perc",
-            "kit": kit_name, "sample": (sample_choices or {}).get(role),
+            "kit": None, "sample": None,  # follow the globally selected kit
             "steps": list(pattern.hits.get(role, [])),
         })
     return lines
@@ -100,40 +104,44 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
 
 
 def build_line_kit(lines: list[dict], kits_dir, base_kit: DrumKit | None = None) -> DrumKit:
-    """Voices for a line pattern: one per line id, each from its own source.
+    """Voices for a line pattern: one per line id.
 
-    Canonical roles missing from the lines fall back to the base kit (then synth),
-    so generated fills — snare, tom, crash — always sound.
+    Each line's source: ``kit=None`` follows *base_kit* (the globally selected kit),
+    ``kit=SYNTH_KIT_NAME`` is the synth, any other name is that kit folder (with the
+    line's own sample choice).  Canonical roles missing from the lines fall back to
+    the base kit (then synth), so generated fills always sound.
     """
     synth = synth_kit()
-    voices: dict = {}
     cache: dict = {}
+
+    def global_voice(role: str):
+        v = base_kit.voice(role) if base_kit else None
+        return v if v is not None else synth.voice(role)
+
+    def line_voice(kit_name, role, sample):
+        if kit_name is None:                 # follow the globally selected kit
+            return global_voice(role)
+        if kit_name == SYNTH_KIT_NAME:        # explicitly synth
+            return synth.voice(role)
+        if kit_name not in cache:             # an explicit sample kit folder
+            cache[kit_name] = list_role_files(Path(kits_dir) / kit_name)
+        files = cache[kit_name].get(role, [])
+        path = next((f for f in files if f.name == sample), None) or default_sample_for(role, files)
+        if path is not None:
+            try:
+                return load_sample(path)
+            except Exception:  # noqa: BLE001
+                pass
+        return global_voice(role)             # unreadable/missing -> fall back
+
+    voices: dict = {}
     for ln in lines:
-        role, kit_name, sample = ln.get("role"), ln.get("kit"), ln.get("sample")
-        voice = None
-        if kit_name:
-            if kit_name not in cache:
-                cache[kit_name] = list_role_files(Path(kits_dir) / kit_name)
-            files = cache[kit_name].get(role, [])
-            path = next((f for f in files if f.name == sample), None)
-            if path is None:
-                path = default_sample_for(role, files)
-            if path is not None:
-                try:
-                    voice = load_sample(path)
-                except Exception:  # noqa: BLE001 - fall back to synth below
-                    voice = None
-        if voice is None:
-            voice = synth.voice(role)
-        if voice is not None:
-            voices[ln["id"]] = voice
+        v = line_voice(ln.get("kit"), ln.get("role"), ln.get("sample"))
+        if v is not None:
+            voices[ln["id"]] = v
     for role in ROLES:  # fill/audition fallbacks for roles no line covers
         if role not in voices:
-            voice = base_kit.voice(role) if base_kit else None
-            if voice is None:
-                voice = synth.voice(role)
-            if voice is not None:
-                voices[role] = voice
+            voices[role] = global_voice(role)
     return DrumKit("custom", voices)
 
 

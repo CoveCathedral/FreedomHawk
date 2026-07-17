@@ -47,6 +47,30 @@ def test_lines_pattern_round_trip():
     assert back.levels == {"kick": {0: LEVEL_ACCENT}, "snare": {12: LEVEL_GHOST}}
 
 
+def test_build_line_kit_follow_global_vs_explicit(tmp_path):
+    import numpy as np
+    from firehawk.practice import DrumKit
+    # A distinct "global" kit: a kick voice that is clearly not the synth kick.
+    global_kick = np.full(3000, 0.5, dtype=np.float32)
+    global_kit = DrumKit("Global", {"kick": global_kick})
+    # kit=None follows the global kit; SYNTH_KIT_NAME is explicitly the synth.
+    follow = [ps.make_line("kick")]              # kit None
+    synth_line = [dict(ps.make_line("kick"), kit=ps.SYNTH_KIT_NAME)]
+    kf = ps.build_line_kit(follow, tmp_path, base_kit=global_kit)
+    ks = ps.build_line_kit(synth_line, tmp_path, base_kit=global_kit)
+    assert np.array_equal(kf.voice("kick"), global_kick)          # followed the global kit
+    assert not np.array_equal(ks.voice("kick"), global_kick)      # explicit synth, not global
+    # With no global kit, follow falls back to synth (never silent).
+    assert ps.build_line_kit(follow, tmp_path).voice("kick") is not None
+
+
+def test_lines_for_kit_lines_follow_global(tmp_path):
+    from firehawk.practice import synth_kit, Pattern
+    p = Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1)
+    lines = ps.lines_for_kit(p, synth_kit(), "SomeKit")
+    assert all(ln["kit"] is None for ln in lines)  # follow global, not baked to SomeKit
+
+
 def test_build_line_kit_stacks_and_falls_back(tmp_path):
     # Two kick lines: both resolve to voices (synth fallback for missing kit).
     lines = [ps.make_line("kick"), ps.make_line("kick", "NoSuchKit", None, existing=None)]
