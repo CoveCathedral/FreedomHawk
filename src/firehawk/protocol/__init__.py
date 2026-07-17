@@ -12,9 +12,22 @@ Ghidra deep-dive and a hardware capture pin down the exact bytes.
 """
 
 from .crc import crc16_ccitt_false, crc16_process, crc16_xmodem
+from .frame import Frame, build_control_frame, parse_frame
+from .message import (
+    KEY_SECTION_ID,
+    KEY_SECTION_PARAM,
+    KEY_SLOT_ID,
+    TVType,
+    encode_key_value,
+    encode_param,
+    encode_typed_value,
+)
 from .transport_header import TransportHeader
 
 __all__ = [
     "crc16_process", "crc16_xmodem", "crc16_ccitt_false",
     "TransportHeader",
+    "Frame", "build_control_frame", "parse_frame",
+    "TVType", "encode_typed_value", "encode_key_value", "encode_param",
+    "KEY_SECTION_ID", "KEY_SECTION_PARAM", "KEY_SLOT_ID",
 ]
