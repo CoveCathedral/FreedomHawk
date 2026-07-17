@@ -181,6 +181,26 @@ For a **model knob**: `GetDSPSlotForGroupAndParam(group, param)` resolves the bl
 gives the `psKey` (the table read out above). Implemented in
 `firehawk.protocol.tonematch`, with unit tests on the byte layout.
 
-**Remaining (small, capture-confirmable):** the exact `type` enum value for a float typed
-value, the DSP `slot` numbering per group, and which transport-header port the ToneMatch
-editor uses. The message *structure* is confirmed and coded.
+### Model-knob addressing — resolved and verified
+
+`GetDSPSlotForGroupAndParam` -> `SetToneMatchModelParam` shows the slot and the paramId are
+both `SymbolTable::LookupString` results. The group -> slot-symbol table was read out of the
+binary and every symbol verified against the decoded symbol table:
+
+| group | slot symbol | index | | group | slot symbol | index |
+|-------|-------------|-------|-|-------|-------------|-------|
+| amp | Amp | 535 | | fx1/2/3 | FX1/FX2/FX3 | 527/529/531 |
+| cab | StudioCab | 538 | | reverb | FX4 | 533 |
+| gate | Gate | 318 | | compressor | PostComp | 539 |
+| volume | VolumePedal | 499 | | eq | PostEQ | 541 |
+| wah | Wah | 526 | | | | |
+
+So `encode_set_model_param(group, param, value)` (in `firehawk.protocol.addressing`) is
+implemented end to end and tested against the real symbol table. Example — set amp Bass to
+0.5 produces ToneMatch `0A 00000010 | slot 535 | paramId 17 | type 3 | float 0.5`.
+
+**Two small constants still inferred (flagged in code; a single capture confirms both):**
+the float **type tag** (used `3`, matching the L6SPe TypedValue float type) and the
+ToneMatch **transport port** (the 8-byte header's port addresses). Everything else in the
+stack — frame, CRC, transport-header layout, command format, and symbol-table addressing —
+is confirmed from the decompiled code and unit-tested.

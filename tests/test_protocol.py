@@ -178,3 +178,36 @@ def test_load_dsp_model_layout():
     cmd, length = struct.unpack_from("<II", msg, 0)
     assert cmd == Cmd.LOAD_DSP_MODEL == 0x08 and length == 8
     assert struct.unpack_from("<II", msg, 8) == (3, 131149)
+
+
+# -- end-to-end model-knob addressing (against the real symbol table) --
+
+from firehawk.protocol import GROUP_SLOT_SYMBOL, encode_set_model_param, resolve_model_param  # noqa: E402
+
+
+def _symbol_table():
+    from firehawk.model import SymbolTable
+    from firehawk.model.catalog import DATA_DIR
+    return SymbolTable.load(DATA_DIR / "defaultSymbolTable.bin")
+
+
+def test_all_group_slot_symbols_resolve():
+    st = _symbol_table()
+    for group, slot_symbol in GROUP_SLOT_SYMBOL.items():
+        assert st.index(slot_symbol) is not None, f"{group} slot symbol {slot_symbol!r}"
+
+
+def test_encode_set_amp_bass_end_to_end():
+    st = _symbol_table()
+    msg = encode_set_model_param(st.index, "amp", "Bass", 0.5)
+    cmd, length = struct.unpack_from("<II", msg, 0)
+    assert cmd == 0x0A and length == 0x10
+    slot, param_id, tv_type, value_word = struct.unpack_from("<IIII", msg, 8)
+    assert slot == st.index("Amp")      # 535
+    assert param_id == st.index("Bass")  # 17
+    assert struct.unpack("<f", struct.pack("<I", value_word))[0] == pytest.approx(0.5)
+
+
+def test_resolve_unknown_group_returns_none():
+    st = _symbol_table()
+    assert resolve_model_param(st.index, "not_a_group", "Bass") is None

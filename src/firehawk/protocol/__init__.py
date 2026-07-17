@@ -22,6 +22,11 @@ from .message import (
     encode_param,
     encode_typed_value,
 )
+from .addressing import (
+    GROUP_SLOT_SYMBOL,
+    encode_set_model_param,
+    resolve_model_param,
+)
 from .tonematch import (
     Cmd,
     command,
@@ -40,4 +45,5 @@ __all__ = [
     "KEY_SECTION_ID", "KEY_SECTION_PARAM", "KEY_SLOT_ID",
     "Cmd", "command", "set_dsp_model_param", "set_preset_pskey_param",
     "set_global_tempo", "load_dsp_model",
+    "GROUP_SLOT_SYMBOL", "resolve_model_param", "encode_set_model_param",
 ]
