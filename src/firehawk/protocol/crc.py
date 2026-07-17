@@ -1,9 +1,9 @@
 """CRC-16 used by the Firehawk serial link.
 
 Confirmed by disassembly of ``CRC16_Process`` (libAmplifiRemoteNdk.so @ 0x103b10):
-CRC-16/CCITT, polynomial 0x1021, **non-reflected**, no final xor.  The initial value
-is seeded by the caller in the framing layer; it is passed in here explicitly.  See
-``docs/protocol.md``.
+CRC-16/CCITT, polynomial 0x1021, **non-reflected**, no final xor.  The framing layer
+(``RobustSerialMsgChannel``) seeds it with **0xFFFF** (CRC-16/CCITT-FALSE) for both the
+header CRC and the payload CRC.  See ``docs/protocol.md``.
 """
 
 from __future__ import annotations

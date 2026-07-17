@@ -35,8 +35,9 @@ def crc16_process(crc, data):
 
 `crc16_process(0x0000, b"123456789") == 0x31C3` (XMODEM) and
 `crc16_process(0xFFFF, ...) == 0x29B1` (CCITT-FALSE) — both match, confirming poly 0x1021,
-non-reflected. **Open:** the initial value and the exact byte span the CRC covers — read
-from the `RobustSerialMsgChannel` caller.
+non-reflected. **CONFIRMED (from `RobustSerialMsgChannel_ExecTasks`/`HandleRxData`): the init
+is `0xFFFF`** — i.e. **CRC-16/CCITT-FALSE**. Both the header CRC and the payload CRC seed
+with `0xFFFF`. See the frame layout below for the exact spans.
 
 ## CONFIRMED: Transport header layout (`MsgTransportHeader_Pack` @ 0x1022b0)
 
@@ -74,17 +75,57 @@ every model (`available_on(None) == True`). When connected, read the pedal's own
 (`nativeGetProductId` equivalent) and filter models by it. The exact FX code will be
 confirmed from the hardware / a capture and recorded here then.
 
-## OPEN: Serial frame framing (`RobustSerialMsgChannel_*`)
+## CONFIRMED: Serial frame framing (`RobustSerialMsgChannel_ExecTasks` / `_HandleRxData`)
 
-The bytes actually written to the socket are produced here (start/sync byte(s), length
-field, sequence/ack for the reliable layer, segmentation via `MsgSegmentIter_*`, and the
-CRC-16 trailer). To close: read `RobustSerialMsgChannel_QueueOutMessage`,
-`RobustSerialMsgChannel_ExecTasks`, `RobustSerialMsgChannel_HandleRxData`, and
-`AndroidSppMsgChannel_write`. Cross-check with one Bluetooth HCI capture of a known edit.
+Decompiled (Ghidra). Every frame starts with a 12-byte header; a data frame is followed by
+its payload. All multi-byte fields little-endian.
 
-## OPEN: Payload encoding (`L6A36Preset` / `L6SPePresetSerializer` / `TypedValue`)
+```
+byte  0-1   sync       = 0x55 0x55
+byte  2     (flags)    = 0x00 in observed builder path
+byte  3     seq        sender sequence number (reliable channel)
+byte  4     (window)   channel window/rx index (param+0x16)
+byte  5     ack        acknowledgement number
+byte  6-7   length     payload length in bytes (0 for a control/ack frame)
+byte  8-9   payloadCRC CRC-16/CCITT-FALSE (init 0xFFFF) over the payload bytes (0 if none)
+byte 10-11  headerCRC  CRC-16/CCITT-FALSE (init 0xFFFF) over bytes 0..11 with 10-11 = 0
+byte 12..   payload    `length` bytes (data frames only), sent in 4-byte-aligned segments
+```
 
-How a (group, param, value) is encoded: params are keyed via a `SymbolTable*` (the decoded
-`defaultSymbolTable.bin`), values carried as a tagged `TypedValue` (int/float/string/varray).
-`SerializeToDeviceForGroup(SymbolTable*, L6Buffer*, groupName)` serializes a whole group.
-To close: read `L6SPePresetSerializer::SerializeTypedValue` and `SerializeParameterPSKey`.
+* **Control/ACK frame** = the 12-byte header alone (`length` = 0, `payloadCRC` = 0).
+* **Data frame** = header + payload. Max payload = (max frame size − 12); segments are
+  padded up to a 4-byte boundary (`(len + 3) & ~3`).
+* RX (`HandleRxData`) is a 3-state machine: scan for `0x5555`, collect the 12-byte header
+  and verify `headerCRC`, then read `length` payload bytes verifying `payloadCRC`.
+
+The payload is a **transport header (8 bytes, see above) + the serialized message body**.
+
+**Still to confirm from a capture:** the exact meaning of byte 2 and byte 4, and which
+transport-header port address is the edit buffer.
+
+## CONFIRMED: Message body / value encoding (`L6SPePresetSerializer`)
+
+Decompiled. The message body is a stream of **key → value** entries:
+
+```
+entry = uint32 key  +  TypedValue
+TypedValue = uint16 type  +  value
+```
+
+* `SerializeKeyValue(key, tv)` writes the 4-byte key then the TypedValue.
+* `SerializeTypedValue(tv)` writes a 2-byte type tag then the value. Primitive types (tag
+  0–7) go through a jump table (per-type value layout — the one remaining fine detail);
+  strings (`SerializeStringValue`, tag `4`) write `uint16 type=4, uint32 length, bytes`.
+* **Structural directive keys** have the high bit set:
+  `0x80000000` = section id, `0x80000001` = section param, `0x80000003` = slot id
+  (`StoreSectionStart`, `StoreSlotStart`), each with a small-int TypedValue.
+* **Parameter entries** (`L6A36Preset::SerializeParameterPSKey`): a numeric **PSKey**
+  addresses a (groupID, paramID) pair via `PSKeyToParamIDandGroupID(psKey, &param, &group,
+  &valueType)`. The value is written as a `TypedValue` whose value field is the parameter
+  value — **continuous params as an IEEE-754 float** (normalised 0.0–1.0), bools as 0.0/1.0,
+  ints coerced likewise in this path.
+
+So a "set edit-buffer parameter" reduces to: frame( transportHeader + [ PSKey(4) +
+TypedValue(type, float) ] ). **Remaining fine details** (confirmable from one capture, now
+trivially, or by decompiling the type jump table): the exact per-type TypedValue byte
+layout and the PSKey↔(group,param) numbering.

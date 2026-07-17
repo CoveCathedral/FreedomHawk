@@ -33,17 +33,24 @@ saving/organising user presets on the device.
   model swapping with default reset, and change notifications for the UI/protocol.
 - 32 passing tests.
 
-### Phase 2 — Wire protocol (the one real unknown) — IN PROGRESS
+### Phase 2 — Wire protocol (the one real unknown) — LARGELY SOLVED (static)
 
 Goal: document the exact on-wire byte format so a "set parameter" (and preset recall,
 block toggle, model change) message can be built without the native library.
 
-- Confirm the transport architecture from the decompiled Java (SPP byte pump, JNI).
-- Disassemble the named functions in `libAmplifiRemoteNdk.so`
-  (`MsgTransportHeader_Pack`, `RobustSerialMsgChannel_*`, `CRC16_Process`,
-  `MsgSegmentIter_*`) to derive frame layout and CRC-16 parameters.
-- Cross-check against a Bluetooth HCI capture of one known parameter change
-  (needs the pedal + an Android device — a step Kaylea helps with).
+Decompiled with Ghidra (see `docs/protocol.md`). **Confirmed:**
+- **CRC-16/CCITT-FALSE** (poly 0x1021, init 0xFFFF, non-reflected).
+- **Serial frame:** sync `0x55 0x55` + 12-byte header (seq/ack/length/payloadCRC/headerCRC)
+  + payload; reliable seq/ack channel with 4-byte-aligned segments.
+- **Transport header:** 8 bytes (type, addr-type 2, field, two port addresses).
+- **Message body:** a key→value stream; 4-byte PSKey (addresses group+param) + TypedValue
+  (2-byte type + value; continuous params are IEEE-754 floats); high-bit keys are
+  slot/section directives.
+
+**Remaining (fine detail):** the per-type TypedValue byte layout (jump table) and the
+PSKey↔(group,param) numbering — both confirmable from **one Bluetooth HCI capture** of a
+known edit (now trivial to interpret), or by decompiling the type jump table. Needs the
+pedal + an Android device for the capture — a step Kaylea helps with.
 
 ### Phase 3 — Transport layer — DONE (offline path)
 
