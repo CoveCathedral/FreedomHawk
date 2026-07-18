@@ -101,6 +101,16 @@ Noise-based sounds (snares, hats, cymbals) have no clear pitch, so they simply s
 silent on the key readout rather than guess. Detection is automatic and needs no tags —
 it listens to the sample the way a tuner would, past the attack, to the note that rings.
 
+**What to expect from real packs.** The **808s and basses** — the sounds you actually tune
+to a key — read cleanly and confidently; a bank of 808s tuned to C will all speak around
+**C1/C2**, so matching your song's key is straightforward. **Kicks and toms** get a key too,
+and usually land on the note or within a semitone of it (where a pack writes the note into
+the file name, like `..._G#`, the readout tends to agree) — but a drum's "pitch" is
+genuinely fuzzy, so treat a kick/tom key as a strong hint, not gospel, and trust your ear
+with `P`. A few click-heavy sounds will say **no key** instead of guessing; that's the
+confidence gate working, not a failure. Nothing needs tagging — just drop the kit in and
+arrow through it.
+
 ### Per-line volume (mixing)
 
 Each line has its own **volume trim** on the `,` and `.` keys (Shift for a 6 dB step),
