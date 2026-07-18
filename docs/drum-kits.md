@@ -188,12 +188,14 @@ The **Song Builder** has three tabs so it doesn't crowd:
   500), choose the **Groove**, set **Repeats**, press **Add Section**. (Sections reference
   grooves by name — built-in or your saved patterns — so **save your own pattern as a preset
   first** to use it in a song.)
-- **Songs & Export** — **Save / Load / Delete** your arrangements, and **Export Song as
-  WAV** writes the whole thing as one audio file.
+- **My Songs** — a list of your saved arrangements: select one and **Load** it into Arrange,
+  **Play** it, or **Delete** it. **Save Current Song** stores what you've built, and **Export
+  as WAV** writes the whole thing as one audio file.
 
-**Play** (always at the bottom) renders the song end to end and loops it. Sections can even
-be in different meters (a 4/4 verse into a 7/8 bridge) — each is rendered at its own meter
-and stitched gapless. Song mode is in both FreedomHawk and standalone Sequin.
+**Play** (always at the bottom) renders the song end to end and **plays it through once, then
+ends** — a song has an ending. Sections can even be in different meters (a 4/4 verse into a
+7/8 bridge); each is rendered at its own meter and stitched gapless. Song mode is in both
+FreedomHawk and standalone Sequin.
 
 ## The Tools menu: library, sharing, MIDI
 

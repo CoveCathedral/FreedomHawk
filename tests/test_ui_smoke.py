@@ -483,6 +483,35 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    from firehawk.practice.patternstore import make_song_record, save_song
+    d = frame.drums_page
+    loops = []
+    monkeypatch.setattr(d.player, "play", lambda wav, loop=True: loops.append(loop))
+    monkeypatch.setattr(d.player, "stop", lambda: None)
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        assert [dlg.notebook.GetPageText(i) for i in range(3)] == ["Arrange", "Add", "My Songs"]
+        # My Songs lists saved arrangements; Load restores them into Arrange.
+        save_song(d._settings, make_song_record("Verse Jam", [("Rock", 2), ("Funk", 1)]))
+        dlg._rebuild_songs()
+        assert dlg.songs_list.GetString(0) == "Verse Jam"
+        dlg.songs_list.SetSelection(0)
+        dlg._load_selected()
+        assert dlg._sections == [["Rock", 2], ["Funk", 1]]
+        # A song plays through ONCE (not looped — that was the tail-looping bug) and ends.
+        dlg._play_selected()
+        assert loops == [False] and dlg._end_timer is not None and dlg._playing
+        dlg._song_ended()
+        assert not dlg._playing and dlg.play_btn.GetLabel() == "&Play"
+        dlg._delete_selected()
+        assert dlg.songs_list.GetCount() == 0
+    finally:
+        dlg._stop()
+        dlg.Destroy()
+
+
 def test_visual_track_toggles_paints_and_persists(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

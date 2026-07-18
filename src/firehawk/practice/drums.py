@@ -1185,14 +1185,19 @@ class DrumLoopPlayer:
     def available(self) -> bool:
         return self._ok
 
-    def play(self, wav_bytes: bytes) -> None:
+    def play(self, wav_bytes: bytes, loop: bool = True) -> None:
+        """Play *wav_bytes*.  Looped by default (a groove); pass ``loop=False`` to play it
+        once (a song, which has an ending — and Windows' SND_LOOP is unreliable on the long
+        WAV a whole song produces)."""
         if winsound is None or self._path is None:
             return
         try:
             with open(self._path, "wb") as f:
                 f.write(wav_bytes)
-            winsound.PlaySound(
-                self._path, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+            flags = winsound.SND_FILENAME | winsound.SND_ASYNC
+            if loop:
+                flags |= winsound.SND_LOOP
+            winsound.PlaySound(self._path, flags)
             self.playing = True
         except Exception:  # noqa: BLE001
             self._ok = False

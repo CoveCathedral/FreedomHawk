@@ -218,10 +218,11 @@ bridge, and so on. It has three tabs:
   **Delete** removes — each spoken, with the running song length.
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
   the **Groove**, set Repeats, press **Add Section**.
-- **Songs & Export** — Save / Load / Delete arrangements, and Export the song as WAV.
+- **My Songs** — a list of your saved arrangements: Load one into Arrange, Play it, or
+  Delete it; plus Save Current Song and Export as WAV.
 
 **Play** (at the bottom) renders the whole song end to end (gapless, sections can even be in
-different meters) and loops it.
+different meters) and **plays it through once, then ends**.
 
 Sections reference grooves by name (built-in or your saved patterns), so **save a pattern
 as a preset first** if you want your own groove in a song. Song Builder is in both

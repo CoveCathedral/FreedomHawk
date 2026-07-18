@@ -1301,6 +1301,7 @@ class SongDialog(wx.Dialog):
         self._dark = dark
         self._sections: list[list] = []   # [ [groove_name, repeats], ... ]
         self._playing = False
+        self._end_timer: wx.CallLater | None = None
         try:
             self._build()
         except Exception as exc:  # noqa: BLE001 - a swallowed error is a dead button
@@ -1381,16 +1382,34 @@ class SongDialog(wx.Dialog):
         self.notebook.AddPage(addp, "Add")
         self._rebuild_grooves()
 
-        # --- Songs & Export: save / load / delete / export ---
+        # --- My Songs: browse saved songs; save the current one; export ---
         songs = wx.Panel(self.notebook)
         sp = wx.BoxSizer(wx.VERTICAL)
-        for label, fn in (("&Save Song...", self._save), ("&Load Song...", self._load),
-                          ("&Delete Song...", self._delete), ("Export Song as &WAV...", self._export)):
+        sp.Add(wx.StaticText(songs, label=(
+            "Your saved songs. Select one, then Load it into Arrange, Play it, or Delete it. "
+            "Save the current arrangement, or export it as audio, below.")), 0, wx.ALL, 8)
+        self.songs_list = wx.ListBox(songs, choices=[], style=wx.LB_SINGLE)
+        set_accessible_name(self.songs_list, "Saved songs")
+        self.songs_list.Bind(wx.EVT_LISTBOX_DCLICK, lambda e: self._load_selected())
+        sp.Add(self.songs_list, 1, wx.EXPAND | wx.ALL, 8)
+        row = wx.BoxSizer(wx.HORIZONTAL)
+        for label, fn in (("&Load into Arrange", self._load_selected),
+                          ("Pla&y", self._play_selected), ("De&lete", self._delete_selected)):
             b = wx.Button(songs, label=label)
             b.Bind(wx.EVT_BUTTON, lambda e, f=fn: f())
-            sp.Add(b, 0, wx.ALL, 8)
+            row.Add(b, 0, wx.RIGHT, 6)
+        sp.Add(row, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+        row2 = wx.BoxSizer(wx.HORIZONTAL)
+        save_btn = wx.Button(songs, label="&Save Current Song...")
+        save_btn.Bind(wx.EVT_BUTTON, lambda e: self._save())
+        row2.Add(save_btn, 0, wx.RIGHT, 6)
+        export_btn = wx.Button(songs, label="Export as &WAV...")
+        export_btn.Bind(wx.EVT_BUTTON, lambda e: self._export())
+        row2.Add(export_btn, 0)
+        sp.Add(row2, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
         songs.SetSizer(sp)
-        self.notebook.AddPage(songs, "Songs & Export")
+        self.notebook.AddPage(songs, "My Songs")
+        self._rebuild_songs()
 
         root.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 8)
 
@@ -1521,31 +1540,48 @@ class SongDialog(wx.Dialog):
                            swing=self._panel.swing_slider.GetValue() / 100.0,
                            humanize=self._panel.humanize_slider.GetValue() / 100.0)
 
-    def _on_play(self, event) -> None:
-        if self._playing:
-            self._stop()
-            return
+    def _start_playback(self, announce: bool) -> None:
         wav = self._render()
         if wav is None:
             speech.speak("Add a section first.")
             return
         self._panel.stop()               # stop the main loop; the audio channel is shared
-        self._panel.player.play(wav)     # loops the whole song
+        self._panel.player.play(wav, loop=False)   # a song plays through once and ends
         self._playing = True
         self.play_btn.SetLabel("&Stop")
-        speech.speak(f"Playing song, {self._fmt(self._song_len())}.")
+        length = self._song_len()
+        if self._end_timer is not None:
+            self._end_timer.Stop()
+        self._end_timer = wx.CallLater(int(length * 1000) + 300, self._song_ended)
+        if announce:
+            speech.speak(f"Playing song, {self._fmt(length)}.")
+
+    def _on_play(self, event) -> None:
+        if self._playing:
+            self._stop()
+            speech.speak("Stopped.")
+            return
+        self._start_playback(announce=True)
+
+    def _song_ended(self) -> None:
+        self._end_timer = None
+        if self._playing:
+            self._playing = False
+            self.play_btn.SetLabel("&Play")
+            speech.speak("Song finished.")
 
     def _stop(self) -> None:
+        if self._end_timer is not None:
+            self._end_timer.Stop()
+            self._end_timer = None
         if self._playing:
             self._panel.player.stop()
             self._playing = False
             self.play_btn.SetLabel("&Play")
 
     def _reaudition(self) -> None:
-        if self._playing:
-            wav = self._render()
-            if wav is not None:
-                self._panel.player.play(wav)
+        if self._playing:                # a live edit while playing: restart from the top
+            self._start_playback(announce=False)
 
     def _save(self) -> None:
         if not self._sections:
@@ -1559,39 +1595,57 @@ class SongDialog(wx.Dialog):
         if not name:
             return
         save_song(self._settings, make_song_record(name, [(n, r) for n, r in self._sections]))
+        self._rebuild_songs()
         speech.speak(f"Saved song {name}.")
 
-    def _load(self) -> None:
-        songs = user_songs(self._settings)
-        if not songs:
-            speech.speak("No saved songs yet.")
-            return
-        names = [s["name"] for s in songs]
-        dlg = wx.SingleChoiceDialog(self, "Load which song?", "Load Song", names)
-        theme.apply(dlg, self._dark)
-        if dlg.ShowModal() == wx.ID_OK:
-            rec = songs[dlg.GetSelection()]
-            self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
-                              for s in rec.get("sections", [])]
-            self._rebuild()
-            speech.speak(f"Loaded {rec['name']}, {len(self._sections)} sections, "
-                         f"{self._fmt(self._song_len())}.")
-            self._reaudition()
-        dlg.Destroy()
+    # -- the My Songs list ----------------------------------------------------
 
-    def _delete(self) -> None:
+    def _rebuild_songs(self) -> None:
+        keep = self.songs_list.GetSelection()
         songs = user_songs(self._settings)
-        if not songs:
-            speech.speak("No saved songs.")
+        self.songs_list.Set([s.get("name", "?") for s in songs])
+        if songs:
+            self.songs_list.SetSelection(min(max(0, keep), len(songs) - 1))
+
+    def _selected_song(self) -> dict | None:
+        songs = user_songs(self._settings)
+        i = self.songs_list.GetSelection()
+        return songs[i] if 0 <= i < len(songs) else None
+
+    def _load_selected(self) -> None:
+        rec = self._selected_song()
+        if rec is None:
+            speech.speak("No saved songs yet." if not user_songs(self._settings)
+                         else "Select a song first.")
             return
-        names = [s["name"] for s in songs]
-        dlg = wx.SingleChoiceDialog(self, "Delete which song?", "Delete Song", names)
-        theme.apply(dlg, self._dark)
-        if dlg.ShowModal() == wx.ID_OK:
-            name = names[dlg.GetSelection()]
-            delete_song(self._settings, name)
-            speech.speak(f"Deleted {name}.")
-        dlg.Destroy()
+        self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
+                          for s in rec.get("sections", [])]
+        self._rebuild()
+        self.notebook.SetSelection(0)        # jump to Arrange to see it
+        wx.CallAfter(self.list.SetFocus)
+        speech.speak(f"Loaded {rec.get('name', 'song')}, {len(self._sections)} sections, "
+                     f"{self._fmt(self._song_len())}.")
+        self._reaudition()
+
+    def _play_selected(self) -> None:
+        rec = self._selected_song()
+        if rec is None:
+            speech.speak("Select a song first.")
+            return
+        self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
+                          for s in rec.get("sections", [])]
+        self._rebuild()
+        self._stop()
+        self._start_playback(announce=True)
+
+    def _delete_selected(self) -> None:
+        rec = self._selected_song()
+        if rec is None:
+            speech.speak("Select a song first.")
+            return
+        delete_song(self._settings, rec.get("name", ""))
+        self._rebuild_songs()
+        speech.speak(f"Deleted {rec.get('name', 'song')}.")
 
     def _export(self) -> None:
         wav = self._render()
