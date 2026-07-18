@@ -26,6 +26,7 @@ from ..practice import (
     group_start_beats,
     parse_grouping,
 )
+from . import speech
 from .accessibility import set_accessible_name
 
 TEMPO_MIN = 30
@@ -250,5 +251,8 @@ class MetronomePanel(wx.Panel):
         event.Skip()
 
     def _announce(self, message: str) -> None:
+        # Speak it too — Start/Stop/Tap Tempo have no native feedback, and the status bar
+        # is silent to a screen reader.
+        speech.speak(message)
         if self._status is not None:
             self._status(message)

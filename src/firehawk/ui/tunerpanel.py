@@ -12,6 +12,7 @@ from typing import Callable
 import wx
 
 from ..tuner import INSTRUMENTS, INSTRUMENTS_BY_NAME, TonePlayer, note_frequency
+from . import speech
 from .accessibility import set_accessible_name
 
 
@@ -124,5 +125,8 @@ class TunerPanel(wx.Panel):
         event.Skip()
 
     def _announce(self, message: str) -> None:
+        # Speak it too — the status bar is inaudible to a screen reader, and pairing the
+        # reference tone with spoken words means a playback failure is still heard as words.
+        speech.speak(message)
         if self._status is not None:
             self._status(message)

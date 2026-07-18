@@ -2309,6 +2309,10 @@ class DrumsPanel(wx.Panel):
         event.Skip()
 
     def _announce(self, message: str) -> None:
+        # Speak it AND show it. These are user actions with no native control feedback
+        # (Start/Stop, the tempo trainer's climbing BPM, the count-in, kit loading), so the
+        # status bar alone would be silent to a screen reader — speak through NVDA too.
+        speech.speak(message)
         if self._status is not None:
             self._status(message)
 

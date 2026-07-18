@@ -12,6 +12,7 @@ from typing import Callable
 import wx
 
 from ..model import ModelCatalog, Preset, PresetEntry, PresetLibrary, summarize_preset
+from . import speech
 from .accessibility import set_accessible_name
 
 
@@ -141,5 +142,8 @@ class PresetsPanel(wx.Panel):
         self._announce(f"Deleted preset {entry.name}")
 
     def _announce(self, message: str) -> None:
+        # Speak it too: Open/Save As/Delete results (especially Save As, which otherwise
+        # gives no feedback at all) are inaudible if only shown in the status bar.
+        speech.speak(message)
         if self._status is not None:
             self._status(message)

@@ -18,7 +18,7 @@ from ..device import DeviceSession
 from ..model import EditBuffer, ModelCatalog, Preset, PresetLibrary, SLOT_LAYOUT
 from ..transport import SerialTransport
 from ..transport.serialport import find_firehawk_ports, list_serial_ports
-from . import theme
+from . import speech, theme
 from .accessibility import set_accessible_name
 from .blockpanel import BlockPanel
 from .drumspanel import DrumsPanel
@@ -114,6 +114,12 @@ class MainFrame(wx.Frame):
         theme.apply(self, self.dark_mode)
         self._size_sidebar()
         self.Refresh()
+
+    def _announce(self, message: str) -> None:
+        """Speak (for the screen reader) and show a confirmation of an action that has no
+        native feedback of its own — the status bar alone is inaudible to NVDA."""
+        speech.speak(message)
+        self.status.SetStatusText(message)
 
     def _size_sidebar(self) -> None:
         """Enlarge the tab list's font for low-vision reading.
@@ -428,7 +434,7 @@ class MainFrame(wx.Frame):
         self.library.save(self.buffer.preset, name)
         self._dirty = False
         self._refresh_presets_page()
-        self.status.SetStatusText(f"Saved preset '{name}' to your library.")
+        self._announce(f"Saved preset '{name}' to your library.")
         return True
 
     def _on_open_file(self, event) -> None:
@@ -462,7 +468,7 @@ class MainFrame(wx.Frame):
         except Exception as exc:  # noqa: BLE001
             wx.MessageBox(f"Could not export preset:\n{exc}", "Error", wx.ICON_ERROR)
             return
-        self.status.SetStatusText(f"Exported preset to {path.name}")
+        self._announce(f"Exported preset to {path.name}")
 
     def _on_reset(self, event) -> None:
         if not self._confirm_discard():
@@ -556,7 +562,7 @@ class MainFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK and order != self._view_ids:
             self.settings.set_page_order(order)
             self._rebuild_after_reorder()
-            self.status.SetStatusText("Tab order updated.")
+            self._announce("Tab order updated.")
         dlg.Destroy()
 
     def _on_presets_folder(self, event) -> None:
@@ -612,7 +618,7 @@ class MainFrame(wx.Frame):
                 dlg.Destroy()
                 return
             self.session.transport = transport
-            self.status.SetStatusText(f"Connected to {dev} (transmit still off — see Device menu).")
+            self._announce(f"Connected to {dev} (transmit still off — see Device menu).")
         dlg.Destroy()
 
     def _on_toggle_transmit(self, event) -> None:
@@ -627,7 +633,7 @@ class MainFrame(wx.Frame):
                 self.transmit_item.Check(False)
                 return
         self.session.transmit_enabled = self.transmit_item.IsChecked()
-        self.status.SetStatusText(
+        self._announce(
             "Transmitting edits to the pedal." if self.session.transmit_enabled
             else "Transmit off — edits are staged only.")
 
