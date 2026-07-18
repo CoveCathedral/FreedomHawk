@@ -77,9 +77,6 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.listbook.Bind(wx.EVT_LISTBOOK_PAGE_CHANGED, self._on_page_changed)
         self._apply_theme()
-        # Re-size the sidebar once the frame is shown and first laid out (the Listbook
-        # computes its list width late, so a construction-time pass alone isn't enough).
-        wx.CallAfter(self._size_sidebar)
 
     def _on_page_changed(self, event) -> None:
         # Stop any tuner tone when navigating away from the Tuner page.
@@ -119,29 +116,16 @@ class MainFrame(wx.Frame):
         self.Refresh()
 
     def _size_sidebar(self) -> None:
-        """Widen the tab list to fit its enlarged font, so low-vision users can read it.
+        """Enlarge the tab list's font for low-vision reading.
 
-        The Listbook sizes its list to the old (tiny) font at creation and doesn't
-        re-widen when we enlarge it, so measure the widest tab label and force the width.
+        Kept deliberately minimal — only the font.  Forcing the native list's column
+        width / firing size events (an earlier attempt) disturbed the screen reader's view
+        of the tab list, and screen-reader access to the tabs is never worth trading for a
+        wider column.  Long labels may clip visually, but the reader speaks them in full.
         """
         lv = self._list_view()
-        if lv is None:
-            return
-        font = theme.sidebar_font()
-        lv.SetFont(font)
-        titles = dict(all_views())
-        dc = wx.ClientDC(lv)
-        dc.SetFont(font)
-        widest = max((dc.GetTextExtent(titles.get(v, v)).width for v in self._view_ids),
-                     default=120)
-        width = widest + 64          # room for the item margin and selection highlight
-        try:
-            lv.SetColumnWidth(0, width)   # so long labels aren't clipped inside the list
-        except Exception:  # noqa: BLE001 - not all builds expose a report column
-            pass
-        lv.SetMinSize(wx.Size(width, -1))
-        self.listbook.SendSizeEvent()     # a size event (not Layout) makes it honor the width
-        self.Layout()
+        if lv is not None:
+            lv.SetFont(theme.sidebar_font())
 
     # -- pages ----------------------------------------------------------------
 
