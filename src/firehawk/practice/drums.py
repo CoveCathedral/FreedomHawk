@@ -830,19 +830,30 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
 _FILL_CLEAR_ROLES = ("snare", "hihat", "openhat", "clap", "tom", "perc")
 
 
-def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int):
+def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int,
+                        fill_amount: float = 0.0):
     """One generated fill: (length in grid steps, hits keyed by offset-in-zone).
 
     Length varies — usually one or two beats, occasionally a whole bar — and the
     run is a snare/tom mix with varying density and an occasional kick pickup, so
     consecutive fills rarely feel the same.  Everything is measured in grid steps,
     so it lands on the meter whatever the time signature.
+
+    *fill_amount* (0..1, default 0) leans the fill longer and busier: higher values
+    bias the length toward a full bar and raise the hit density.  At 0 it makes the
+    exact same rng calls as before, so existing seeded callers are unaffected.
     """
-    fill_len = min(per_bar, beat_len * rng.choice((1, 1, 1, 2, 2, per_bar // max(1, beat_len))))
+    big = per_bar // max(1, beat_len)
+    fill_len = min(per_bar, beat_len * rng.choice((1, 1, 1, 2, 2, big)))
+    if fill_amount > 0.0:
+        # A second, independent roll leaning toward the bigger end; blend toward it
+        # as fill_amount rises, so 1.0 lands close to a full bar most of the time.
+        longer = min(per_bar, beat_len * rng.choice((2, big, big)))
+        fill_len = int(round(fill_len + (longer - fill_len) * fill_amount))
     fill_len = max(1, fill_len)
     hits: dict = {}
     levels: dict = {}
-    density = rng.uniform(0.6, 0.95)
+    density = rng.uniform(0.6 + 0.2 * fill_amount, min(1.0, 0.95 + 0.05 * fill_amount))
     first = True
     for s in range(fill_len):
         if rng.random() < density:
@@ -859,7 +870,7 @@ def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int):
 
 
 def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
-                    seed: int | None = None) -> Pattern:
+                    seed: int | None = None, fill_amount: float = 0.0) -> Pattern:
     """A long loop of *cycles* passes of the groove, each ending in a *different*
     generated fill — programmatic improvisation.
 
@@ -867,6 +878,9 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     final-bar fill, if it has one) fills the cycle, then a freshly generated fill
     is carved into the cycle's last beats, with a crash on each cycle's downbeat.
     With ``seed=None`` every render improvises anew.
+
+    *fill_amount* (0..1, default 0) is passed to every cycle's fill: higher values
+    make the fills longer and busier (see :func:`_generate_fill_zone`).
     """
     rng = random.Random(seed)
     per_bar = max(1, p.steps // max(1, p.bars))
@@ -895,7 +909,8 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
         base = c * cycle_bars
         for b in range(cycle_bars):
             copy_bar(body_bars[b % len(body_bars)], base + b)
-        fill_len, fill_hits, fill_levels = _generate_fill_zone(rng, beat_len, per_bar)
+        fill_len, fill_hits, fill_levels = _generate_fill_zone(rng, beat_len, per_bar,
+                                                               fill_amount)
         zone_start = (base + cycle_bars) * per_bar - fill_len
         for role in _FILL_CLEAR_ROLES:
             if role in hits:

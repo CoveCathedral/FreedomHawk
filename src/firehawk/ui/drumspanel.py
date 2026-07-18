@@ -1748,6 +1748,15 @@ class DrumsPanel(wx.Panel):
         self.fillstyle_choice.Bind(wx.EVT_CHOICE, self._on_fill_style)
         grid.Add(self.fillstyle_choice, 0, wx.EXPAND)
 
+        # How long/busy improvised fills get (only affects "Improvised" fill style).
+        self.fill_amount_label = wx.StaticText(self, label="Fill amount: 0%")
+        grid.Add(self.fill_amount_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.fill_amount_slider = wx.Slider(self, value=0, minValue=0, maxValue=100)
+        set_accessible_name(self.fill_amount_slider, "Fill amount",
+                            value_fn=lambda: f"{self.fill_amount_slider.GetValue()}%")
+        self.fill_amount_slider.Bind(wx.EVT_SLIDER, self._on_fill_amount)
+        grid.Add(self.fill_amount_slider, 0, wx.EXPAND)
+
         self.tempo_label = wx.StaticText(self, label="Tempo: 90 BPM")
         grid.Add(self.tempo_label, 0, wx.ALIGN_CENTER_VERTICAL)
         self.tempo_slider = wx.Slider(self, value=90, minValue=TEMPO_MIN, maxValue=TEMPO_MAX)
@@ -2043,6 +2052,10 @@ class DrumsPanel(wx.Panel):
         self._announce("Improvised fills: a fresh set every time." if improv
                        else "Fills as written.")
 
+    def _on_fill_amount(self, event: wx.CommandEvent) -> None:
+        self.fill_amount_label.SetLabel(f"Fill amount: {self.fill_amount_slider.GetValue()}%")
+        self._apply()
+
     def _on_volume(self, event: wx.CommandEvent) -> None:
         self.volume_label.SetLabel(f"Drum volume: {self.volume_slider.GetValue()}%")
         self._apply()
@@ -2161,7 +2174,8 @@ class DrumsPanel(wx.Panel):
             # would put a fill in every single bar and wreck the meter's feel.
             cycle = fill_bars or max(4, effective.bars)
             cycles = 2 if cycle >= 12 else 4
-            return improvised_loop(effective, cycle, cycles)
+            return improvised_loop(effective, cycle, cycles,
+                                   fill_amount=self.fill_amount_slider.GetValue() / 100.0)
         if fill_bars:
             return expand_with_fill(effective, fill_bars)
         return effective

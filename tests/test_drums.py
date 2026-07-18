@@ -5,6 +5,7 @@ beat offset regardless of sample length — verified in test_compensator_*.
 """
 
 import io
+import random
 import struct
 import wave
 from pathlib import Path
@@ -369,6 +370,48 @@ def test_improvised_loop_unseeded_varies():
     a = drums.improvised_loop(p, 4, 4)
     b = drums.improvised_loop(p, 4, 4)
     assert a.hits != b.hits  # fresh improvisation every render
+
+
+def test_fill_amount_default_is_unchanged():
+    # fill_amount defaults to 0.0 and must reproduce the original roll exactly —
+    # existing seeded callers (and anything built on top of them) can't shift.
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
+    implicit = drums.improvised_loop(p, cycle_bars=4, cycles=4, seed=7)
+    explicit = drums.improvised_loop(p, cycle_bars=4, cycles=4, seed=7, fill_amount=0.0)
+    assert implicit.hits == explicit.hits and implicit.levels == explicit.levels
+
+    implicit_len, implicit_hits, implicit_levels = drums._generate_fill_zone(
+        random.Random(3), beat_len=4, per_bar=16)
+    explicit_len, explicit_hits, explicit_levels = drums._generate_fill_zone(
+        random.Random(3), beat_len=4, per_bar=16, fill_amount=0.0)
+    assert (implicit_len, implicit_hits, implicit_levels) == (explicit_len, explicit_hits, explicit_levels)
+
+
+def test_fill_amount_makes_fills_longer_and_busier():
+    # Any single seed's roll can go either way, so compare totals over many seeds:
+    # a high fill_amount should come out longer and busier than a low one overall.
+    low_len_total = high_len_total = 0
+    low_hits_total = high_hits_total = 0
+    for seed in range(80):
+        low_len, low_hits, _ = drums._generate_fill_zone(
+            random.Random(seed), beat_len=4, per_bar=16, fill_amount=0.0)
+        high_len, high_hits, _ = drums._generate_fill_zone(
+            random.Random(seed), beat_len=4, per_bar=16, fill_amount=1.0)
+        low_len_total += low_len
+        high_len_total += high_len
+        low_hits_total += sum(len(v) for v in low_hits.values())
+        high_hits_total += sum(len(v) for v in high_hits.values())
+    assert high_len_total > low_len_total
+    assert high_hits_total > low_hits_total
+
+    # And the same trend holds one level up, through improvised_loop's total hits.
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4, 12],
+                                   "hihat": list(range(0, 16, 2))}, 4, 4, 1)
+    low = drums.improvised_loop(p, cycle_bars=2, cycles=6, seed=5, fill_amount=0.0)
+    high = drums.improvised_loop(p, cycle_bars=2, cycles=6, seed=5, fill_amount=1.0)
+    low_hits = sum(len(v) for v in low.hits.values())
+    high_hits = sum(len(v) for v in high.hits.values())
+    assert high_hits >= low_hits
 
 
 def test_choke_group_cuts_the_ring():

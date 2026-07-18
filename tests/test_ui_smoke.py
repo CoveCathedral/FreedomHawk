@@ -808,7 +808,7 @@ def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
     import firehawk.ui.drumspanel as dp
     captured = {}
 
-    def fake_improv(p, cycle, cycles, seed=None):
+    def fake_improv(p, cycle, cycles, seed=None, fill_amount=0.0):
         captured["cycle"], captured["cycles"] = cycle, cycles
         return p
 
