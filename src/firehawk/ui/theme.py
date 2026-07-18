@@ -37,6 +37,36 @@ def sidebar_font() -> wx.Font:
     return wx.Font(wx.FontInfo(SIDEBAR_POINT_SIZE).Bold())
 
 
+def enlarge_listbook_sidebar(listbook) -> None:
+    """Give a Listbook's tab list the larger font and widen it to fit — low-vision reading.
+
+    A Listbook sizes its list to the (small) default font at creation and won't re-widen on
+    its own, so measure the widest tab label at the larger font and force the width.  Shared
+    by the FreedomHawk window and the standalone Sequin window.
+    """
+    getter = getattr(listbook, "GetListView", None)
+    lv = getter() if callable(getter) else None
+    if lv is None:
+        children = listbook.GetChildren()
+        lv = children[0] if children else None
+    if lv is None:
+        return
+    font = sidebar_font()
+    lv.SetFont(font)
+    dc = wx.ClientDC(lv)
+    dc.SetFont(font)
+    widest = 0
+    for i in range(lv.GetItemCount()):
+        widest = max(widest, dc.GetTextExtent(lv.GetItemText(i)).width)
+    width = (widest or 120) + 64
+    try:
+        lv.SetColumnWidth(0, width)
+    except Exception:  # noqa: BLE001 - not every build exposes a report column
+        pass
+    lv.SetMinSize(wx.Size(width, -1))
+    listbook.SendSizeEvent()
+
+
 def enable_native_dark_mode(app: wx.App) -> None:
     """Ask Windows to draw native controls dark, where the wx build supports it."""
     for attr in ("MSWEnableDarkMode",):

@@ -80,6 +80,9 @@ def test_sequin_standalone_frame(tmp_path, monkeypatch, _silence_audio):
         assert f.drums.groove_choice.GetCount() == 500      # built-ins, fresh settings
         assert f.GetMenuBar().GetMenuCount() == 3            # Tools, Settings, Help
         assert "Sequin" in f.GetTitle()
+        # Two tabs down the left: the sequencer and a metronome.
+        assert [f.listbook.GetPageText(i) for i in range(2)] == ["Sequin", "Metronome"]
+        assert isinstance(f.listbook.GetPage(1), MetronomePanel)
     finally:
         f._on_close(None)                                    # dispose + Destroy path
         import wx as _wx

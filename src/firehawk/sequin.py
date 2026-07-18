@@ -18,12 +18,13 @@ import wx
 from .config import AppSettings
 from .ui import theme
 from .ui.drumspanel import DrumsPanel
+from .ui.metronomepanel import MetronomePanel
 
 APP_TITLE = "Sequin — Accessible Step Sequencer"
 
 
 class SequinFrame(wx.Frame):
-    """A standalone window hosting Sequin (the sequencer) and its tools."""
+    """A standalone window hosting Sequin (the sequencer) and a metronome, in tabs."""
 
     def __init__(self, dark: bool = True):
         super().__init__(None, title=APP_TITLE, size=(1000, 720))
@@ -33,15 +34,24 @@ class SequinFrame(wx.Frame):
         self.status.SetStatusText(
             "Sequin — pick a groove and press Start, or Ctrl+D to edit a pattern.")
 
-        self.drums = DrumsPanel(self, settings=self.settings, status=self.status.SetStatusText)
+        # Two tabs down the left, like FreedomHawk: the sequencer and a metronome.
+        self.listbook = wx.Listbook(self, style=wx.LB_LEFT)
+        self.drums = DrumsPanel(self.listbook, settings=self.settings,
+                                status=self.status.SetStatusText)
+        self.metronome = MetronomePanel(self.listbook, status=self.status.SetStatusText)
+        self.listbook.AddPage(self.drums, "Sequin")
+        self.listbook.AddPage(self.metronome, "Metronome")
+        self.listbook.SetSelection(0)
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self.drums, 1, wx.EXPAND)
+        sizer.Add(self.listbook, 1, wx.EXPAND)
         self.SetSizer(sizer)
 
         self._build_menu()
         self.Bind(wx.EVT_CLOSE, self._on_close)
         theme.apply(self, self.dark_mode)
+        theme.enlarge_listbook_sidebar(self.listbook)
         self.Centre()
+        wx.CallAfter(lambda: theme.enlarge_listbook_sidebar(self.listbook))
 
     # -- menu -----------------------------------------------------------------
 
@@ -117,6 +127,7 @@ class SequinFrame(wx.Frame):
 
     def _on_close(self, event) -> None:
         self.drums.dispose()
+        self.metronome.dispose()
         self.Destroy()
 
 

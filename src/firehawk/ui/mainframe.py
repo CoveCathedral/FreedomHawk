@@ -77,6 +77,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self._on_close)
         self.listbook.Bind(wx.EVT_LISTBOOK_PAGE_CHANGED, self._on_page_changed)
         self._apply_theme()
+        wx.CallAfter(self._size_sidebar)  # re-fit once shown (the list widens late)
 
     def _on_page_changed(self, event) -> None:
         # Stop any tuner tone when navigating away from the Tuner page.
@@ -122,16 +123,8 @@ class MainFrame(wx.Frame):
         self.status.SetStatusText(message)
 
     def _size_sidebar(self) -> None:
-        """Enlarge the tab list's font for low-vision reading.
-
-        Kept deliberately minimal — only the font.  Forcing the native list's column
-        width / firing size events (an earlier attempt) disturbed the screen reader's view
-        of the tab list, and screen-reader access to the tabs is never worth trading for a
-        wider column.  Long labels may clip visually, but the reader speaks them in full.
-        """
-        lv = self._list_view()
-        if lv is not None:
-            lv.SetFont(theme.sidebar_font())
+        """Enlarge and widen the tab list for low-vision reading (font + fit-to-width)."""
+        theme.enlarge_listbook_sidebar(self.listbook)
 
     # -- pages ----------------------------------------------------------------
 

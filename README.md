@@ -137,6 +137,9 @@ double-click **`Sequin.bat`** or:
 .venv\Scripts\python -m firehawk.sequin
 ```
 
+Standalone Sequin opens a two-tab window — the **sequencer** and a **metronome** — with its
+own Tools/Settings/Help menu.
+
 ## Test
 
 ```powershell

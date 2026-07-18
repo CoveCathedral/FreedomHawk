@@ -129,7 +129,8 @@ Tune by ear against a sustained reference tone — no lights, no meters.
 version: pick a kit and a groove, press Start, and jam — then go as deep as you like. The
 complete guide, including how to use your own sample libraries, is in `docs/drum-kits.md`;
 this is the tour. Sequin also **runs on its own** — double-click **`Sequin.bat`** (or
-`python -m firehawk.sequin`) to open just the sequencer in its own window.
+`python -m firehawk.sequin`) to open a two-tab window with the **sequencer** and a
+**metronome**, with its own menu.
 
 ### The main tab
 
