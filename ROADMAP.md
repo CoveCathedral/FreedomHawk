@@ -158,10 +158,16 @@ All screen-reader-first, native controls only.
   loop, on its own one-shot channel; `render_count_in`). **Tempo trainer** (climbs the BPM
   as you play, each step spoken; Trainer Options dialog sets step/bars/target; toggle for a
   defined ramp that holds at target vs. continuous endurance climb; `tempo_ramp`).
-  **Planned next (Kaylea approved):** song mode (pattern chaining) · audition-step &
+  **Song mode** (Tools → Song Builder: chain grooves into an arrangement — accessible
+  section list, per-section repeats edited with Left/Right, Alt+Up/Down reorder; renders the
+  whole song gapless across mixed meters via `render_song`, loops it, saves/loads/exports;
+  in both FreedomHawk and standalone Sequin).
+  **Named + standalone:** the sequencer is **Sequin**; `Sequin.bat` / `python -m
+  firehawk.sequin` runs it on its own (`SequinFrame`); tandem separate-repo release planned
+  after a milestone / when a contributor joins.
+  **Planned next (Kaylea approved):** per-section tempo/kit in songs · audition-step &
   speak-rhythm keys · **MIDI controller input** (craft beats from a keyboard). Long-term:
-  spin the sequencer out as its own open-source project — **Sequin**, the accessible step
-  sequencer — released standalone in tandem (engine already firehawk-independent).
+  extract Sequin to its own repo (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully

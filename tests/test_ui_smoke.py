@@ -440,6 +440,31 @@ def test_tempo_trainer_continuous_passes_target(frame, _silence_audio):
     assert not d._playing and d._trainer_timer is None
 
 
+def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        dlg.groove.SetStringSelection("Rock")
+        dlg.repeats.SetSelection(2)          # 3 repeats
+        dlg._add()
+        dlg.groove.SetStringSelection("Funk")
+        dlg.repeats.SetSelection(0)          # 1 repeat
+        dlg._add()
+        assert dlg._sections == [["Rock", 3], ["Funk", 1]]
+        dlg.list.SetSelection(0)
+        dlg._change_repeats(1)               # Left/Right edits the selected section
+        assert dlg._sections[0] == ["Rock", 4]
+        dlg._move(1)                         # Alt+Down reorders
+        assert [s[0] for s in dlg._sections] == ["Funk", "Rock"]
+        if d.player.available:
+            assert dlg._render() is not None  # renders the whole song without error
+        dlg._remove()
+        assert [s[0] for s in dlg._sections] == ["Funk"]
+    finally:
+        dlg.Destroy()
+
+
 def test_visual_track_toggles_paints_and_persists(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

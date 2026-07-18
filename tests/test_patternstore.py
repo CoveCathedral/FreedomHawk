@@ -128,6 +128,28 @@ def test_pattern_file_carries_tune_gain_and_choke(tmp_path):
     assert back["lines"][0]["choke"] == 2
 
 
+def test_song_store_resolve_save_load(tmp_path, monkeypatch):
+    import firehawk.config as config
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "s.json")
+    from firehawk.config import AppSettings
+    s = AppSettings()
+    # resolve a built-in groove by name; missing -> None
+    assert ps.resolve_pattern_by_name("Rock", s).name == "Rock"
+    assert ps.resolve_pattern_by_name("Nope!!", s) is None
+    # a saved user pattern resolves too, and takes precedence for its name
+    rec = ps.make_record("MyGroove", "Mine", 4, 4, 4, 1,
+                         [dict(ps.make_line("kick"), steps=[0, 8])], Pattern("x", 16, 4, {"kick": [0, 8]}))
+    ps.save_user_pattern(s, rec)
+    assert ps.resolve_pattern_by_name("MyGroove", s) is not None
+    # song save/load/delete + section resolution (skips a missing pattern)
+    song = ps.make_song_record("Song 1", [("Rock", 2), ("MyGroove", 1), ("Ghost", 4)])
+    ps.save_song(s, song)
+    assert [r["name"] for r in ps.user_songs(s)] == ["Song 1"]
+    resolved = ps.song_sections(ps.user_songs(s)[0], s)
+    assert [(p.name, r) for p, r in resolved] == [("Rock", 2), ("MyGroove", 1)]  # "Ghost" skipped
+    assert ps.delete_song(s, "Song 1") and ps.user_songs(s) == []
+
+
 def test_builtin_category():
     assert ps.builtin_category("Rock") == "Rock"
     assert ps.builtin_category("Rock 04 fill") == "Rock"

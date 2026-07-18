@@ -48,7 +48,14 @@ from ..practice import (
     synth_kit,
     wav_duration,
 )
-from ..practice.drums import RATE, load_sample, render_count_in, tempo_ramp
+from ..practice.drums import (
+    RATE,
+    load_sample,
+    render_count_in,
+    render_song,
+    song_seconds,
+    tempo_ramp,
+)
 from ..practice.patternstore import (
     MAX_CHOKE_GROUP,
     MAX_GAIN_DB,
@@ -63,18 +70,23 @@ from ..practice.patternstore import (
     clamp_gain_db,
     clamp_tune,
     delete_pattern,
+    delete_song,
     line_pitch,
     lines_for_kit,
     make_line,
     make_record,
+    make_song_record,
     record_from_file_dict,
     record_to_file_dict,
     record_to_pattern,
     rename_category,
     rename_pattern,
+    save_song,
     save_user_pattern,
     set_pattern_category,
+    song_sections,
     user_patterns,
+    user_songs,
 )
 from ..practice.pitch import estimate_pitch, note_name_for_semitones
 from ..practice.patternstore import SYNTH_KIT_NAME
@@ -1202,6 +1214,279 @@ class TempoTrainerDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 
+class SongDialog(wx.Dialog):
+    """Song mode — chain grooves into an arrangement and play it end to end.
+
+    Accessible builder: a list of sections (each a groove + a repeat count), reordered and
+    edited by keyboard and spoken as you go.  Play renders the whole song gapless and loops
+    it; songs save, load, and export to WAV.  Sections reference grooves by name (built-in
+    or your saved patterns) — save a pattern as a preset first to use it in a song.
+    """
+
+    _MAX_REPEATS = 32
+
+    def __init__(self, parent: wx.Window, panel: "DrumsPanel", dark: bool = True):
+        super().__init__(parent, title="Song Builder", size=(640, 540),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._panel = panel
+        self._settings = panel._settings
+        self._dark = dark
+        self._sections: list[list] = []   # [ [groove_name, repeats], ... ]
+        self._playing = False
+        try:
+            self._build()
+        except Exception as exc:  # noqa: BLE001 - a swallowed error is a dead button
+            wx.MessageBox(f"Could not open Song Builder:\n{exc}", "Song Builder",
+                          wx.OK | wx.ICON_ERROR, self)
+            self.EndModal(wx.ID_CANCEL)
+            return
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+        theme.apply(self, dark)
+        wx.CallAfter(self.list.SetFocus)
+
+    def _groove_names(self) -> list[str]:
+        return [p.name for p in PATTERN_LIBRARY] + [r["name"] for r in user_patterns(self._settings)]
+
+    def _build(self) -> None:
+        root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(wx.StaticText(self, label=(
+            "Build a song by chaining grooves. Add a groove below; in the list, Up and Down "
+            "select a section, Left and Right change its repeats, Alt+Up and Alt+Down "
+            "reorder, Delete removes. Play renders the whole song and loops it.")),
+            0, wx.ALL, 10)
+
+        self.list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        set_accessible_name(self.list, "Song sections")
+        self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
+        root.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        add_row = wx.BoxSizer(wx.HORIZONTAL)
+        add_row.Add(wx.StaticText(self, label="Groove:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.groove = wx.Choice(self, choices=self._groove_names())
+        set_accessible_name(self.groove, "Groove to add")
+        if self.groove.GetCount():
+            self.groove.SetSelection(0)
+        add_row.Add(self.groove, 1, wx.EXPAND | wx.RIGHT, 6)
+        add_row.Add(wx.StaticText(self, label="Repeats:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.repeats = wx.Choice(self, choices=[str(n) for n in range(1, 17)])
+        set_accessible_name(self.repeats, "Repeats for the added groove")
+        self.repeats.SetSelection(0)
+        add_row.Add(self.repeats, 0, wx.RIGHT, 6)
+        add_btn = wx.Button(self, label="&Add Section")
+        add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add())
+        add_row.Add(add_btn, 0)
+        root.Add(add_row, 0, wx.EXPAND | wx.ALL, 10)
+
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        self.play_btn = wx.Button(self, label="&Play")
+        self.play_btn.Bind(wx.EVT_BUTTON, self._on_play)
+        btns.Add(self.play_btn, 0, wx.RIGHT, 6)
+        for label, fn in (("&Save Song...", self._save), ("&Load Song...", self._load),
+                          ("&Delete Song...", self._delete), ("Export &WAV...", self._export)):
+            b = wx.Button(self, label=label)
+            b.Bind(wx.EVT_BUTTON, lambda e, f=fn: f())
+            btns.Add(b, 0, wx.RIGHT, 6)
+        cancel = wx.Button(self, wx.ID_CANCEL, "Close")
+        cancel.Bind(wx.EVT_BUTTON, lambda e: self._on_close(e))
+        btns.Add(cancel, 0)
+        root.Add(btns, 0, wx.ALL, 10)
+        self.SetSizer(root)
+        self._rebuild()
+
+    # -- section list ---------------------------------------------------------
+
+    def _record(self) -> dict:
+        return {"sections": [{"pattern": n, "repeats": r} for n, r in self._sections]}
+
+    def _resolved(self) -> list:
+        return song_sections(self._record(), self._settings)
+
+    @staticmethod
+    def _fmt(secs: float) -> str:
+        m, s = divmod(int(round(secs)), 60)
+        return f"{m}:{s:02d}" if m else f"{s} seconds"
+
+    def _song_len(self) -> float:
+        return song_seconds(self._resolved(), self._panel.bpm)
+
+    def _rebuild(self) -> None:
+        keep = max(0, self.list.GetSelection())
+        self.list.Set([f"{i + 1}. {name}  x{r}" for i, (name, r) in enumerate(self._sections)])
+        if self._sections:
+            self.list.SetSelection(min(keep, len(self._sections) - 1))
+
+    def _selected(self) -> int:
+        i = self.list.GetSelection()
+        return i if 0 <= i < len(self._sections) else -1
+
+    def _add(self) -> None:
+        i = self.groove.GetSelection()
+        if i < 0:
+            return
+        name = self.groove.GetString(i)
+        r = self.repeats.GetSelection() + 1
+        self._sections.append([name, r])
+        self._rebuild()
+        self.list.SetSelection(len(self._sections) - 1)
+        speech.speak(f"Added {name}, {r} repeat{'s' if r != 1 else ''}. "
+                     f"{len(self._sections)} section{'s' if len(self._sections) != 1 else ''}, "
+                     f"{self._fmt(self._song_len())}.")
+        self._reaudition()
+
+    def _change_repeats(self, delta: int) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        name, r = self._sections[i]
+        r = max(1, min(self._MAX_REPEATS, r + delta))
+        self._sections[i][1] = r
+        self._rebuild()
+        self.list.SetSelection(i)
+        speech.speak(f"{name}, {r} repeat{'s' if r != 1 else ''}")
+        self._reaudition()
+
+    def _move(self, delta: int) -> None:
+        i = self._selected()
+        j = i + delta
+        if i < 0 or not (0 <= j < len(self._sections)):
+            return
+        self._sections[i], self._sections[j] = self._sections[j], self._sections[i]
+        self._rebuild()
+        self.list.SetSelection(j)
+        speech.speak(f"{self._sections[j][0]} moved to position {j + 1}")
+        self._reaudition()
+
+    def _remove(self) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        name = self._sections.pop(i)[0]
+        self._rebuild()
+        if self._sections:
+            self.list.SetSelection(min(i, len(self._sections) - 1))
+        speech.speak(f"Removed {name}. {len(self._sections)} left.")
+        self._reaudition()
+
+    def _on_list_key(self, event: wx.KeyEvent) -> None:
+        code = event.GetKeyCode()
+        if code == wx.WXK_LEFT:
+            self._change_repeats(-1)
+        elif code == wx.WXK_RIGHT:
+            self._change_repeats(1)
+        elif code == wx.WXK_UP and event.AltDown():
+            self._move(-1)
+        elif code == wx.WXK_DOWN and event.AltDown():
+            self._move(1)
+        elif code == wx.WXK_DELETE:
+            self._remove()
+        else:
+            event.Skip()
+
+    # -- playback & files -----------------------------------------------------
+
+    def _render(self):
+        resolved = self._resolved()
+        if not resolved:
+            return None
+        return render_song(resolved, self._panel._kit, self._panel.bpm,
+                           volume=self._panel.volume_slider.GetValue() / 100.0,
+                           swing=self._panel.swing_slider.GetValue() / 100.0,
+                           humanize=self._panel.humanize_slider.GetValue() / 100.0)
+
+    def _on_play(self, event) -> None:
+        if self._playing:
+            self._stop()
+            return
+        wav = self._render()
+        if wav is None:
+            speech.speak("Add a section first.")
+            return
+        self._panel.stop()               # stop the main loop; the audio channel is shared
+        self._panel.player.play(wav)     # loops the whole song
+        self._playing = True
+        self.play_btn.SetLabel("&Stop")
+        speech.speak(f"Playing song, {self._fmt(self._song_len())}.")
+
+    def _stop(self) -> None:
+        if self._playing:
+            self._panel.player.stop()
+            self._playing = False
+            self.play_btn.SetLabel("&Play")
+
+    def _reaudition(self) -> None:
+        if self._playing:
+            wav = self._render()
+            if wav is not None:
+                self._panel.player.play(wav)
+
+    def _save(self) -> None:
+        if not self._sections:
+            speech.speak("Nothing to save yet.")
+            return
+        with wx.TextEntryDialog(self, "Save song as:", "Save Song") as dlg:
+            theme.apply(dlg, self._dark)
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name = dlg.GetValue().strip()
+        if not name:
+            return
+        save_song(self._settings, make_song_record(name, [(n, r) for n, r in self._sections]))
+        speech.speak(f"Saved song {name}.")
+
+    def _load(self) -> None:
+        songs = user_songs(self._settings)
+        if not songs:
+            speech.speak("No saved songs yet.")
+            return
+        names = [s["name"] for s in songs]
+        dlg = wx.SingleChoiceDialog(self, "Load which song?", "Load Song", names)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() == wx.ID_OK:
+            rec = songs[dlg.GetSelection()]
+            self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
+                              for s in rec.get("sections", [])]
+            self._rebuild()
+            speech.speak(f"Loaded {rec['name']}, {len(self._sections)} sections, "
+                         f"{self._fmt(self._song_len())}.")
+            self._reaudition()
+        dlg.Destroy()
+
+    def _delete(self) -> None:
+        songs = user_songs(self._settings)
+        if not songs:
+            speech.speak("No saved songs.")
+            return
+        names = [s["name"] for s in songs]
+        dlg = wx.SingleChoiceDialog(self, "Delete which song?", "Delete Song", names)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() == wx.ID_OK:
+            name = names[dlg.GetSelection()]
+            delete_song(self._settings, name)
+            speech.speak(f"Deleted {name}.")
+        dlg.Destroy()
+
+    def _export(self) -> None:
+        wav = self._render()
+        if wav is None:
+            speech.speak("Add a section first.")
+            return
+        with wx.FileDialog(self, "Export song as WAV", wildcard="WAV files (*.wav)|*.wav",
+                           defaultFile="song.wav",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            path = dlg.GetPath()
+        try:
+            Path(path).write_bytes(wav)
+            speech.speak("Song exported.")
+        except Exception as exc:  # noqa: BLE001
+            wx.MessageBox(f"Could not export:\n{exc}", "Export", wx.ICON_ERROR, self)
+
+    def _on_close(self, event) -> None:
+        self._stop()
+        self.EndModal(wx.ID_CANCEL)
+
+
 class DrumsPanel(wx.Panel):
     def __init__(self, parent: wx.Window, settings=None, status: Callable[[str], None] | None = None):
         super().__init__(parent)
@@ -1977,6 +2262,12 @@ class DrumsPanel(wx.Panel):
         dlg.Destroy()
         self._rebuild_categories()
         self._rebuild_groove_list()
+
+    def open_song_builder(self) -> None:
+        """Song mode: chain grooves into an arrangement (Tools > Song Builder)."""
+        dlg = SongDialog(self, self, dark=self._dark())
+        dlg.ShowModal()
+        dlg.Destroy()
 
 
 class DrumLibraryDialog(wx.Dialog):

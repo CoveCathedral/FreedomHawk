@@ -348,6 +348,7 @@ class MainFrame(wx.Frame):
         tools_menu = wx.Menu()
         drum_editor_item = tools_menu.Append(wx.ID_ANY, "&Drum Pattern Editor...\tCtrl+D")
         drum_library_item = tools_menu.Append(wx.ID_ANY, "Drum Pattern &Library...")
+        song_builder_item = tools_menu.Append(wx.ID_ANY, "Song &Builder...")
         tools_menu.AppendSeparator()
         wav_export_item = tools_menu.Append(wx.ID_ANY, "Export Drum Loop as &WAV...")
         pattern_export_item = tools_menu.Append(wx.ID_ANY, "&Export Drum Pattern...")
@@ -386,6 +387,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, lambda e: self.Close(), exit_item)
         self.Bind(wx.EVT_MENU, self._on_drum_editor, drum_editor_item)
         self.Bind(wx.EVT_MENU, self._drums_action("open_library"), drum_library_item)
+        self.Bind(wx.EVT_MENU, self._drums_action("open_song_builder"), song_builder_item)
         self.Bind(wx.EVT_MENU, self._drums_action("export_wav"), wav_export_item)
         self.Bind(wx.EVT_MENU, self._drums_action("export_pattern_file"), pattern_export_item)
         self.Bind(wx.EVT_MENU, self._drums_action("import_pattern_file"), pattern_import_item)
@@ -777,9 +779,11 @@ class MainFrame(wx.Frame):
             "6. Part + Mute this part silences a part live without erasing its steps.\n"
             "7. Set the Tempo, Drum volume, Swing (shuffle feel), and Humanize (subtle\n"
             "   timing/volume drift), then press Start.\n\n"
-            "The Tools menu (Alt+T) holds the Drum Pattern Library (rename, delete,\n"
-            "recategorize your saved patterns), WAV export of the playing loop, drum\n"
-            "pattern file sharing, and MIDI export/import.\n\n"
+            "The Tools menu (Alt+T) holds the Song Builder (chain grooves into an\n"
+            "arrangement - add sections, Left/Right set repeats, Alt+Up/Down reorder,\n"
+            "Play the whole song), the Drum Pattern Library (rename, delete, recategorize\n"
+            "your saved patterns), WAV export of the playing loop, drum pattern file\n"
+            "sharing, and MIDI export/import.\n\n"
             "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
             "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
             "Using Sequin", wx.ICON_INFORMATION)

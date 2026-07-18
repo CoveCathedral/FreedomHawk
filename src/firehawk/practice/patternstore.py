@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .drums import (
     GENRE_PATTERNS,
+    PATTERN_LIBRARY,
     LEVEL_ACCENT,
     LEVEL_GHOST,
     ROLE_LABELS,
@@ -271,6 +272,62 @@ def record_to_pattern(record: dict) -> Pattern:
     return lines_to_pattern(record.get("lines", []), record.get("beats", 4),
                             record.get("unit", 4), record.get("grid", 4),
                             record.get("bars", 1), name=record.get("name", "custom"))
+
+
+# -- songs: ordered chains of patterns (song mode / composition) -------------------
+
+_SONG_KEY = "drum_songs"
+
+
+def resolve_pattern_by_name(name: str, settings) -> Pattern | None:
+    """Find a groove by name — a saved user pattern first, then the built-in library."""
+    for rec in user_patterns(settings):
+        if rec.get("name") == name:
+            return record_to_pattern(rec)
+    for p in PATTERN_LIBRARY:
+        if p.name == name:
+            return p
+    return None
+
+
+def make_song_record(name: str, sections: list) -> dict:
+    """A song record from ``[(pattern_name, repeats), ...]`` sections."""
+    return {"name": name,
+            "sections": [{"pattern": str(p), "repeats": max(1, int(r))} for p, r in sections]}
+
+
+def song_sections(record: dict, settings) -> list:
+    """Resolve a song's sections to ``[(Pattern, repeats), ...]``; skip missing patterns."""
+    out = []
+    for s in record.get("sections", []):
+        pattern = resolve_pattern_by_name(str(s.get("pattern", "")), settings)
+        if pattern is not None:
+            out.append((pattern, max(1, int(s.get("repeats", 1)))))
+    return out
+
+
+def user_songs(settings) -> list[dict]:
+    if settings is None:
+        return []
+    return list(settings.get(_SONG_KEY) or [])
+
+
+def save_song(settings, record: dict) -> None:
+    """Add or replace (by name) a saved song."""
+    if settings is None:
+        return
+    records = [r for r in user_songs(settings) if r.get("name") != record.get("name")]
+    records.append(record)
+    settings.set(_SONG_KEY, records)
+
+
+def delete_song(settings, name: str) -> bool:
+    records = user_songs(settings)
+    kept = [r for r in records if r.get("name") != name]
+    if len(kept) == len(records):
+        return False
+    settings.set(_SONG_KEY, kept)
+    return True
 
 
 def all_categories(settings) -> list[str]:

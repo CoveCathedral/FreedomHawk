@@ -404,6 +404,19 @@ def test_count_in_matches_meter_and_tempo():
     assert float(np.max(np.abs(buf7))) > 0.0             # it actually clicks
 
 
+def test_render_song_concatenates_sections():
+    kit = drums.synth_kit()
+    a = drums.Pattern("A", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
+    b = drums.Pattern("B", 14, 4, {"kick": [0, 6, 10]}, 7, 8, 1)   # different meter/length
+    sections = [(a, 2), (b, 3)]
+    wav = drums.render_song(sections, kit, 120)
+    got = _frames(wav)
+    expect_s = a.loop_seconds(120) * 2 + b.loop_seconds(120) * 3
+    assert len(got) == pytest.approx(expect_s * drums.RATE, rel=0.001)
+    assert drums.song_seconds(sections, 120) == pytest.approx(expect_s, abs=0.001)
+    assert len(drums.render_song([], kit, 120)) > 44        # empty song is a valid tiny WAV
+
+
 def test_tempo_ramp_sequence():
     assert drums.tempo_ramp(100, 120, 5) == [100, 105, 110, 115, 120]
     assert drums.tempo_ramp(100, 118, 5) == [100, 105, 110, 115, 118]   # last jump clamps

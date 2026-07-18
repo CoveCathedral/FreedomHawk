@@ -207,6 +207,23 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   thing you operate, so the screen-reader workflow is unchanged — and the setting is
   remembered between sessions.
 
+### Song mode (the Song Builder)
+
+**Tools → Song Builder…** chains grooves into a full arrangement — intro, verse, chorus,
+bridge, and so on. It's an accessible list of **sections**, each a groove plus a repeat
+count:
+
+- **Add a groove**: pick one from the Groove dropdown, set Repeats, press **Add Section**.
+- In the **section list**: Up/Down select, **Left/Right change the repeats**, **Alt+Up /
+  Alt+Down reorder**, **Delete** removes — each spoken, with the running song length.
+- **Play** renders the whole song end to end (gapless, sections can even be in different
+  meters) and loops it; **Save/Load/Delete Song** keep your arrangements, and **Export WAV**
+  writes the whole song as audio.
+
+Sections reference grooves by name (built-in or your saved patterns), so **save a pattern
+as a preset first** if you want your own groove in a song. Song Builder is in both
+FreedomHawk and standalone Sequin.
+
 ### Managing and sharing (the Tools menu)
 
 - **Drum Pattern Library…** — rename, delete, or recategorize your saved patterns, and

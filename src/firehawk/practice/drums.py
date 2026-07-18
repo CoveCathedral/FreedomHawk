@@ -1054,18 +1054,10 @@ def _choke_cutoffs(pattern: Pattern, choke_groups: dict, step_s: float, rate: in
     return cutoffs
 
 
-def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
-                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
-                seed: int | None = None, choke_groups: dict | None = None) -> bytes:
-    """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
-
-    *volume* (0..1) scales the finished mix.  *swing* (0..1) delays off-beats for a
-    shuffle feel.  *humanize* (0..1) adds subtle per-hit timing and level drift so a
-    looped groove doesn't sound stamped out.  *choke_groups* maps a role to a group id;
-    within a group a new hit cuts the previous one's ring (an open hat closed by the hat).
-    """
-    if np is None:
-        raise RuntimeError("numpy is required for the drum looper")
+def _mix_pattern(pattern: Pattern, kit: DrumKit, bpm: float, rate: int,
+                 swing: float, humanize: float, seed: int | None,
+                 choke_groups: dict | None):
+    """Mix one loop of *pattern* into a float32 buffer (no normalize/volume yet)."""
     pattern = flatten_polymeter(pattern)  # per-line lengths -> one tiled loop
     step_s = pattern.step_seconds(bpm)
     beat_dur = 60.0 / max(1.0, bpm)      # a quarter note, the swing reference
@@ -1108,7 +1100,12 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 if cut is not None:
                     v = _truncate_voice(v, cut, rate)
             _mix_wrap(buf, v, hit_offset(step))
-    peak = float(np.max(np.abs(buf))) if length else 0.0
+    return buf
+
+
+def _buf_to_wav(buf, volume: float, rate: int) -> bytes:
+    """Peak-limit, apply *volume*, and wrap a float32 buffer as a 16-bit mono WAV."""
+    peak = float(np.max(np.abs(buf))) if len(buf) else 0.0
     if peak > 1.0:                       # prevent clipping without pumping quiet loops up
         buf = buf / peak
     buf = buf * max(0.0, min(1.0, volume))
@@ -1121,6 +1118,54 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
     w.writeframes(pcm.tobytes())
     w.close()
     return out.getvalue()
+
+
+def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
+                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
+                seed: int | None = None, choke_groups: dict | None = None) -> bytes:
+    """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
+
+    *volume* (0..1) scales the finished mix.  *swing* (0..1) delays off-beats for a
+    shuffle feel.  *humanize* (0..1) adds subtle per-hit timing and level drift so a
+    looped groove doesn't sound stamped out.  *choke_groups* maps a role to a group id;
+    within a group a new hit cuts the previous one's ring (an open hat closed by the hat).
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for the drum looper")
+    buf = _mix_pattern(pattern, kit, bpm, rate, swing, humanize, seed, choke_groups)
+    return _buf_to_wav(buf, volume, rate)
+
+
+def _auto_hat_choke(pattern: Pattern) -> dict | None:
+    """A default choke group for a groove that plays both hats (closed cuts open)."""
+    if "hihat" in pattern.hits and "openhat" in pattern.hits:
+        return {"hihat": 1, "openhat": 1}
+    return None
+
+
+def render_song(sections, kit: DrumKit, bpm: float, rate: int = RATE,
+                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0) -> bytes:
+    """Render a song — an ordered list of ``(pattern, repeats)`` sections — end to end.
+
+    Each section's pattern is mixed once and tiled *repeats* times; the sections are
+    concatenated into one continuous 16-bit mono WAV (gapless, no timers), then peak-limited
+    and volume-scaled together so levels stay even across sections.  Sections may differ in
+    meter, feel and length; hats auto-choke per section.  A song plays through once.
+    """
+    if np is None:
+        raise RuntimeError("numpy is required for the drum looper")
+    parts = []
+    for pattern, repeats in sections:
+        buf = _mix_pattern(pattern, kit, bpm, rate, swing, humanize, None,
+                           _auto_hat_choke(pattern))
+        parts.extend([buf] * max(1, int(repeats)))
+    whole = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
+    return _buf_to_wav(whole, volume, rate)
+
+
+def song_seconds(sections, bpm: float) -> float:
+    """Total playing time of a song's ``(pattern, repeats)`` sections at *bpm*."""
+    return sum(p.loop_seconds(bpm) * max(1, int(r)) for p, r in sections)
 
 
 # -- playback --------------------------------------------------------------------

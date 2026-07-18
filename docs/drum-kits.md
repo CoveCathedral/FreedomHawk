@@ -174,6 +174,25 @@ Buttons (all a Tab away):
 **Ctrl+D** anywhere in the app opens a fresh, empty editor on the Sequin tab —
 build a pattern from scratch mid-session, save it as a preset, jam on.
 
+## Song mode (Tools → Song Builder…)
+
+Chain grooves into a full arrangement — intro, verse, chorus, bridge, breakdown, outro.
+The **Song Builder** is an accessible list of **sections**, each one a groove plus a repeat
+count:
+
+- **Add a groove**: choose it from the Groove dropdown, set **Repeats**, press **Add
+  Section**. (Sections reference grooves by name — built-in or your saved patterns — so
+  **save your own pattern as a preset first** to use it in a song.)
+- **In the section list**: Up/Down select a section; **Left/Right change its repeats**;
+  **Alt+Up / Alt+Down reorder**; **Delete** removes. Every change is spoken, along with the
+  running song length.
+- **Play** renders the whole song end to end and loops it. Sections can even be in different
+  meters (a 4/4 verse into a 7/8 bridge) — each is rendered at its own meter and stitched
+  gapless. **Save Song / Load Song / Delete Song** keep your arrangements; **Export WAV**
+  writes the entire song as one audio file.
+
+Song mode is in both FreedomHawk and standalone Sequin.
+
 ## The Tools menu: library, sharing, MIDI
 
 The main **Tools** menu (Alt+T) holds the sequencer's management and sharing commands:
