@@ -183,7 +183,15 @@ The **Song Builder** has three tabs so it doesn't crowd:
   **high-contrast visual timeline** beneath it: one coloured block per section, its width
   showing its length, the selected one outlined (a low-vision aid; the list stays what you
   operate). In the list: **Up/Down** select, **Left/Right change repeats**, **Alt+Up /
-  Alt+Down reorder**, **Delete** removes — each spoken, with the running song length.
+  Alt+Down reorder**, **Delete** removes, **E** edits it — each spoken, with the running
+  song length. Below the list, the selected section has its own controls:
+  - **Edit Section…** — opens the Pattern Editor on that section's groove; your tweaks are
+    stored **inline in the song** (they don't touch the original groove or your library), so
+    you can pin down a section's exact feel. Edited sections read "(edited)".
+  - **Tempo** — "Song tempo" (follow the song) or a per-section BPM, so a song can **build
+    speed into the chorus** or drop for a breakdown. Each section renders at its own tempo.
+  - **Kit** — "Global kit" (follow) or a specific kit, so a **verse can be on one kit and
+    the chorus on another** (e.g. acoustic verse, 808 chorus).
 - **Add** — narrow the **Category** dropdown to a genre first (so you're not scrolling all
   500), choose the **Groove**, set **Repeats**, press **Add Section**. (Sections reference
   grooves by name — built-in or your saved patterns — so **save your own pattern as a preset

@@ -76,16 +76,16 @@ from ..practice.patternstore import (
     make_line,
     make_record,
     make_song_record,
+    normalize_section,
     record_from_file_dict,
     record_to_file_dict,
     record_to_pattern,
     rename_category,
     rename_pattern,
-    resolve_pattern_by_name,
+    resolve_section_pattern,
     save_song,
     save_user_pattern,
     set_pattern_category,
-    song_sections,
     user_patterns,
     user_songs,
 )
@@ -1299,7 +1299,8 @@ class SongDialog(wx.Dialog):
         self._panel = panel
         self._settings = panel._settings
         self._dark = dark
-        self._sections: list[list] = []   # [ [groove_name, repeats], ... ]
+        self._sections: list[dict] = []   # [{pattern, repeats, tempo, kit, inline}, ...]
+        self._kit_cache: dict = {}         # kit name -> DrumKit (loaded once per song)
         self._playing = False
         self._end_timer: wx.CallLater | None = None
         try:
@@ -1341,13 +1342,34 @@ class SongDialog(wx.Dialog):
         av = wx.BoxSizer(wx.VERTICAL)
         av.Add(wx.StaticText(arrange, label=(
             "Up/Down select a section; Left/Right change its repeats; Alt+Up/Alt+Down "
-            "reorder; Delete removes. Add grooves on the Add tab; Play is below.")),
+            "reorder; Delete removes; E edits it. Per-section tempo and kit are below. "
+            "Add grooves on the Add tab; Play is below.")),
             0, wx.ALL, 8)
         self.list = wx.ListBox(arrange, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Song sections")
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
-        self.list.Bind(wx.EVT_LISTBOX, lambda e: self._refresh_visual())
+        self.list.Bind(wx.EVT_LISTBOX, lambda e: (self._refresh_visual(), self._sync_section_props()))
         av.Add(self.list, 1, wx.EXPAND | wx.ALL, 8)
+
+        # Per-section properties for the selected section: edit its groove, its own tempo,
+        # its own kit. Blank/"song"/"global" mean "follow the song's tempo / the global kit".
+        props = wx.BoxSizer(wx.HORIZONTAL)
+        self.edit_btn = wx.Button(arrange, label="&Edit Section...")
+        self.edit_btn.Bind(wx.EVT_BUTTON, lambda e: self._edit_section())
+        props.Add(self.edit_btn, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        props.Add(wx.StaticText(arrange, label="Tempo:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self.sec_tempo = wx.Choice(
+            arrange, choices=["Song tempo"] + [str(t) for t in range(TEMPO_MIN, TEMPO_MAX + 1, 5)])
+        set_accessible_name(self.sec_tempo, "This section's tempo")
+        self.sec_tempo.Bind(wx.EVT_CHOICE, self._on_section_tempo)
+        props.Add(self.sec_tempo, 0, wx.RIGHT, 8)
+        props.Add(wx.StaticText(arrange, label="Kit:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self.sec_kit = wx.Choice(arrange, choices=["Global kit"] + self._panel._kit_choices())
+        set_accessible_name(self.sec_kit, "This section's kit")
+        self.sec_kit.Bind(wx.EVT_CHOICE, self._on_section_kit)
+        props.Add(self.sec_kit, 0)
+        av.Add(props, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
         self.song_track = _SongTrack(arrange, self)
         self.song_track.SetMinSize((-1, 92))
         av.Add(self.song_track, 0, wx.EXPAND | wx.ALL, 8)
@@ -1427,10 +1449,34 @@ class SongDialog(wx.Dialog):
     # -- section list ---------------------------------------------------------
 
     def _record(self) -> dict:
-        return {"sections": [{"pattern": n, "repeats": r} for n, r in self._sections]}
+        return {"sections": [dict(s) for s in self._sections]}
+
+    def _resolve_kit(self, name: str | None):
+        """The DrumKit a section plays: None -> the globally selected kit; else load it."""
+        if not name:
+            return self._panel._kit
+        if name not in self._kit_cache:
+            if name == SYNTH_LABEL:
+                self._kit_cache[name] = synth_kit()
+            else:
+                try:
+                    self._kit_cache[name] = load_kit_from_folder(
+                        self._panel._kits_dir() / name,
+                        choices=self._panel._saved_choices(name))
+                except Exception:  # noqa: BLE001 - missing/unreadable -> fall back
+                    self._kit_cache[name] = self._panel._kit
+        return self._kit_cache[name]
 
     def _resolved(self) -> list:
-        return song_sections(self._record(), self._settings)
+        """[(Pattern, repeats, bpm, kit)] for render — per-section tempo and kit applied."""
+        out = []
+        for s in self._sections:
+            pattern = resolve_section_pattern(s, self._settings)
+            if pattern is None:
+                continue
+            bpm = s.get("tempo") or self._panel.bpm
+            out.append((pattern, max(1, int(s["repeats"])), bpm, self._resolve_kit(s.get("kit"))))
+        return out
 
     @staticmethod
     def _fmt(secs: float) -> str:
@@ -1438,16 +1484,27 @@ class SongDialog(wx.Dialog):
         return f"{m}:{s:02d}" if m else f"{s} seconds"
 
     def _song_len(self) -> float:
-        return song_seconds(self._resolved(), self._panel.bpm)
+        return song_seconds(self._resolved())
+
+    def _section_label(self, s: dict) -> str:
+        base = (s.get("pattern") or "pattern") + (" (edited)" if s.get("inline") else "")
+        extra = []
+        if s.get("tempo"):
+            extra.append(f"{s['tempo']} BPM")
+        if s.get("kit"):
+            extra.append(s["kit"])
+        return f"{base} x{s['repeats']}" + (", " + ", ".join(extra) if extra else "")
 
     def _section_blocks(self) -> list:
         """(label, seconds, selected) per section, aligned to the list — for the timeline."""
         sel = self.list.GetSelection()
         blocks = []
-        for i, (name, r) in enumerate(self._sections):
-            pattern = resolve_pattern_by_name(name, self._settings)
-            secs = pattern.loop_seconds(self._panel.bpm) * r if pattern is not None else 0.0
-            blocks.append((f"{name} x{r}", secs, i == sel))
+        for i, s in enumerate(self._sections):
+            pattern = resolve_section_pattern(s, self._settings)
+            bpm = s.get("tempo") or self._panel.bpm
+            secs = pattern.loop_seconds(bpm) * s["repeats"] if pattern is not None else 0.0
+            label = (s.get("pattern") or "pattern") + (" (edit)" if s.get("inline") else "")
+            blocks.append((f"{label} x{s['repeats']}", secs, i == sel))
         return blocks
 
     def _refresh_visual(self) -> None:
@@ -1457,10 +1514,11 @@ class SongDialog(wx.Dialog):
 
     def _rebuild(self) -> None:
         keep = max(0, self.list.GetSelection())
-        self.list.Set([f"{i + 1}. {name}  x{r}" for i, (name, r) in enumerate(self._sections)])
+        self.list.Set([f"{i + 1}. {self._section_label(s)}" for i, s in enumerate(self._sections)])
         if self._sections:
             self.list.SetSelection(min(keep, len(self._sections) - 1))
         self._refresh_visual()
+        self._sync_section_props()
 
     def _selected(self) -> int:
         i = self.list.GetSelection()
@@ -1472,7 +1530,7 @@ class SongDialog(wx.Dialog):
             return
         name = self.groove.GetString(i)
         r = self.repeats.GetSelection() + 1
-        self._sections.append([name, r])
+        self._sections.append(normalize_section({"pattern": name, "repeats": r}))
         self._rebuild()
         self.list.SetSelection(len(self._sections) - 1)
         speech.speak(f"Added {name}, {r} repeat{'s' if r != 1 else ''}. "
@@ -1484,12 +1542,12 @@ class SongDialog(wx.Dialog):
         i = self._selected()
         if i < 0:
             return
-        name, r = self._sections[i]
-        r = max(1, min(self._MAX_REPEATS, r + delta))
-        self._sections[i][1] = r
+        s = self._sections[i]
+        s["repeats"] = max(1, min(self._MAX_REPEATS, s["repeats"] + delta))
         self._rebuild()
         self.list.SetSelection(i)
-        speech.speak(f"{name}, {r} repeat{'s' if r != 1 else ''}")
+        speech.speak(f"{s.get('pattern', 'section')}, {s['repeats']} "
+                     f"repeat{'s' if s['repeats'] != 1 else ''}")
         self._reaudition()
 
     def _move(self, delta: int) -> None:
@@ -1500,14 +1558,14 @@ class SongDialog(wx.Dialog):
         self._sections[i], self._sections[j] = self._sections[j], self._sections[i]
         self._rebuild()
         self.list.SetSelection(j)
-        speech.speak(f"{self._sections[j][0]} moved to position {j + 1}")
+        speech.speak(f"{self._sections[j].get('pattern', 'section')} moved to position {j + 1}")
         self._reaudition()
 
     def _remove(self) -> None:
         i = self._selected()
         if i < 0:
             return
-        name = self._sections.pop(i)[0]
+        name = self._sections.pop(i).get("pattern", "section")
         self._rebuild()
         if self._sections:
             self.list.SetSelection(min(i, len(self._sections) - 1))
@@ -1526,19 +1584,92 @@ class SongDialog(wx.Dialog):
             self._move(1)
         elif code == wx.WXK_DELETE:
             self._remove()
+        elif code in (ord("E"), ord("e")):
+            self._edit_section()
         else:
             event.Skip()
+
+    # -- per-section properties (tempo / kit / inline edit) -------------------
+
+    def _sync_section_props(self) -> None:
+        """Reflect the selected section's tempo/kit in the property controls."""
+        i = self._selected()
+        s = self._sections[i] if i >= 0 else None
+        for ctl in (self.edit_btn, self.sec_tempo, self.sec_kit):
+            ctl.Enable(s is not None)
+        if s is None:
+            self.sec_tempo.SetSelection(0)
+            self.sec_kit.SetSelection(0)
+            return
+        tempo = s.get("tempo")
+        idx = self.sec_tempo.FindString(str(tempo)) if tempo else 0
+        self.sec_tempo.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+        kit = s.get("kit")
+        idx = self.sec_kit.FindString(kit) if kit else 0
+        self.sec_kit.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+
+    def _on_section_tempo(self, event: wx.CommandEvent) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        sel = self.sec_tempo.GetStringSelection()
+        self._sections[i]["tempo"] = None if sel == "Song tempo" else int(sel)
+        self._rebuild()
+        self.list.SetSelection(i)
+        t = self._sections[i]["tempo"]
+        speech.speak(f"Section tempo {t} BPM." if t else "Section follows the song tempo.")
+        self._reaudition()
+
+    def _on_section_kit(self, event: wx.CommandEvent) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        sel = self.sec_kit.GetStringSelection()
+        self._sections[i]["kit"] = None if sel == "Global kit" else sel
+        self._rebuild()
+        self.list.SetSelection(i)
+        speech.speak(f"Section kit: {sel}.")
+        self._reaudition()
+
+    def _edit_section(self) -> None:
+        """Open the Pattern Editor on the selected section; store the tweak inline."""
+        i = self._selected()
+        if i < 0:
+            speech.speak("Select a section to edit.")
+            return
+        s = self._sections[i]
+        pattern = resolve_section_pattern(s, self._settings)
+        if pattern is None:
+            speech.speak("This section's groove is missing.")
+            return
+        kit = self._resolve_kit(s.get("kit"))
+        lines = lines_for_kit(pattern, kit, None)
+        was_playing = self._playing
+        self._stop()
+        dlg = PatternEditorDialog(self._panel, pattern.copy(), lines, self._panel._kits_dir(),
+                                  set(), self._panel.player, int(s.get("tempo") or self._panel.bpm),
+                                  dark=self._dark, settings=self._settings, base_kit=kit)
+        if dlg.ShowModal() == wx.ID_OK:
+            s["inline"] = make_record(
+                "section", "Song", dlg.pattern.beats_per_bar, dlg.pattern.beat_unit,
+                dlg.pattern.steps_per_beat, dlg.pattern.bars, dlg.lines, dlg.pattern)
+            self._rebuild()
+            self.list.SetSelection(i)
+            speech.speak(f"{s.get('pattern', 'section')} edited.")
+        dlg.Destroy()
+        if was_playing:
+            self._start_playback(announce=False)
 
     # -- playback & files -----------------------------------------------------
 
     def _render(self):
-        resolved = self._resolved()
+        resolved = self._resolved()   # (pattern, repeats, bpm, kit) per section
         if not resolved:
             return None
-        return render_song(resolved, self._panel._kit, self._panel.bpm,
-                           volume=self._panel.volume_slider.GetValue() / 100.0,
-                           swing=self._panel.swing_slider.GetValue() / 100.0,
-                           humanize=self._panel.humanize_slider.GetValue() / 100.0)
+        return render_song(resolved,
+                            volume=self._panel.volume_slider.GetValue() / 100.0,
+                            swing=self._panel.swing_slider.GetValue() / 100.0,
+                            humanize=self._panel.humanize_slider.GetValue() / 100.0)
 
     def _start_playback(self, announce: bool) -> None:
         wav = self._render()
@@ -1594,7 +1725,7 @@ class SongDialog(wx.Dialog):
             name = dlg.GetValue().strip()
         if not name:
             return
-        save_song(self._settings, make_song_record(name, [(n, r) for n, r in self._sections]))
+        save_song(self._settings, make_song_record(name, self._sections))
         self._rebuild_songs()
         speech.speak(f"Saved song {name}.")
 
@@ -1618,8 +1749,7 @@ class SongDialog(wx.Dialog):
             speech.speak("No saved songs yet." if not user_songs(self._settings)
                          else "Select a song first.")
             return
-        self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
-                          for s in rec.get("sections", [])]
+        self._sections = [normalize_section(s) for s in rec.get("sections", [])]
         self._rebuild()
         self.notebook.SetSelection(0)        # jump to Arrange to see it
         wx.CallAfter(self.list.SetFocus)
@@ -1632,8 +1762,7 @@ class SongDialog(wx.Dialog):
         if rec is None:
             speech.speak("Select a song first.")
             return
-        self._sections = [[s.get("pattern", ""), max(1, int(s.get("repeats", 1)))]
-                          for s in rec.get("sections", [])]
+        self._sections = [normalize_section(s) for s in rec.get("sections", [])]
         self._rebuild()
         self._stop()
         self._start_playback(announce=True)

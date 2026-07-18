@@ -162,13 +162,16 @@ All screen-reader-first, native controls only.
   Arrange/Add/Songs, accessible section list with a high-contrast visual timeline
   (`_SongTrack`), category-filtered groove picker, per-section repeats edited with
   Left/Right, Alt+Up/Down reorder; renders the whole song gapless across mixed meters via
-  `render_song`, loops it, saves/loads/exports; in both FreedomHawk and standalone Sequin).
-  **Named + standalone:** the sequencer is **Sequin**; `Sequin.bat` / `python -m
-  firehawk.sequin` runs it on its own (`SequinFrame`); tandem separate-repo release planned
-  after a milestone / when a contributor joins.
-  **Planned next (Kaylea approved):** per-section tempo/kit in songs · audition-step &
-  speak-rhythm keys · **MIDI controller input** (craft beats from a keyboard). Long-term:
-  extract Sequin to its own repo (engine already firehawk-independent).
+  `render_song` (per-section tempo + kit), plays through once and ends, saves/loads/exports;
+  in both FreedomHawk and standalone Sequin). **Per-section** tempo (build speed into the
+  chorus), kit (verse vs. chorus), and **inline editing** (Edit Section stores a tweaked
+  pattern in the song, library untouched). **Named + standalone:** the sequencer is
+  **Sequin**; `Sequin.bat` / `python -m firehawk.sequin` runs it on its own (`SequinFrame`,
+  now a two-tab window with a **metronome**); tandem separate-repo release planned after a
+  milestone / when a contributor joins.
+  **Planned next (Kaylea approved):** audition-step & speak-rhythm keys · **MIDI controller
+  input** (craft beats from a keyboard). Long-term: extract Sequin to its own repo (engine
+  already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully

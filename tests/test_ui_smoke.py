@@ -466,12 +466,16 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
         dlg.groove.SetStringSelection("Funk")
         dlg.repeats.SetSelection(0)          # 1 repeat
         dlg._add()
-        assert dlg._sections == [["Rock", 3], ["Funk", 1]]
+        assert [(s["pattern"], s["repeats"]) for s in dlg._sections] == [("Rock", 3), ("Funk", 1)]
         dlg.list.SetSelection(0)
         dlg._change_repeats(1)               # Left/Right edits the selected section
-        assert dlg._sections[0] == ["Rock", 4]
+        assert dlg._sections[0]["repeats"] == 4
+        # Per-section tempo: the selected section can override the song tempo.
+        dlg.sec_tempo.SetStringSelection("150")
+        dlg._on_section_tempo(None)
+        assert dlg._sections[0]["tempo"] == 150
         dlg._move(1)                         # Alt+Down reorders
-        assert [s[0] for s in dlg._sections] == ["Funk", "Rock"]
+        assert [s["pattern"] for s in dlg._sections] == ["Funk", "Rock"]
         # Visual timeline: one block per section, sized by length, selection marked.
         dlg.list.SetSelection(1)
         blocks = dlg._section_blocks()
@@ -481,7 +485,7 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
         if d.player.available:
             assert dlg._render() is not None  # renders the whole song without error
         dlg._remove()
-        assert [s[0] for s in dlg._sections] == ["Funk"]
+        assert [s["pattern"] for s in dlg._sections] == ["Funk"]
     finally:
         dlg.Destroy()
 
@@ -497,12 +501,13 @@ def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio
     try:
         assert [dlg.notebook.GetPageText(i) for i in range(3)] == ["Arrange", "Add", "My Songs"]
         # My Songs lists saved arrangements; Load restores them into Arrange.
-        save_song(d._settings, make_song_record("Verse Jam", [("Rock", 2), ("Funk", 1)]))
+        save_song(d._settings, make_song_record(
+            "Verse Jam", [{"pattern": "Rock", "repeats": 2}, {"pattern": "Funk", "repeats": 1}]))
         dlg._rebuild_songs()
         assert dlg.songs_list.GetString(0) == "Verse Jam"
         dlg.songs_list.SetSelection(0)
         dlg._load_selected()
-        assert dlg._sections == [["Rock", 2], ["Funk", 1]]
+        assert [(s["pattern"], s["repeats"]) for s in dlg._sections] == [("Rock", 2), ("Funk", 1)]
         # A song plays through ONCE (not looped — that was the tail-looping bug) and ends.
         dlg._play_selected()
         assert loops == [False] and dlg._end_timer is not None and dlg._playing

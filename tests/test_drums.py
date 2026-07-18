@@ -451,13 +451,16 @@ def test_render_song_concatenates_sections():
     kit = drums.synth_kit()
     a = drums.Pattern("A", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1)
     b = drums.Pattern("B", 14, 4, {"kick": [0, 6, 10]}, 7, 8, 1)   # different meter/length
-    sections = [(a, 2), (b, 3)]
-    wav = drums.render_song(sections, kit, 120)
+    # (pattern, repeats, bpm, kit) — each section at its own tempo and kit.
+    sections = [(a, 2, 120, kit), (b, 3, 120, kit)]
+    wav = drums.render_song(sections)
     got = _frames(wav)
     expect_s = a.loop_seconds(120) * 2 + b.loop_seconds(120) * 3
     assert len(got) == pytest.approx(expect_s * drums.RATE, rel=0.001)
-    assert drums.song_seconds(sections, 120) == pytest.approx(expect_s, abs=0.001)
-    assert len(drums.render_song([], kit, 120)) > 44        # empty song is a valid tiny WAV
+    assert drums.song_seconds(sections) == pytest.approx(expect_s, abs=0.001)
+    # Per-section tempo: the same section rendered faster is shorter.
+    assert drums.song_seconds([(a, 1, 240, kit)]) == pytest.approx(a.loop_seconds(240), abs=0.001)
+    assert len(drums.render_song([])) > 44                  # empty song is a valid tiny WAV
 
 
 def test_tempo_ramp_sequence():

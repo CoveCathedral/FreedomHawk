@@ -141,12 +141,22 @@ def test_song_store_resolve_save_load(tmp_path, monkeypatch):
                          [dict(ps.make_line("kick"), steps=[0, 8])], Pattern("x", 16, 4, {"kick": [0, 8]}))
     ps.save_user_pattern(s, rec)
     assert ps.resolve_pattern_by_name("MyGroove", s) is not None
-    # song save/load/delete + section resolution (skips a missing pattern)
-    song = ps.make_song_record("Song 1", [("Rock", 2), ("MyGroove", 1), ("Ghost", 4)])
+    # song save/load/delete + section resolution (skips a missing pattern), with a
+    # per-section tempo and an inline (edited-in-place) section round-tripping.
+    inline_rec = ps.make_record("verse", "Song", 4, 4, 4, 1,
+                                [dict(ps.make_line("kick"), steps=[0, 4, 8, 12])],
+                                Pattern("x", 16, 4, {"kick": [0, 4, 8, 12]}))
+    song = ps.make_song_record("Song 1", [
+        {"pattern": "Rock", "repeats": 2, "tempo": 150},
+        {"pattern": "MyGroove", "repeats": 1, "inline": inline_rec},
+        {"pattern": "Ghost", "repeats": 4}])           # missing -> skipped
     ps.save_song(s, song)
     assert [r["name"] for r in ps.user_songs(s)] == ["Song 1"]
+    saved = ps.user_songs(s)[0]["sections"]
+    assert saved[0]["tempo"] == 150 and saved[1]["inline"] is not None
     resolved = ps.song_sections(ps.user_songs(s)[0], s)
-    assert [(p.name, r) for p, r in resolved] == [("Rock", 2), ("MyGroove", 1)]  # "Ghost" skipped
+    assert [(p.name, r, tempo) for p, r, tempo, _kit in resolved] == \
+        [("Rock", 2, 150), ("verse", 1, None)]         # inline resolved to its own pattern
     assert ps.delete_song(s, "Song 1") and ps.user_songs(s) == []
 
 

@@ -216,7 +216,10 @@ bridge, and so on. It has three tabs:
 - **Arrange** — the list of **sections** (each a groove + repeats) with a **high-contrast
   visual timeline** beneath (coloured blocks sized by length, the selected one outlined).
   Up/Down select, **Left/Right change the repeats**, **Alt+Up / Alt+Down reorder**,
-  **Delete** removes — each spoken, with the running song length.
+  **Delete** removes, **E** edits — each spoken, with the running song length. The selected
+  section has its own **Edit Section** (tweak its groove; stored inline in the song),
+  **Tempo** (its own BPM — build speed into the chorus), and **Kit** (verse on one kit,
+  chorus on another).
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
   the **Groove**, set Repeats, press **Add Section**.
 - **My Songs** — a list of your saved arrangements: Load one into Arrange, Play it, or

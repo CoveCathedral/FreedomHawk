@@ -1158,19 +1158,20 @@ def _auto_hat_choke(pattern: Pattern) -> dict | None:
     return None
 
 
-def render_song(sections, kit: DrumKit, bpm: float, rate: int = RATE,
-                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0) -> bytes:
-    """Render a song — an ordered list of ``(pattern, repeats)`` sections — end to end.
+def render_song(sections, rate: int = RATE, volume: float = 1.0,
+                swing: float = 0.0, humanize: float = 0.0) -> bytes:
+    """Render a song — ordered ``(pattern, repeats, bpm, kit)`` sections — end to end.
 
-    Each section's pattern is mixed once and tiled *repeats* times; the sections are
-    concatenated into one continuous 16-bit mono WAV (gapless, no timers), then peak-limited
-    and volume-scaled together so levels stay even across sections.  Sections may differ in
-    meter, feel and length; hats auto-choke per section.  A song plays through once.
+    Each section is mixed **at its own tempo and kit**, tiled *repeats* times; the sections
+    are concatenated into one continuous 16-bit mono WAV (gapless, no timers), then
+    peak-limited and volume-scaled together so levels stay even across sections.  Sections
+    may differ in meter, tempo, kit, feel and length; hats auto-choke per section.  A song
+    plays through once.
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     parts = []
-    for pattern, repeats in sections:
+    for pattern, repeats, bpm, kit in sections:
         buf = _mix_pattern(pattern, kit, bpm, rate, swing, humanize, None,
                            _auto_hat_choke(pattern))
         parts.extend([buf] * max(1, int(repeats)))
@@ -1178,9 +1179,9 @@ def render_song(sections, kit: DrumKit, bpm: float, rate: int = RATE,
     return _buf_to_wav(whole, volume, rate)
 
 
-def song_seconds(sections, bpm: float) -> float:
-    """Total playing time of a song's ``(pattern, repeats)`` sections at *bpm*."""
-    return sum(p.loop_seconds(bpm) * max(1, int(r)) for p, r in sections)
+def song_seconds(sections) -> float:
+    """Total playing time of ``(pattern, repeats, bpm, kit)`` sections (each at its tempo)."""
+    return sum(p.loop_seconds(bpm) * max(1, int(r)) for p, r, bpm, _kit in sections)
 
 
 # -- playback --------------------------------------------------------------------

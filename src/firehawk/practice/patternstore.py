@@ -290,19 +290,39 @@ def resolve_pattern_by_name(name: str, settings) -> Pattern | None:
     return None
 
 
+def normalize_section(s: dict) -> dict:
+    """A song section as stored/edited: a groove name (or an inline tweaked pattern),
+    a repeat count, and optional per-section tempo and kit overrides."""
+    return {
+        "pattern": str(s.get("pattern", "")),
+        "repeats": max(1, int(s.get("repeats", 1))),
+        "tempo": int(s["tempo"]) if s.get("tempo") else None,   # None = the song's tempo
+        "kit": s.get("kit") or None,                            # None = the global kit
+        "inline": s.get("inline") or None,                      # an edited-in-place pattern
+    }
+
+
 def make_song_record(name: str, sections: list) -> dict:
-    """A song record from ``[(pattern_name, repeats), ...]`` sections."""
-    return {"name": name,
-            "sections": [{"pattern": str(p), "repeats": max(1, int(r))} for p, r in sections]}
+    """A song record from section dicts (pattern/repeats/tempo/kit/inline)."""
+    return {"name": name, "sections": [normalize_section(s) for s in sections]}
+
+
+def resolve_section_pattern(section: dict, settings) -> Pattern | None:
+    """The Pattern a section plays: its inline (edited) pattern if any, else by name."""
+    inline = section.get("inline")
+    if inline:
+        return record_to_pattern(inline)
+    return resolve_pattern_by_name(str(section.get("pattern", "")), settings)
 
 
 def song_sections(record: dict, settings) -> list:
-    """Resolve a song's sections to ``[(Pattern, repeats), ...]``; skip missing patterns."""
+    """Resolve to ``[(Pattern, repeats, tempo, kit_name), ...]``; skip missing patterns."""
     out = []
     for s in record.get("sections", []):
-        pattern = resolve_pattern_by_name(str(s.get("pattern", "")), settings)
+        pattern = resolve_section_pattern(s, settings)
         if pattern is not None:
-            out.append((pattern, max(1, int(s.get("repeats", 1)))))
+            out.append((pattern, max(1, int(s.get("repeats", 1))),
+                        s.get("tempo"), s.get("kit")))
     return out
 
 
