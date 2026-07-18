@@ -146,10 +146,8 @@ this is the tour. Sequin also **runs on its own** — double-click **`Sequin.bat
 - **Fill every** — stretch the groove so the fill only comes around every 2–16 bars.
 - **Fill style** — "As written", or **Improvised**: freshly generated fills every time,
   varying length and density, always on the meter.
-- **Tempo** and **Drum volume** sliders (both spoken as real values).
-- **Swing** and **Humanize** sliders (0–100%): swing delays off-beats for a shuffle
-  feel; humanize adds subtle per-hit timing and volume drift so a loop feels less
-  mechanical. Both apply live and to WAV exports.
+- **Tempo** and **Drum volume** sliders (both spoken as real values). (Swing and Humanize
+  now live in the Pattern Editor, saved with each groove — see below.)
 - **Part** + **Mute this part** — silence any part live without erasing its steps.
 - **Count-in** — when checked, Start plays one accented bar of clicks at your tempo and
   meter before the loop, so you can come in on the downbeat. Stop during it cancels.
@@ -198,6 +196,11 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 - The **time signature** lives here: beats per bar, beat unit, grid resolution, bars
   (1–4). Odd meters welcome — 5/4, 7/8, whatever you play. Growing the bar count
   repeats your music into the new bars.
+- **Swing** and **Humanize** sliders (0–100%) set this groove's **feel**, and it **saves
+  with the pattern** — a shuffle keeps its shuffle. Swing delays the off-beats toward a
+  triplet shuffle; humanize adds subtle per-hit timing and volume drift so the loop isn't
+  stamped out. The feel follows the groove everywhere: the editor's Play, main-tab
+  playback, WAV export, and per-section in songs.
 - **Play/Pause** auditions while you edit; **Save** applies; **Save as Preset…** stores
   the pattern under a category (pick one or type a new one); **Load Groove…** pulls any
   built-in or saved pattern into the editor; **Cancel**/Escape discards.

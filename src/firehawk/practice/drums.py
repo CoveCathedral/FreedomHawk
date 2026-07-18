@@ -383,6 +383,8 @@ class Pattern:
     bars: int = 1
     levels: dict = field(default_factory=dict)   # role -> {step: "accent"|"ghost"}
     lengths: dict = field(default_factory=dict)  # role -> per-line loop length (polymeter)
+    swing: float = 0.0        # 0..1 shuffle feel, saved with the groove (edited in the editor)
+    humanize: float = 0.0     # 0..1 subtle timing/level drift, saved with the groove
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -434,7 +436,7 @@ class Pattern:
                        {r: list(s) for r, s in self.hits.items()},
                        self.beats_per_bar, self.beat_unit, self.bars,
                        {r: dict(m) for r, m in self.levels.items()},
-                       dict(self.lengths))
+                       dict(self.lengths), self.swing, self.humanize)
 
 
 #: Grid resolutions as (label, steps-per-quarter-note).
@@ -480,7 +482,8 @@ def flatten_polymeter(p: Pattern) -> Pattern:
             if tiled_levels:
                 levels[role] = tiled_levels
     return Pattern(p.name, render_len, p.steps_per_beat, hits, p.beats_per_bar,
-                   p.beat_unit, max(1, render_len // per_bar), levels)
+                   p.beat_unit, max(1, render_len // per_bar), levels,
+                   swing=p.swing, humanize=p.humanize)
 
 
 def steps_per_bar(beats_per_bar: int, beat_unit: int, grid: int) -> int:
@@ -764,7 +767,8 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
                 hits[role] = sorted(out)
                 if new_levels:
                     levels[role] = new_levels
-        return Pattern(name, total, grid, hits, beats, unit, bars, levels)
+        return Pattern(name, total, grid, hits, beats, unit, bars, levels,
+                   swing=p.swing, humanize=p.humanize)
 
     # Time-preserving remap: place each hit at the same fraction of the loop.
     old_total = max(1, p.steps)
@@ -781,7 +785,8 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
             role_levels = {ns: lv for ns, lv in chosen.items() if lv}
             if role_levels:
                 levels[role] = role_levels
-    return Pattern(name, total, grid, hits, beats, unit, bars, levels)
+    return Pattern(name, total, grid, hits, beats, unit, bars, levels,
+                   swing=p.swing, humanize=p.humanize)
 
 
 def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
@@ -822,7 +827,8 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
             if new_levels:
                 levels[role] = new_levels
     return Pattern(p.name, per_bar * total_bars, p.steps_per_beat, hits,
-                   p.beats_per_bar, p.beat_unit, total_bars, levels)
+                   p.beats_per_bar, p.beat_unit, total_bars, levels,
+                   swing=p.swing, humanize=p.humanize)
 
 
 # -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
@@ -930,7 +936,8 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     hits = {r: sorted(set(s)) for r, s in hits.items() if s}
     levels = {r: m for r, m in levels.items() if m and r in hits}
     return Pattern(f"{p.name} improv", total_steps, p.steps_per_beat, hits,
-                   p.beats_per_bar, p.beat_unit, total_bars, levels)
+                   p.beats_per_bar, p.beat_unit, total_bars, levels,
+                   swing=p.swing, humanize=p.humanize)
 
 
 # -- rendering (the compensator) -------------------------------------------------
@@ -1136,18 +1143,24 @@ def _buf_to_wav(buf, volume: float, rate: int) -> bytes:
 
 
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
-                volume: float = 1.0, swing: float = 0.0, humanize: float = 0.0,
+                volume: float = 1.0, swing: float | None = None,
+                humanize: float | None = None,
                 seed: int | None = None, choke_groups: dict | None = None) -> bytes:
     """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
 
-    *volume* (0..1) scales the finished mix.  *swing* (0..1) delays off-beats for a
-    shuffle feel.  *humanize* (0..1) adds subtle per-hit timing and level drift so a
-    looped groove doesn't sound stamped out.  *choke_groups* maps a role to a group id;
-    within a group a new hit cuts the previous one's ring (an open hat closed by the hat).
+    *volume* (0..1) scales the finished mix.  *swing* and *humanize* default to the
+    pattern's own saved feel (``pattern.swing`` / ``pattern.humanize``) — a groove
+    carries its own shuffle and looseness; pass a float to override for this render.
+    *swing* (0..1) delays off-beats for a shuffle feel; *humanize* (0..1) adds subtle
+    per-hit timing and level drift so a looped groove doesn't sound stamped out.
+    *choke_groups* maps a role to a group id; within a group a new hit cuts the previous
+    one's ring (an open hat closed by the hat).
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
-    buf = _mix_pattern(pattern, kit, bpm, rate, swing, humanize, seed, choke_groups)
+    sw = pattern.swing if swing is None else swing
+    hm = pattern.humanize if humanize is None else humanize
+    buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, seed, choke_groups)
     return _buf_to_wav(buf, volume, rate)
 
 
@@ -1159,20 +1172,23 @@ def _auto_hat_choke(pattern: Pattern) -> dict | None:
 
 
 def render_song(sections, rate: int = RATE, volume: float = 1.0,
-                swing: float = 0.0, humanize: float = 0.0) -> bytes:
+                swing: float | None = None, humanize: float | None = None) -> bytes:
     """Render a song — ordered ``(pattern, repeats, bpm, kit)`` sections — end to end.
 
-    Each section is mixed **at its own tempo and kit**, tiled *repeats* times; the sections
-    are concatenated into one continuous 16-bit mono WAV (gapless, no timers), then
-    peak-limited and volume-scaled together so levels stay even across sections.  Sections
-    may differ in meter, tempo, kit, feel and length; hats auto-choke per section.  A song
-    plays through once.
+    Each section is mixed **at its own tempo, kit, and feel** (each groove's saved
+    ``swing``/``humanize``), tiled *repeats* times; the sections are concatenated into one
+    continuous 16-bit mono WAV (gapless, no timers), then peak-limited and volume-scaled
+    together so levels stay even across sections.  Sections may differ in meter, tempo, kit,
+    feel and length; hats auto-choke per section.  Pass *swing*/*humanize* to force one feel
+    across the whole song instead of per-section.  A song plays through once.
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     parts = []
     for pattern, repeats, bpm, kit in sections:
-        buf = _mix_pattern(pattern, kit, bpm, rate, swing, humanize, None,
+        sw = pattern.swing if swing is None else swing
+        hm = pattern.humanize if humanize is None else humanize
+        buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
                            _auto_hat_choke(pattern))
         parts.extend([buf] * max(1, int(repeats)))
     whole = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)

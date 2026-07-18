@@ -655,23 +655,33 @@ def test_drum_volume_and_fill_style_controls(frame):
     assert d.fillstyle_choice.GetStringSelection() == "As written"
 
 
-def test_swing_humanize_controls(frame):
+def test_swing_humanize_live_in_the_editor_and_save_with_the_pattern(frame):
     d = frame.drums_page
-    assert d.swing_slider.GetValue() == 0 and d.humanize_slider.GetValue() == 0
-    assert "straight" in d.swing_label.GetLabel()
-    d.swing_slider.SetValue(60)
-    d.humanize_slider.SetValue(30)
-    d._on_feel(None)
-    assert d.swing_label.GetLabel() == "Swing: 60%"
-    assert d.humanize_label.GetLabel() == "Humanize: 30%"
-    # The feel values flow into the editor's auditions.
-    d.open_editor  # attribute exists
+    # Feel moved OFF the main tab (it declutters + belongs with the groove).
+    assert not hasattr(d, "swing_slider") and not hasattr(d, "humanize_slider")
     from firehawk.ui.drumspanel import PatternEditorDialog
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
-                              set(), d.player, d.bpm, dark=True, settings=d._settings,
-                              swing=0.6, humanize=0.3)
+                              set(), d.player, d.bpm, dark=True, settings=d._settings)
     try:
-        assert dlg._swing == 0.6 and dlg._humanize == 0.3
+        # Sliders start at the groove's own feel (a fresh groove is straight).
+        assert dlg.swing_slider.GetValue() == 0 and dlg.humanize_slider.GetValue() == 0
+        assert "straight" in dlg.swing_label.GetLabel()
+        dlg.swing_slider.SetValue(60)
+        dlg.humanize_slider.SetValue(30)
+        dlg._on_feel(None)
+        # The sliders write straight into the pattern, so feel travels with Save.
+        assert dlg.pattern.swing == pytest.approx(0.6)
+        assert dlg.pattern.humanize == pytest.approx(0.3)
+        assert dlg.swing_label.GetLabel() == "Swing: 60%"
+        assert dlg.humanize_label.GetLabel() == "Humanize: 30%"
+        # Reopening on that groove restores the sliders from the pattern.
+        dlg2 = PatternEditorDialog(d, dlg.pattern.copy(), d._current_lines(), d._kits_dir(),
+                                   set(), d.player, d.bpm, dark=True, settings=d._settings)
+        try:
+            assert dlg2.swing_slider.GetValue() == 60
+            assert dlg2.humanize_slider.GetValue() == 30
+        finally:
+            dlg2.Destroy()
     finally:
         dlg.Destroy()
 
@@ -737,9 +747,11 @@ def test_editor_audition_has_feel_but_stays_short(frame):
     d.fillstyle_choice.SetSelection(1)  # improvised on the main tab
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
                               set(), d.player, d.bpm, dark=True, settings=d._settings,
-                              swing=0.4, base_kit=d._kit)
+                              base_kit=d._kit)
     try:
-        assert dlg._swing == 0.4                       # feel carried into the editor
+        dlg.swing_slider.SetValue(40)
+        dlg._on_feel(None)
+        assert dlg.pattern.swing == pytest.approx(0.4)  # feel lives on the pattern now
         wav = dlg._render()
         w = wave.open(io.BytesIO(wav))
         secs = w.getnframes() / w.getframerate()

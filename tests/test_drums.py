@@ -542,6 +542,30 @@ def test_swing_default_matches_straight():
     assert drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120, swing=0.0)
 
 
+def test_render_loop_inherits_the_patterns_own_feel():
+    # A groove carries its feel; render_loop with no swing arg uses pattern.swing.
+    kit = drums.synth_kit()
+    off = drums.Pattern("t", 4, 4, {"hihat": [2]}, 4, 4, 1)
+    off.swing = 1.0
+    assert drums.render_loop(off, kit, 120) == drums.render_loop(off, kit, 120, swing=1.0)
+    assert drums.render_loop(off, kit, 120) != drums.render_loop(off, kit, 120, swing=0.0)
+    # copy() and retime carry the feel with the pattern.
+    assert off.copy().swing == 1.0
+    assert drums.retime_pattern(off, 4, 4, 4, 2).swing == 1.0
+
+
+def test_render_song_uses_per_section_feel():
+    # Two sections, same groove/tempo/kit but one swung: the mixes must differ, proving
+    # render_song reads each section pattern's own feel (not a single song-wide value).
+    kit = drums.synth_kit()
+    straight = drums.Pattern("t", 4, 4, {"hihat": [2]}, 4, 4, 1)
+    swung = straight.copy()
+    swung.swing = 1.0
+    a = drums.render_song([(straight, 1, 120, kit)])
+    b = drums.render_song([(swung, 1, 120, kit)])
+    assert a != b
+
+
 def test_humanize_varies_but_seeds_reproduce():
     kit = drums.synth_kit()
     p = drums.Pattern("t", 4, 4, {"hihat": [2]}, 4, 4, 1)

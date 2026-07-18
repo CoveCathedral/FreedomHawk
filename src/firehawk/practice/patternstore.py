@@ -265,13 +265,18 @@ def make_record(name: str, category: str, beats: int, unit: int, grid: int,
         entry["length"] = pattern.lengths.get(ln["id"])  # None = default (synced)
         out_lines.append(entry)
     return {"name": name, "category": category, "beats": beats, "unit": unit,
-            "grid": grid, "bars": bars, "lines": out_lines}
+            "grid": grid, "bars": bars, "lines": out_lines,
+            "swing": round(float(pattern.swing), 4),
+            "humanize": round(float(pattern.humanize), 4)}
 
 
 def record_to_pattern(record: dict) -> Pattern:
-    return lines_to_pattern(record.get("lines", []), record.get("beats", 4),
-                            record.get("unit", 4), record.get("grid", 4),
-                            record.get("bars", 1), name=record.get("name", "custom"))
+    p = lines_to_pattern(record.get("lines", []), record.get("beats", 4),
+                         record.get("unit", 4), record.get("grid", 4),
+                         record.get("bars", 1), name=record.get("name", "custom"))
+    p.swing = float(record.get("swing", 0.0) or 0.0)      # the groove's saved feel
+    p.humanize = float(record.get("humanize", 0.0) or 0.0)
+    return p
 
 
 # -- songs: ordered chains of patterns (song mode / composition) -------------------

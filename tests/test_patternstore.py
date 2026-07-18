@@ -47,6 +47,23 @@ def test_lines_pattern_round_trip():
     assert back.levels == {"kick": {0: LEVEL_ACCENT}, "snare": {12: LEVEL_GHOST}}
 
 
+def test_feel_saves_with_the_pattern():
+    # Swing/humanize are a groove's own feel; they must survive the record round trip.
+    lines = [ps.make_line("kick")]
+    lines[0]["steps"] = [0, 8]
+    p = ps.lines_to_pattern(lines, 4, 4, 4, 1, name="shuffle")
+    p.swing = 0.6
+    p.humanize = 0.25
+    rec = ps.make_record("shuffle", "Test", 4, 4, 4, 1, lines, p)
+    assert rec["swing"] == 0.6 and rec["humanize"] == 0.25
+    back = ps.record_to_pattern(rec)
+    assert back.swing == 0.6 and back.humanize == 0.25
+    # A record without feel keys (older saves) reads as straight, not an error.
+    del rec["swing"], rec["humanize"]
+    plain = ps.record_to_pattern(rec)
+    assert plain.swing == 0.0 and plain.humanize == 0.0
+
+
 def test_build_line_kit_follow_global_vs_explicit(tmp_path):
     import numpy as np
     from firehawk.practice import DrumKit

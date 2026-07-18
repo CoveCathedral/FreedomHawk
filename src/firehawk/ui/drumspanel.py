@@ -314,8 +314,7 @@ class PatternEditorDialog(wx.Dialog):
 
     def __init__(self, parent: wx.Window, pattern: Pattern, lines: list[dict],
                  kits_dir, silenced: set[str] | None, player: DrumLoopPlayer,
-                 bpm: int, dark: bool = True, settings=None,
-                 swing: float = 0.0, humanize: float = 0.0, base_kit=None):
+                 bpm: int, dark: bool = True, settings=None, base_kit=None):
         super().__init__(parent, title="Pattern Editor",
                          size=(660, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self.pattern = pattern
@@ -325,8 +324,6 @@ class PatternEditorDialog(wx.Dialog):
         self._settings = settings
         self._player = player
         self._bpm = bpm
-        self._swing = swing        # match the main tab's feel while auditioning
-        self._humanize = humanize
         self._base_kit = base_kit  # the globally selected kit (follow-global lines use it)
         self._dark = dark
         self._auditioning = False
@@ -385,6 +382,28 @@ class PatternEditorDialog(wx.Dialog):
         meter.Add(self.bars_choice, 0)
         root.Add(meter, 0, wx.ALL, 10)
 
+        # Feel — saved WITH this groove (a shuffle keeps its shuffle). Swing delays the
+        # off-beats; humanize adds subtle timing/level drift so the loop isn't stamped out.
+        feel = wx.FlexGridSizer(cols=2, vgap=6, hgap=8)
+        self.swing_label = wx.StaticText(self, label="Swing: 0% (straight)")
+        feel.Add(self.swing_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.swing_slider = wx.Slider(self, value=int(round(self.pattern.swing * 100)),
+                                      minValue=0, maxValue=100)
+        set_accessible_name(self.swing_slider, "Swing",
+                            value_fn=lambda: f"{self.swing_slider.GetValue()} percent")
+        self.swing_slider.Bind(wx.EVT_SLIDER, self._on_feel)
+        feel.Add(self.swing_slider, 0, wx.EXPAND)
+        self.humanize_label = wx.StaticText(self, label="Humanize: 0%")
+        feel.Add(self.humanize_label, 0, wx.ALIGN_CENTER_VERTICAL)
+        self.humanize_slider = wx.Slider(self, value=int(round(self.pattern.humanize * 100)),
+                                         minValue=0, maxValue=100)
+        set_accessible_name(self.humanize_slider, "Humanize",
+                            value_fn=lambda: f"{self.humanize_slider.GetValue()} percent")
+        self.humanize_slider.Bind(wx.EVT_SLIDER, self._on_feel)
+        feel.Add(self.humanize_slider, 0, wx.EXPAND)
+        feel.AddGrowableCol(1, 1)
+        root.Add(feel, 0, wx.EXPAND | wx.ALL, 10)
+
         btns = wx.BoxSizer(wx.HORIZONTAL)
         add_btn = wx.Button(self, label="Add &Line...")
         add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add_line())
@@ -414,6 +433,7 @@ class PatternEditorDialog(wx.Dialog):
         theme.apply(self, dark)
 
         self._sync_meter_controls()
+        self._sync_feel_labels()
         self._rebuild_rows()
         if self.lines:
             self.grid_list.SetSelection(0)
@@ -963,7 +983,8 @@ class PatternEditorDialog(wx.Dialog):
                        {r: s for r, s in p.hits.items() if r not in self.silenced},
                        p.beats_per_bar, p.beat_unit, p.bars,
                        {r: dict(m) for r, m in p.levels.items() if r not in self.silenced},
-                       {r: L for r, L in p.lengths.items() if r not in self.silenced})
+                       {r: L for r, L in p.lengths.items() if r not in self.silenced},
+                       p.swing, p.humanize)
 
     def _on_play(self, event: wx.CommandEvent) -> None:
         if self._auditioning:
@@ -976,12 +997,12 @@ class PatternEditorDialog(wx.Dialog):
         self.play_btn.SetLabel("&Pause")
 
     def _render(self):
-        # Audition the pattern you're editing, with its FEEL (swing + humanize), but not
-        # the arrangement (Fill every / Improvised) — those multiply the loop over many
-        # bars, which belongs on the main tab, not while editing a 1-4 bar pattern.
+        # Audition the pattern you're editing, with its own FEEL (the swing + humanize
+        # sliders below, saved with the groove), but not the arrangement (Fill every /
+        # Improvised) — those multiply the loop over many bars, which belongs on the main
+        # tab, not while editing a 1-4 bar pattern.  render_loop reads the pattern's feel.
         effective = flatten_polymeter(self._effective_pattern())
         return render_loop(effective, self._line_kit, self._bpm,
-                           swing=self._swing, humanize=self._humanize,
                            choke_groups=choke_map(self.lines))
 
     def _reaudition(self) -> None:
@@ -993,6 +1014,20 @@ class PatternEditorDialog(wx.Dialog):
             self._player.stop()
             self._auditioning = False
             self.play_btn.SetLabel("&Play")
+
+    def _on_feel(self, event: wx.CommandEvent) -> None:
+        # The sliders ARE the groove's saved feel; write straight into the pattern so it
+        # travels with Save (and inline into a song).  NVDA speaks the value from the
+        # slider's accessible name; a live audition restarts to reflect the new feel.
+        self.pattern.swing = self.swing_slider.GetValue() / 100.0
+        self.pattern.humanize = self.humanize_slider.GetValue() / 100.0
+        self._sync_feel_labels()
+        self._reaudition()
+
+    def _sync_feel_labels(self) -> None:
+        sw = self.swing_slider.GetValue()
+        self.swing_label.SetLabel(f"Swing: {sw}%" + (" (straight)" if sw == 0 else ""))
+        self.humanize_label.SetLabel(f"Humanize: {self.humanize_slider.GetValue()}%")
 
     def _on_save(self, event: wx.CommandEvent) -> None:
         self._stop_audition()
@@ -1666,10 +1701,10 @@ class SongDialog(wx.Dialog):
         resolved = self._resolved()   # (pattern, repeats, bpm, kit) per section
         if not resolved:
             return None
+        # Each section carries its own feel (its groove's saved swing/humanize), so
+        # render_song reads them per section — no song-wide feel override here.
         return render_song(resolved,
-                            volume=self._panel.volume_slider.GetValue() / 100.0,
-                            swing=self._panel.swing_slider.GetValue() / 100.0,
-                            humanize=self._panel.humanize_slider.GetValue() / 100.0)
+                           volume=self._panel.volume_slider.GetValue() / 100.0)
 
     def _start_playback(self, announce: bool) -> None:
         wav = self._render()
@@ -1904,22 +1939,8 @@ class DrumsPanel(wx.Panel):
         self.volume_slider.Bind(wx.EVT_SLIDER, self._on_volume)
         grid.Add(self.volume_slider, 0, wx.EXPAND)
 
-        # Feel: swing delays off-beats (shuffle); humanize adds subtle timing/level drift.
-        self.swing_label = wx.StaticText(self, label="Swing: 0% (straight)")
-        grid.Add(self.swing_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.swing_slider = wx.Slider(self, value=0, minValue=0, maxValue=100)
-        set_accessible_name(self.swing_slider, "Swing",
-                            value_fn=lambda: f"{self.swing_slider.GetValue()} percent")
-        self.swing_slider.Bind(wx.EVT_SLIDER, self._on_feel)
-        grid.Add(self.swing_slider, 0, wx.EXPAND)
-
-        self.humanize_label = wx.StaticText(self, label="Humanize: 0%")
-        grid.Add(self.humanize_label, 0, wx.ALIGN_CENTER_VERTICAL)
-        self.humanize_slider = wx.Slider(self, value=0, minValue=0, maxValue=100)
-        set_accessible_name(self.humanize_slider, "Humanize",
-                            value_fn=lambda: f"{self.humanize_slider.GetValue()} percent")
-        self.humanize_slider.Bind(wx.EVT_SLIDER, self._on_feel)
-        grid.Add(self.humanize_slider, 0, wx.EXPAND)
+        # Feel (swing + humanize) now lives IN the Pattern Editor and saves with each
+        # groove — a shuffle keeps its shuffle. The main tab stays selection-focused.
 
         grid.Add(wx.StaticText(self, label="Part:"), 0, wx.ALIGN_CENTER_VERTICAL)
         part_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -2189,12 +2210,6 @@ class DrumsPanel(wx.Panel):
         self.volume_label.SetLabel(f"Drum volume: {self.volume_slider.GetValue()}%")
         self._apply()
 
-    def _on_feel(self, event: wx.CommandEvent) -> None:
-        sw = self.swing_slider.GetValue()
-        self.swing_label.SetLabel(f"Swing: {sw}%" + (" (straight)" if sw == 0 else ""))
-        self.humanize_label.SetLabel(f"Humanize: {self.humanize_slider.GetValue()}%")
-        self._apply()
-
     def _on_part(self, event: wx.CommandEvent) -> None:
         role = self._current_part()
         self.mute_cb.SetValue(role in self._muted)
@@ -2248,8 +2263,6 @@ class DrumsPanel(wx.Panel):
         try:
             dlg = PatternEditorDialog(self, pattern, lines, self._kits_dir(), muted,
                                       self.player, self.bpm, dark, settings=self._settings,
-                                      swing=self.swing_slider.GetValue() / 100.0,
-                                      humanize=self.humanize_slider.GetValue() / 100.0,
                                       base_kit=self._kit)
         except Exception as exc:  # noqa: BLE001 - surface instead of a silent dead button
             wx.MessageBox(f"Could not open the Pattern Editor:\n{exc}",
@@ -2292,7 +2305,8 @@ class DrumsPanel(wx.Panel):
             {r: s for r, s in p.hits.items() if r not in self._muted},
             p.beats_per_bar, p.beat_unit, p.bars,
             {r: dict(m) for r, m in p.levels.items() if r not in self._muted},
-            {r: L for r, L in p.lengths.items() if r not in self._muted})
+            {r: L for r, L in p.lengths.items() if r not in self._muted},
+            p.swing, p.humanize)
         return flatten_polymeter(effective)
 
     def _apply_fills(self, effective: Pattern) -> Pattern:
@@ -2312,10 +2326,9 @@ class DrumsPanel(wx.Panel):
     def _render_and_play(self) -> None:
         effective = self._apply_fills(self._muted_pattern())
         kit = self._pattern_voices or self._kit  # composite voices for line patterns
+        # Feel travels with the groove now: render_loop reads effective.swing/humanize.
         self.player.play(render_loop(effective, kit, self.bpm,
                                      volume=self.volume_slider.GetValue() / 100.0,
-                                     swing=self.swing_slider.GetValue() / 100.0,
-                                     humanize=self.humanize_slider.GetValue() / 100.0,
                                      choke_groups=choke_map(self._current_lines())))
 
     def _apply(self) -> None:
@@ -2471,8 +2484,6 @@ class DrumsPanel(wx.Panel):
             kit = self._pattern_voices or self._kit
             wav = render_loop(self._export_effective_pattern(), kit, self.bpm,
                               volume=self.volume_slider.GetValue() / 100.0,
-                              swing=self.swing_slider.GetValue() / 100.0,
-                              humanize=self.humanize_slider.GetValue() / 100.0,
                               choke_groups=choke_map(self._current_lines()))
             path.write_bytes(wav)
         except Exception as exc:  # noqa: BLE001
