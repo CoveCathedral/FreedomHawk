@@ -445,6 +445,15 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
+        # Category filter narrows the groove picker (500 grooves is a lot to scroll).
+        all_grooves = dlg.groove.GetCount()
+        dlg.category.SetStringSelection("Rock")
+        dlg._rebuild_grooves()
+        assert 0 < dlg.groove.GetCount() < all_grooves
+        dlg.category.SetStringSelection("All categories")
+        dlg._rebuild_grooves()
+        assert dlg.groove.GetCount() == all_grooves
+
         dlg.groove.SetStringSelection("Rock")
         dlg.repeats.SetSelection(2)          # 3 repeats
         dlg._add()

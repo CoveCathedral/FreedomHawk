@@ -213,7 +213,8 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 bridge, and so on. It's an accessible list of **sections**, each a groove plus a repeat
 count:
 
-- **Add a groove**: pick one from the Groove dropdown, set Repeats, press **Add Section**.
+- **Add a groove**: filter the **Category** dropdown to a genre first (so you're not
+  scrolling all 500), pick the **Groove**, set Repeats, press **Add Section**.
 - In the **section list**: Up/Down select, **Left/Right change the repeats**, **Alt+Up /
   Alt+Down reorder**, **Delete** removes — each spoken, with the running song length.
 - **Play** renders the whole song end to end (gapless, sections can even be in different

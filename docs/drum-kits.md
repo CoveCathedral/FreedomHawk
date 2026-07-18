@@ -180,9 +180,10 @@ Chain grooves into a full arrangement — intro, verse, chorus, bridge, breakdow
 The **Song Builder** is an accessible list of **sections**, each one a groove plus a repeat
 count:
 
-- **Add a groove**: choose it from the Groove dropdown, set **Repeats**, press **Add
-  Section**. (Sections reference grooves by name — built-in or your saved patterns — so
-  **save your own pattern as a preset first** to use it in a song.)
+- **Add a groove**: narrow the **Category** dropdown to a genre first (so you're not
+  scrolling all 500), choose the **Groove**, set **Repeats**, press **Add Section**.
+  (Sections reference grooves by name — built-in or your saved patterns — so **save your own
+  pattern as a preset first** to use it in a song.)
 - **In the section list**: Up/Down select a section; **Left/Right change its repeats**;
   **Alt+Up / Alt+Down reorder**; **Delete** removes. Every change is spoken, along with the
   running song length.

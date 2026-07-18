@@ -102,6 +102,7 @@ TEMPO_MIN = 30
 TEMPO_MAX = 300
 SYNTH_LABEL = "Synth (built-in)"
 FOLLOW_LABEL = "Follow the selected kit"
+_ALL_CATEGORIES = "All categories"
 
 
 def step_label(pattern: Pattern, i: int) -> str:
@@ -1244,8 +1245,24 @@ class SongDialog(wx.Dialog):
         theme.apply(self, dark)
         wx.CallAfter(self.list.SetFocus)
 
-    def _groove_names(self) -> list[str]:
-        return [p.name for p in PATTERN_LIBRARY] + [r["name"] for r in user_patterns(self._settings)]
+    def _groove_categories(self) -> tuple[list[str], dict]:
+        """All groove names (built-in + saved) and a name -> category map."""
+        names = [p.name for p in PATTERN_LIBRARY]
+        cats = {p.name: builtin_category(p.name) for p in PATTERN_LIBRARY}
+        for r in user_patterns(self._settings):
+            names.append(r["name"])
+            cats[r["name"]] = r.get("category") or "My patterns"
+        return names, cats
+
+    def _rebuild_grooves(self) -> None:
+        """Repopulate the groove dropdown, filtered by the chosen category."""
+        names, cats = self._groove_categories()
+        chosen = self.category.GetStringSelection()
+        if chosen and chosen != _ALL_CATEGORIES:
+            names = [n for n in names if cats.get(n) == chosen]
+        self.groove.Set(names)
+        if names:
+            self.groove.SetSelection(0)
 
     def _build(self) -> None:
         root = wx.BoxSizer(wx.VERTICAL)
@@ -1261,12 +1278,17 @@ class SongDialog(wx.Dialog):
         root.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         add_row = wx.BoxSizer(wx.HORIZONTAL)
+        add_row.Add(wx.StaticText(self, label="Category:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.category = wx.Choice(self, choices=[_ALL_CATEGORIES] + all_categories(self._settings))
+        set_accessible_name(self.category, "Filter grooves by category")
+        self.category.SetSelection(0)
+        self.category.Bind(wx.EVT_CHOICE, lambda e: self._rebuild_grooves())
+        add_row.Add(self.category, 0, wx.RIGHT, 6)
         add_row.Add(wx.StaticText(self, label="Groove:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.groove = wx.Choice(self, choices=self._groove_names())
+        self.groove = wx.Choice(self, choices=[])
         set_accessible_name(self.groove, "Groove to add")
-        if self.groove.GetCount():
-            self.groove.SetSelection(0)
         add_row.Add(self.groove, 1, wx.EXPAND | wx.RIGHT, 6)
+        self._rebuild_grooves()
         add_row.Add(wx.StaticText(self, label="Repeats:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
         self.repeats = wx.Choice(self, choices=[str(n) for n in range(1, 17)])
         set_accessible_name(self.repeats, "Repeats for the added groove")
