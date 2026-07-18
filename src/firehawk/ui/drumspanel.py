@@ -81,6 +81,7 @@ from ..practice.patternstore import (
     record_to_pattern,
     rename_category,
     rename_pattern,
+    resolve_pattern_by_name,
     save_song,
     save_user_pattern,
     set_pattern_category,
@@ -1215,6 +1216,72 @@ class TempoTrainerDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 
+class _SongTrack(wx.ScrolledWindow):
+    """A high-contrast visual timeline of a song's sections (display-only, not focusable).
+
+    Each section is a coloured block whose width tracks its playing time; the selected one
+    is outlined.  A low-vision aid that never takes focus — the section list stays the thing
+    you operate — mirroring the Pattern Editor's visual track.
+    """
+
+    H = 60
+    MIN_W = 56
+    PAD = 8
+    PX_PER_SEC = 22
+    BG = wx.Colour(0x10, 0x10, 0x10)
+    TEXT = wx.Colour(0xFF, 0xFF, 0xFF)
+    SEL = wx.Colour(0xFF, 0x3B, 0x30)
+    PALETTE = [wx.Colour(*c) for c in (
+        (0x22, 0xC8, 0xFF), (0xFF, 0xD4, 0x00), (0x5C, 0xE0, 0x8A), (0xFF, 0x8A, 0x3D),
+        (0xC9, 0x8A, 0xFF), (0xFF, 0x6B, 0x9D), (0x4D, 0xD0, 0xE1), (0xB8, 0xC7, 0x4A))]
+
+    def __init__(self, parent: wx.Window, dialog: "SongDialog"):
+        super().__init__(parent, style=wx.BORDER_SIMPLE)
+        self._dialog = dialog
+        self.SetScrollRate(15, 0)
+        self.SetBackgroundColour(self.BG)
+        self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
+        self.Bind(wx.EVT_PAINT, self._on_paint)
+
+    def AcceptsFocus(self) -> bool:
+        return False
+
+    def AcceptsFocusFromKeyboard(self) -> bool:
+        return False
+
+    def refresh_view(self) -> None:
+        if not self.IsShown():
+            return
+        total = self.PAD
+        for _, secs, _ in self._dialog._section_blocks():
+            total += max(self.MIN_W, int(secs * self.PX_PER_SEC)) + 4
+        self.SetVirtualSize(max(total, 10), self.H + 2 * self.PAD)
+        self.Refresh()
+
+    def _on_paint(self, event: wx.PaintEvent) -> None:
+        dc = wx.AutoBufferedPaintDC(self)
+        self.DoPrepareDC(dc)
+        dc.SetBackground(wx.Brush(self.BG))
+        dc.Clear()
+        dc.SetFont(wx.Font(wx.FontInfo(11).Bold()))
+        blocks = self._dialog._section_blocks()
+        if not blocks:
+            dc.SetTextForeground(self.TEXT)
+            dc.DrawText("No sections yet — add grooves on the Add tab.", self.PAD, self.PAD + 18)
+            return
+        x, y = self.PAD, self.PAD
+        for i, (label, secs, selected) in enumerate(blocks):
+            w = max(self.MIN_W, int(secs * self.PX_PER_SEC))
+            dc.SetBrush(wx.Brush(self.PALETTE[i % len(self.PALETTE)]))
+            dc.SetPen(wx.Pen(self.SEL, 3) if selected else wx.Pen(self.BG, 1))
+            dc.DrawRectangle(x, y, w, self.H)
+            dc.SetTextForeground(wx.Colour(0, 0, 0))     # dark text on the bright block
+            dc.SetClippingRegion(x, y, w, self.H)
+            dc.DrawText(label, x + 6, y + 8)
+            dc.DestroyClippingRegion()
+            x += w + 4
+
+
 class SongDialog(wx.Dialog):
     """Song mode — chain grooves into an arrangement and play it end to end.
 
@@ -1266,52 +1333,75 @@ class SongDialog(wx.Dialog):
 
     def _build(self) -> None:
         root = wx.BoxSizer(wx.VERTICAL)
-        root.Add(wx.StaticText(self, label=(
-            "Build a song by chaining grooves. Add a groove below; in the list, Up and Down "
-            "select a section, Left and Right change its repeats, Alt+Up and Alt+Down "
-            "reorder, Delete removes. Play renders the whole song and loops it.")),
-            0, wx.ALL, 10)
+        self.notebook = wx.Notebook(self)
 
-        self.list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        # --- Arrange: the section list + the visual timeline ---
+        arrange = wx.Panel(self.notebook)
+        av = wx.BoxSizer(wx.VERTICAL)
+        av.Add(wx.StaticText(arrange, label=(
+            "Up/Down select a section; Left/Right change its repeats; Alt+Up/Alt+Down "
+            "reorder; Delete removes. Add grooves on the Add tab; Play is below.")),
+            0, wx.ALL, 8)
+        self.list = wx.ListBox(arrange, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Song sections")
         self.list.Bind(wx.EVT_KEY_DOWN, self._on_list_key)
-        root.Add(self.list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        self.list.Bind(wx.EVT_LISTBOX, lambda e: self._refresh_visual())
+        av.Add(self.list, 1, wx.EXPAND | wx.ALL, 8)
+        self.song_track = _SongTrack(arrange, self)
+        self.song_track.SetMinSize((-1, 92))
+        av.Add(self.song_track, 0, wx.EXPAND | wx.ALL, 8)
+        arrange.SetSizer(av)
+        self.notebook.AddPage(arrange, "Arrange")
 
-        add_row = wx.BoxSizer(wx.HORIZONTAL)
-        add_row.Add(wx.StaticText(self, label="Category:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.category = wx.Choice(self, choices=[_ALL_CATEGORIES] + all_categories(self._settings))
+        # --- Add: category filter, groove, repeats ---
+        addp = wx.Panel(self.notebook)
+        ap = wx.BoxSizer(wx.VERTICAL)
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=8)
+        grid.AddGrowableCol(1, 1)
+        grid.Add(wx.StaticText(addp, label="Category:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.category = wx.Choice(addp, choices=[_ALL_CATEGORIES] + all_categories(self._settings))
         set_accessible_name(self.category, "Filter grooves by category")
         self.category.SetSelection(0)
         self.category.Bind(wx.EVT_CHOICE, lambda e: self._rebuild_grooves())
-        add_row.Add(self.category, 0, wx.RIGHT, 6)
-        add_row.Add(wx.StaticText(self, label="Groove:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.groove = wx.Choice(self, choices=[])
+        grid.Add(self.category, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(addp, label="Groove:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.groove = wx.Choice(addp, choices=[])
         set_accessible_name(self.groove, "Groove to add")
-        add_row.Add(self.groove, 1, wx.EXPAND | wx.RIGHT, 6)
-        self._rebuild_grooves()
-        add_row.Add(wx.StaticText(self, label="Repeats:"), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
-        self.repeats = wx.Choice(self, choices=[str(n) for n in range(1, 17)])
+        grid.Add(self.groove, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(addp, label="Repeats:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.repeats = wx.Choice(addp, choices=[str(n) for n in range(1, 17)])
         set_accessible_name(self.repeats, "Repeats for the added groove")
         self.repeats.SetSelection(0)
-        add_row.Add(self.repeats, 0, wx.RIGHT, 6)
-        add_btn = wx.Button(self, label="&Add Section")
+        grid.Add(self.repeats, 0)
+        ap.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        add_btn = wx.Button(addp, label="&Add Section")
         add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add())
-        add_row.Add(add_btn, 0)
-        root.Add(add_row, 0, wx.EXPAND | wx.ALL, 10)
+        ap.Add(add_btn, 0, wx.ALL, 10)
+        addp.SetSizer(ap)
+        self.notebook.AddPage(addp, "Add")
+        self._rebuild_grooves()
 
-        btns = wx.BoxSizer(wx.HORIZONTAL)
+        # --- Songs & Export: save / load / delete / export ---
+        songs = wx.Panel(self.notebook)
+        sp = wx.BoxSizer(wx.VERTICAL)
+        for label, fn in (("&Save Song...", self._save), ("&Load Song...", self._load),
+                          ("&Delete Song...", self._delete), ("Export Song as &WAV...", self._export)):
+            b = wx.Button(songs, label=label)
+            b.Bind(wx.EVT_BUTTON, lambda e, f=fn: f())
+            sp.Add(b, 0, wx.ALL, 8)
+        songs.SetSizer(sp)
+        self.notebook.AddPage(songs, "Songs & Export")
+
+        root.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 8)
+
+        bottom = wx.BoxSizer(wx.HORIZONTAL)
         self.play_btn = wx.Button(self, label="&Play")
         self.play_btn.Bind(wx.EVT_BUTTON, self._on_play)
-        btns.Add(self.play_btn, 0, wx.RIGHT, 6)
-        for label, fn in (("&Save Song...", self._save), ("&Load Song...", self._load),
-                          ("&Delete Song...", self._delete), ("Export &WAV...", self._export)):
-            b = wx.Button(self, label=label)
-            b.Bind(wx.EVT_BUTTON, lambda e, f=fn: f())
-            btns.Add(b, 0, wx.RIGHT, 6)
+        bottom.Add(self.play_btn, 0, wx.RIGHT, 8)
         cancel = wx.Button(self, wx.ID_CANCEL, "Close")
         cancel.Bind(wx.EVT_BUTTON, lambda e: self._on_close(e))
-        btns.Add(cancel, 0)
-        root.Add(btns, 0, wx.ALL, 10)
+        bottom.Add(cancel, 0)
+        root.Add(bottom, 0, wx.ALL, 8)
         self.SetSizer(root)
         self._rebuild()
 
@@ -1331,11 +1421,27 @@ class SongDialog(wx.Dialog):
     def _song_len(self) -> float:
         return song_seconds(self._resolved(), self._panel.bpm)
 
+    def _section_blocks(self) -> list:
+        """(label, seconds, selected) per section, aligned to the list — for the timeline."""
+        sel = self.list.GetSelection()
+        blocks = []
+        for i, (name, r) in enumerate(self._sections):
+            pattern = resolve_pattern_by_name(name, self._settings)
+            secs = pattern.loop_seconds(self._panel.bpm) * r if pattern is not None else 0.0
+            blocks.append((f"{name} x{r}", secs, i == sel))
+        return blocks
+
+    def _refresh_visual(self) -> None:
+        track = getattr(self, "song_track", None)
+        if track is not None:
+            track.refresh_view()
+
     def _rebuild(self) -> None:
         keep = max(0, self.list.GetSelection())
         self.list.Set([f"{i + 1}. {name}  x{r}" for i, (name, r) in enumerate(self._sections)])
         if self._sections:
             self.list.SetSelection(min(keep, len(self._sections) - 1))
+        self._refresh_visual()
 
     def _selected(self) -> int:
         i = self.list.GetSelection()

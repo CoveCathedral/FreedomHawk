@@ -158,10 +158,11 @@ All screen-reader-first, native controls only.
   loop, on its own one-shot channel; `render_count_in`). **Tempo trainer** (climbs the BPM
   as you play, each step spoken; Trainer Options dialog sets step/bars/target; toggle for a
   defined ramp that holds at target vs. continuous endurance climb; `tempo_ramp`).
-  **Song mode** (Tools → Song Builder: chain grooves into an arrangement — accessible
-  section list, per-section repeats edited with Left/Right, Alt+Up/Down reorder; renders the
-  whole song gapless across mixed meters via `render_song`, loops it, saves/loads/exports;
-  in both FreedomHawk and standalone Sequin).
+  **Song mode** (Tools → Song Builder: chain grooves into an arrangement — tabbed
+  Arrange/Add/Songs, accessible section list with a high-contrast visual timeline
+  (`_SongTrack`), category-filtered groove picker, per-section repeats edited with
+  Left/Right, Alt+Up/Down reorder; renders the whole song gapless across mixed meters via
+  `render_song`, loops it, saves/loads/exports; in both FreedomHawk and standalone Sequin).
   **Named + standalone:** the sequencer is **Sequin**; `Sequin.bat` / `python -m
   firehawk.sequin` runs it on its own (`SequinFrame`); tandem separate-repo release planned
   after a milestone / when a contributor joins.

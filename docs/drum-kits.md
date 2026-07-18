@@ -177,22 +177,23 @@ build a pattern from scratch mid-session, save it as a preset, jam on.
 ## Song mode (Tools → Song Builder…)
 
 Chain grooves into a full arrangement — intro, verse, chorus, bridge, breakdown, outro.
-The **Song Builder** is an accessible list of **sections**, each one a groove plus a repeat
-count:
+The **Song Builder** has three tabs so it doesn't crowd:
 
-- **Add a groove**: narrow the **Category** dropdown to a genre first (so you're not
-  scrolling all 500), choose the **Groove**, set **Repeats**, press **Add Section**.
-  (Sections reference grooves by name — built-in or your saved patterns — so **save your own
-  pattern as a preset first** to use it in a song.)
-- **In the section list**: Up/Down select a section; **Left/Right change its repeats**;
-  **Alt+Up / Alt+Down reorder**; **Delete** removes. Every change is spoken, along with the
-  running song length.
-- **Play** renders the whole song end to end and loops it. Sections can even be in different
-  meters (a 4/4 verse into a 7/8 bridge) — each is rendered at its own meter and stitched
-  gapless. **Save Song / Load Song / Delete Song** keep your arrangements; **Export WAV**
-  writes the entire song as one audio file.
+- **Arrange** — the list of **sections** (each a groove + a repeat count) and a
+  **high-contrast visual timeline** beneath it: one coloured block per section, its width
+  showing its length, the selected one outlined (a low-vision aid; the list stays what you
+  operate). In the list: **Up/Down** select, **Left/Right change repeats**, **Alt+Up /
+  Alt+Down reorder**, **Delete** removes — each spoken, with the running song length.
+- **Add** — narrow the **Category** dropdown to a genre first (so you're not scrolling all
+  500), choose the **Groove**, set **Repeats**, press **Add Section**. (Sections reference
+  grooves by name — built-in or your saved patterns — so **save your own pattern as a preset
+  first** to use it in a song.)
+- **Songs & Export** — **Save / Load / Delete** your arrangements, and **Export Song as
+  WAV** writes the whole thing as one audio file.
 
-Song mode is in both FreedomHawk and standalone Sequin.
+**Play** (always at the bottom) renders the song end to end and loops it. Sections can even
+be in different meters (a 4/4 verse into a 7/8 bridge) — each is rendered at its own meter
+and stitched gapless. Song mode is in both FreedomHawk and standalone Sequin.
 
 ## The Tools menu: library, sharing, MIDI
 

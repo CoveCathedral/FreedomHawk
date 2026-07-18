@@ -445,6 +445,9 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
+        # Tabbed layout: Arrange / Add / Songs & Export, plus a display-only timeline.
+        assert dlg.notebook.GetPageCount() == 3
+        assert not dlg.song_track.AcceptsFocus()
         # Category filter narrows the groove picker (500 grooves is a lot to scroll).
         all_grooves = dlg.groove.GetCount()
         dlg.category.SetStringSelection("Rock")
@@ -466,6 +469,12 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
         assert dlg._sections[0] == ["Rock", 4]
         dlg._move(1)                         # Alt+Down reorders
         assert [s[0] for s in dlg._sections] == ["Funk", "Rock"]
+        # Visual timeline: one block per section, sized by length, selection marked.
+        dlg.list.SetSelection(1)
+        blocks = dlg._section_blocks()
+        assert [label.split(" x")[0] for label, _, _ in blocks] == ["Funk", "Rock"]
+        assert blocks[1][2] and not blocks[0][2]           # the selected block is flagged
+        assert all(secs > 0 for _, secs, _ in blocks)      # resolved -> real lengths
         if d.player.available:
             assert dlg._render() is not None  # renders the whole song without error
         dlg._remove()

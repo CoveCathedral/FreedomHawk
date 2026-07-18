@@ -210,16 +210,18 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 ### Song mode (the Song Builder)
 
 **Tools → Song Builder…** chains grooves into a full arrangement — intro, verse, chorus,
-bridge, and so on. It's an accessible list of **sections**, each a groove plus a repeat
-count:
+bridge, and so on. It has three tabs:
 
-- **Add a groove**: filter the **Category** dropdown to a genre first (so you're not
-  scrolling all 500), pick the **Groove**, set Repeats, press **Add Section**.
-- In the **section list**: Up/Down select, **Left/Right change the repeats**, **Alt+Up /
-  Alt+Down reorder**, **Delete** removes — each spoken, with the running song length.
-- **Play** renders the whole song end to end (gapless, sections can even be in different
-  meters) and loops it; **Save/Load/Delete Song** keep your arrangements, and **Export WAV**
-  writes the whole song as audio.
+- **Arrange** — the list of **sections** (each a groove + repeats) with a **high-contrast
+  visual timeline** beneath (coloured blocks sized by length, the selected one outlined).
+  Up/Down select, **Left/Right change the repeats**, **Alt+Up / Alt+Down reorder**,
+  **Delete** removes — each spoken, with the running song length.
+- **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
+  the **Groove**, set Repeats, press **Add Section**.
+- **Songs & Export** — Save / Load / Delete arrangements, and Export the song as WAV.
+
+**Play** (at the bottom) renders the whole song end to end (gapless, sections can even be in
+different meters) and loops it.
 
 Sections reference grooves by name (built-in or your saved patterns), so **save a pattern
 as a preset first** if you want your own groove in a song. Song Builder is in both
