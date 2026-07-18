@@ -207,6 +207,11 @@ class MetronomePanel(wx.Panel):
         else:
             self._start()
 
+    def toggle_transport(self) -> None:
+        """Start or stop the metronome — the app-wide Play/Stop (F5) hook, callable from
+        anywhere in the window. Start/stop speak their own state for audible feedback."""
+        self._on_start_stop(None)
+
     def _on_timer(self, event: wx.TimerEvent) -> None:
         self._emit()
 

@@ -62,6 +62,9 @@ Amp, Cabinet, EQ, FX 1–3, Reverb, Volume Pedal, Variax, Global), and the pract
   controls; **Escape** steps back out (controls → tab list → Presets).
 - **Ctrl+1 through Ctrl+9** jump straight to the first nine tabs; **Ctrl+B** returns to
   Presets from anywhere.
+- **F5** plays or stops the current tab's loop from anywhere in the window — the Sequin
+  and Metronome tabs — so you never have to tab to the Start button. It speaks the new
+  state ("Drum loop started…", "Metronome stopped"), and a tab with no loop says so.
 - **F1** opens the complete keyboard-command list at any time.
 - **Alt** opens the menus: File, Go, Settings, Tools, Device, Help.
 
@@ -273,6 +276,7 @@ Everything else in this manual is fully usable offline, today.
 | Ctrl+N / Ctrl+O / Ctrl+S | New / open / save preset |
 | Ctrl+1 … Ctrl+9 | Jump to the first nine tabs (your order) |
 | Ctrl+B | Back to Presets |
+| F5 | Play or stop the current tab's loop (Sequin / Metronome), from anywhere |
 | Ctrl+D | Blank Drum Pattern Editor, from anywhere |
 | Escape | Step back: controls → tab list → Presets; closes dialogs |
 | Tab / Shift+Tab | Move between controls |

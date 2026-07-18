@@ -244,11 +244,27 @@ class MainFrame(wx.Frame):
     # -- keyboard -------------------------------------------------------------
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        # F5 = Play/Stop the current tab's loop from anywhere in the window, so you never
+        # have to tab to the Start button. Handled at the frame so focus doesn't matter.
+        if event.GetKeyCode() == wx.WXK_F5:
+            self._toggle_current_transport()
+            return
         # Escape walks back: from a page's controls to the block list, then to Presets.
         if event.GetKeyCode() == wx.WXK_ESCAPE:
             if self._escape_back():
                 return
         event.Skip()
+
+    def _toggle_current_transport(self) -> None:
+        """Start/stop the current tab's loop (F5), wherever focus is. Tabs with a transport
+        (Sequin, Metronome) expose toggle_transport() and speak their own state; other tabs
+        say so out loud, since the status bar is inaudible to NVDA."""
+        page = self.listbook.GetCurrentPage()
+        toggle = getattr(page, "toggle_transport", None)
+        if callable(toggle):
+            toggle()
+        else:
+            speech.speak("This tab has no Start control.")
 
     def _list_view(self) -> wx.Window | None:
         getter = getattr(self.listbook, "GetListView", None)
@@ -308,6 +324,7 @@ class MainFrame(wx.Frame):
         menubar.Append(file_menu, "&File")
 
         go_menu = wx.Menu()
+        transport_item = go_menu.Append(wx.ID_ANY, "&Play or Stop This Tab\tF5")
         back_item = go_menu.Append(wx.ID_ANY, "&Back to Presets\tCtrl+B")
         go_menu.AppendSeparator()
         titles = dict(all_views())
@@ -366,6 +383,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_save, save_item)
         self.Bind(wx.EVT_MENU, self._on_export_file, export_item)
         self.Bind(wx.EVT_MENU, self._on_reset, reset_item)
+        self.Bind(wx.EVT_MENU, lambda e: self._toggle_current_transport(), transport_item)
         self.Bind(wx.EVT_MENU, lambda e: self._goto_view("presets"), back_item)
         self.Bind(wx.EVT_MENU, lambda e: self.Close(), exit_item)
         self.Bind(wx.EVT_MENU, self._on_drum_editor, drum_editor_item)
@@ -696,6 +714,7 @@ class MainFrame(wx.Frame):
             ("Ctrl+S", "Save preset to your library"),
             ("Ctrl+1 .. Ctrl+9", f"Jump to the first nine tabs ({jump_targets})"),
             ("Ctrl+B", "Back to the Presets list"),
+            ("F5", "Play or stop the current tab's loop (Sequin / Metronome), from anywhere"),
             ("Ctrl+D", "Open a blank Drum Pattern Editor (Tools menu)"),
             ("Escape", "Back one level: page controls -> block list -> Presets"),
             ("Tab / Shift+Tab", "Move between controls on a page"),

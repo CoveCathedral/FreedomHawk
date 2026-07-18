@@ -136,6 +136,52 @@ def test_metronome_start_stop_toggles(frame):
     assert m.start_button.GetLabel() == "&Start"
 
 
+def test_f5_plays_or_stops_the_current_tab(frame, _silence_audio):
+    lb = frame.listbook
+
+    def index_of(page):
+        return next(i for i in range(lb.GetPageCount()) if lb.GetPage(i) is page)
+
+    if not frame.metronome_page.player.available:
+        pytest.skip("no audio device available")
+    # F5 (routed here from the frame char hook) toggles the CURRENT tab's transport,
+    # wherever focus is — no tabbing to the Start button.
+    lb.SetSelection(index_of(frame.metronome_page))
+    frame._toggle_current_transport()
+    assert frame.metronome_page.is_running()
+    frame._toggle_current_transport()
+    assert not frame.metronome_page.is_running()
+    # The Sequin (drums) tab is the other transport.
+    lb.SetSelection(index_of(frame.drums_page))
+    frame._toggle_current_transport()
+    assert frame.drums_page._playing
+    frame._toggle_current_transport()
+    assert not frame.drums_page._playing
+    # A tab with no Start control says so out loud (the status bar is inaudible), rather
+    # than doing nothing.
+    lb.SetSelection(0)  # Presets
+    _silence_audio.clear()
+    frame._toggle_current_transport()
+    assert any("Start control" in m for m in _silence_audio)
+
+
+def test_sequin_f5_toggles_transport(tmp_path, monkeypatch, _silence_audio):
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
+    from firehawk.sequin import SequinFrame
+    f = SequinFrame()
+    try:
+        if not f.metronome.player.available:
+            pytest.skip("no audio device available")
+        f.listbook.SetSelection(1)  # Metronome tab
+        f._toggle_current_transport()
+        assert f.metronome.is_running()
+        f._toggle_current_transport()
+        assert not f.metronome.is_running()
+    finally:
+        f._on_close(None)
+        wx.SafeYield()
+
+
 def test_metronome_survives_reorder(frame):
     # Moving the Metronome to the top must keep the same live panel object.
     metro = frame.metronome_page

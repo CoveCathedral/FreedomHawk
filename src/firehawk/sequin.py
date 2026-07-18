@@ -16,7 +16,7 @@ from pathlib import Path
 import wx
 
 from .config import AppSettings
-from .ui import theme
+from .ui import speech, theme
 from .ui.drumspanel import DrumsPanel
 from .ui.metronomepanel import MetronomePanel
 
@@ -48,6 +48,8 @@ class SequinFrame(wx.Frame):
 
         self._build_menu()
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        # F5 plays/stops the current tab from anywhere in the window (see the main app).
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
         theme.apply(self, self.dark_mode)
         theme.enlarge_listbook_sidebar(self.listbook)
         self.Centre()
@@ -59,6 +61,8 @@ class SequinFrame(wx.Frame):
         mb = wx.MenuBar()
 
         tools = wx.Menu()
+        transport = tools.Append(wx.ID_ANY, "&Play or Stop This Tab\tF5")
+        tools.AppendSeparator()
         editor = tools.Append(wx.ID_ANY, "&Pattern Editor...\tCtrl+D")
         library = tools.Append(wx.ID_ANY, "Pattern &Library...")
         song = tools.Append(wx.ID_ANY, "Song &Builder...")
@@ -83,6 +87,7 @@ class SequinFrame(wx.Frame):
         mb.Append(help_menu, "&Help")
 
         self.SetMenuBar(mb)
+        self.Bind(wx.EVT_MENU, lambda e: self._toggle_current_transport(), transport)
         self.Bind(wx.EVT_MENU, lambda e: self.drums.open_editor(blank=True), editor)
         self.Bind(wx.EVT_MENU, lambda e: self.drums.open_library(), library)
         self.Bind(wx.EVT_MENU, lambda e: self.drums.open_song_builder(), song)
@@ -95,6 +100,22 @@ class SequinFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_dark, self.dark_item)
         self.Bind(wx.EVT_MENU, self._on_manual, manual)
         self.Bind(wx.EVT_MENU, self._on_about, about)
+
+    def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        if event.GetKeyCode() == wx.WXK_F5:
+            self._toggle_current_transport()
+            return
+        event.Skip()
+
+    def _toggle_current_transport(self) -> None:
+        """Start/stop the current tab's loop (F5), wherever focus is. Both tabs (Sequin,
+        Metronome) have a transport and speak their own state."""
+        page = self.listbook.GetCurrentPage()
+        toggle = getattr(page, "toggle_transport", None)
+        if callable(toggle):
+            toggle()
+        else:
+            speech.speak("This tab has no Start control.")
 
     def _on_dark(self, event) -> None:
         self.dark_mode = self.dark_item.IsChecked()

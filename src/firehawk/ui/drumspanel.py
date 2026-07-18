@@ -2294,6 +2294,12 @@ class DrumsPanel(wx.Panel):
         else:
             self._start()
 
+    def toggle_transport(self) -> None:
+        """Start or stop the drum loop — the app-wide Play/Stop (F5) hook, callable from
+        anywhere in the window without tabbing to the button. Start/stop speak their own
+        state, so it's audible even when focus is elsewhere."""
+        self._on_start_stop(None)
+
     # -- transport ------------------------------------------------------------
 
     def _muted_pattern(self) -> Pattern:

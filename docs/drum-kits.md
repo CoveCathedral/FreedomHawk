@@ -34,7 +34,7 @@ a tone. Press **Stop** (or close the app) to end it.
 | **Kit Sounds…** | Choose which sample each part uses (sample kits only — the synth kit's sounds are fixed). See below. |
 | **Count-in** | When checked, **Start** first plays one bar of clicks (accented downbeat, at your tempo and meter) so you can come in on time; the loop then begins. Stop during the count-in cancels it. |
 | **Tempo trainer** + **Trainer Options…** | When checked, the loop **speeds up as you play** to build your chops. See below. |
-| **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. |
+| **Start / Stop** | Begins/ends the loop. Changes while playing take effect on the next loop. **F5** does the same from anywhere in the window, so you needn't tab to this button — it speaks the new state. |
 
 ### Tempo trainer (build speed)
 
