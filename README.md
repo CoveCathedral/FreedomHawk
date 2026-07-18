@@ -130,6 +130,13 @@ Double-click **`Firehawk.bat`**, or from a terminal:
 .venv\Scripts\python -m firehawk
 ```
 
+To run **Sequin** (the accessible step sequencer) on its own, without the pedal editor,
+double-click **`Sequin.bat`** or:
+
+```powershell
+.venv\Scripts\python -m firehawk.sequin
+```
+
 ## Test
 
 ```powershell

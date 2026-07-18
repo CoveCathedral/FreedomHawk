@@ -22,6 +22,7 @@ dev = ["pytest>=8.0", "pytest-timeout>=2.1", "numpy>=1.24", "accessible_output2>
 
 [project.scripts]
 firehawk = "firehawk.__main__:main"
+sequin = "firehawk.sequin:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

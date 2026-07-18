@@ -69,6 +69,23 @@ def _block_page(frame, slot_id):
     raise AssertionError(f"no page for slot {slot_id}")
 
 
+def test_sequin_standalone_frame(tmp_path, monkeypatch, _silence_audio):
+    # Sequin runs on its own (the tandem standalone entry point), hosting the same
+    # DrumsPanel with its own Tools/Settings/Help menu.
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
+    from firehawk.sequin import SequinFrame
+    f = SequinFrame()
+    try:
+        assert isinstance(f.drums, DrumsPanel)
+        assert f.drums.groove_choice.GetCount() == 500      # built-ins, fresh settings
+        assert f.GetMenuBar().GetMenuCount() == 3            # Tools, Settings, Help
+        assert "Sequin" in f.GetTitle()
+    finally:
+        f._on_close(None)                                    # dispose + Destroy path
+        import wx as _wx
+        _wx.SafeYield()
+
+
 def test_has_presets_page_and_all_blocks(frame):
     # Presets + Tuner + Metronome + Sequin (drums) pages, plus one per slot.
     assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 4
