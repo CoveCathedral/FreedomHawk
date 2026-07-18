@@ -303,21 +303,30 @@ My Kit/
 └── FX/        riser.wav
 ```
 
-Recognised part-folder names (case-insensitive):
+Folder names are matched **loosely and case-insensitively**, so the names sample packs
+actually ship just work — plurals (`Kicks`, `Snares`), spaced and worded names
+(`Closed Hats`, `Organic Percussions`, `808 Bass`), and keyword matches (anything with
+"perc" in it is percussion, "hat" is a hi-hat, and so on):
 
-| Part | Folder names accepted |
-|------|-----------------------|
-| Kick | `KICK`, `KICKS` |
-| Snare | `SNARE`, `SNARES`, `SNAP` |
-| Hi-hat (closed) | `HIHAT`, `HAT`, `HATS`, `CH`, `CLOSEDHAT` |
-| Open hat | `OPENHAT`, `OH`, `OPEN` |
-| Clap | `CLAP`, `CLAPS` |
-| Perc | `PERC`, `PERCUSSION` |
-| 808 / sub | `808`, `808S`, `BASS`, `SUB` |
-| Tom | `TOM`, `TOMS` |
+| Part | Matches names containing… |
+|------|---------------------------|
+| Kick | `KICK` |
+| Snare | `SNARE`, `RIM`, `RIMSHOT` |
+| Hi-hat (closed) | `HIHAT`, `HI-HAT`, `HAT`, `CH`, `CLOSEDHAT` |
+| Open hat | `OPENHAT`, `OPEN HAT`, `OH` |
+| Clap | `CLAP`, `SNAP` (finger snaps ride with the claps) |
+| Perc | `PERC`, `SHAKER`, `TAMBOURINE`, `CONGA`, `BONGO`, `COWBELL`, `CLAVE`, `WOODBLOCK`, `TRIANGLE`, `DJEMBE` |
+| 808 / sub | `808`, `BASS`, `SUB` |
+| Tom | `TOM` |
 | Ride | `RIDE` |
-| Crash | `CRASH`, `CYMBAL` |
-| FX | `FX` |
+| Crash | `CRASH`, `CYMBAL`, `CHINA`, `SPLASH` |
+| FX | `FX`, `TEXTURE`, `IMPACT`, `RISER`, `SWEEP`, `NOISE`, `STAB`, and anything with **`LOOP`** in the name |
+
+**Several folders can feed one part.** If a pack has `Percussions`, `Organic Percussions`,
+`Shakers` and `Tambourine`, all four are **merged** into the Perc part — every sample stays
+pickable in Kit Sounds. Loops and textures are routed to **FX** (which grooves rarely
+trigger) so they don't crowd out the real one-shot drums. Anything the matcher doesn't
+recognise (a `Readme` or `Vocals` folder) is simply left out, never misfiled.
 
 A **flat folder** also works if the files themselves are named for the parts
 (`kick.wav`, `snare.wav`, `hihat.wav`, …).

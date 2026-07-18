@@ -136,6 +136,46 @@ def test_load_kit_from_folder(tmp_path):
     assert kit.name == tmp_path.name
 
 
+def test_folder_to_role_handles_real_pack_names():
+    f = drums.folder_to_role
+    # Exact + simple plurals.
+    assert f("Kick") == "kick" and f("Kicks") == "kick"
+    assert f("Snare") == "snare" and f("Snares") == "snare"
+    assert f("Hihats") == "hihat" and f("Hats") == "hihat" and f("HIHAT") == "hihat"
+    assert f("OH") == "openhat" and f("Open Hat") == "openhat" and f("Open Hats") == "openhat"
+    # Keyword fallback for the names packs actually ship.
+    assert f("Organic Percussions") == "perc"
+    assert f("Percussion") == "perc" and f("Percussions") == "perc"
+    assert f("Shaker") == "perc" and f("Shakers") == "perc" and f("Tambourine") == "perc"
+    assert f("Closed Hats") == "hihat"
+    assert f("808") == "808" and f("808 Bass") == "808" and f("Sub Bass") == "808"
+    assert f("Snaps") == "clap" and f("Snap") == "clap"     # hand percussion, not the drum
+    # Loops and textures are kept aside in FX so they don't crowd real one-shot defaults.
+    assert f("PercLoop") == "fx" and f("Drum Loops") == "fx"
+    assert f("Texture") == "fx" and f("Impacts") == "fx" and f("FXs") == "fx"
+    # Genuinely unknown -> None (so nothing is silently misfiled).
+    assert f("Readme") is None and f("Vocals") is None
+
+
+def test_list_role_files_merges_folders_into_one_role(tmp_path):
+    # A pack with several percussion folders: every sample must stay reachable, merged.
+    for name, count in (("Percussions", 3), ("Organic Percussions", 2), ("Shakers", 2)):
+        d = tmp_path / name
+        d.mkdir()
+        for i in range(count):
+            _write_int16_wav(d / f"{name[:4]}_{i}.wav", _sine(4000))
+    files = drums.list_role_files(tmp_path)
+    assert set(files) == {"perc"}
+    assert len(files["perc"]) == 7          # 3 + 2 + 2, none dropped
+    # Snaps land with claps, not the snare, when both exist.
+    (tmp_path / "Claps").mkdir(); (tmp_path / "Snaps").mkdir(); (tmp_path / "Snares").mkdir()
+    _write_int16_wav(tmp_path / "Claps" / "c.wav", _sine(4000))
+    _write_int16_wav(tmp_path / "Snaps" / "s.wav", _sine(4000))
+    _write_int16_wav(tmp_path / "Snares" / "sn.wav", _sine(4000))
+    files = drums.list_role_files(tmp_path)
+    assert len(files["clap"]) == 2 and len(files["snare"]) == 1
+
+
 def test_pattern_copy_is_independent():
     pat = drums.GENRE_PATTERNS[0].copy()
     pat.hits["kick"].append(15)

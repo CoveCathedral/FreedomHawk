@@ -55,9 +55,10 @@ ROLE_LABELS = {
 }
 
 #: Folder names (upper-cased) mapped to canonical roles when loading a user kit.
+#: Exact aliases — especially short ones a keyword scan can't safely infer (OH, CH).
 FOLDER_ROLE_MAP = {
     "KICK": "kick", "KICKS": "kick",
-    "SNARE": "snare", "SNARES": "snare", "SNAP": "snare",
+    "SNARE": "snare", "SNARES": "snare", "SNAP": "clap", "SNAPS": "clap",
     "HIHAT": "hihat", "HAT": "hihat", "HATS": "hihat", "CH": "hihat", "CLOSEDHAT": "hihat",
     "OPENHAT": "openhat", "OH": "openhat", "OPEN": "openhat",
     "CLAP": "clap", "CLAPS": "clap",
@@ -67,6 +68,48 @@ FOLDER_ROLE_MAP = {
     "RIDE": "ride", "CRASH": "crash", "CYMBAL": "crash",
     "FX": "fx",
 }
+
+#: Keyword fallback for the endless real-world folder names sample packs invent
+#: ("Organic Percussions", "Closed Hats", "808 Bass", "Impacts"): the first group whose
+#: keyword appears ANYWHERE in the name wins, so order is most-specific first.  Loops and
+#: textures land in FX (rarely triggered) so they don't crowd out real one-shot defaults.
+_ROLE_KEYWORDS = [
+    (("LOOP",), "fx"),                                              # any *loop* -> keep aside
+    (("OPENHAT", "OPEN HAT", "OPEN-HAT"), "openhat"),
+    (("808",), "808"),
+    (("KICK",), "kick"),
+    (("SNARE", "RIMSHOT", "RIM"), "snare"),
+    (("CLAP", "SNAP"), "clap"),
+    (("TOM",), "tom"),
+    (("RIDE",), "ride"),
+    (("CRASH", "CYMBAL", "CHINA", "SPLASH"), "crash"),
+    (("SHAKER", "TAMBOURINE", "TAMB", "CONGA", "BONGO", "COWBELL", "CLAVE",
+      "WOODBLOCK", "TRIANGLE", "DJEMBE", "PERC"), "perc"),
+    (("HIHAT", "HI-HAT", "HI HAT", "HAT"), "hihat"),
+    (("SUB", "BASS"), "808"),
+    (("TEXTURE", "IMPACT", "ATMOS", "RISER", "SWEEP", "UPLIFT", "DOWNLIFT",
+      "NOISE", "DRONE", "AMBIENT", "STAB", "FX"), "fx"),
+]
+
+
+def folder_to_role(name: str) -> str | None:
+    """Map a kit subfolder (or role-named file) to a canonical role.
+
+    Exact aliases win; then the same name with a trailing 's' dropped (Kicks, Snaps);
+    then a keyword found anywhere in the name, so packs that name folders "Organic
+    Percussions", "Closed Hats" or "808 Bass" still land in the right part.  Returns
+    None only when nothing recognisable is present.
+    """
+    key = " ".join(name.strip().upper().replace("_", " ").replace("-", " ").split())
+    compact = key.replace(" ", "")
+    if compact in FOLDER_ROLE_MAP:
+        return FOLDER_ROLE_MAP[compact]
+    if compact.endswith("S") and compact[:-1] in FOLDER_ROLE_MAP:
+        return FOLDER_ROLE_MAP[compact[:-1]]
+    for keywords, role in _ROLE_KEYWORDS:
+        if any(kw.replace(" ", "") in compact for kw in keywords):
+            return role
+    return None
 
 
 # -- WAV loading (handles int 8/16/24/32, float 32/64, any rate, mono/stereo) ------
@@ -297,7 +340,13 @@ def wav_duration(path) -> float | None:
 
 
 def list_role_files(kit_dir) -> dict[str, list]:
-    """Every .wav per recognised role folder in a kit directory, sorted by name."""
+    """Every .wav per recognised role in a kit directory, sorted by name.
+
+    Several subfolders can resolve to the same role — a pack may ship "Percussions",
+    "Organic Percussions", "Shakers" and "Tambourine", all percussion — so their files are
+    MERGED into that role's pool instead of the first folder winning.  Every sample then
+    stays reachable in Kit Sounds, even when more folders exist than there are roles.
+    """
     p = Path(kit_dir)
     out: dict[str, list] = {}
     if not p.is_dir():
@@ -305,12 +354,12 @@ def list_role_files(kit_dir) -> dict[str, list]:
     for sub in sorted(p.iterdir()):
         if not sub.is_dir():
             continue
-        role = FOLDER_ROLE_MAP.get(sub.name.upper())
-        if role is None or role in out:
+        role = folder_to_role(sub.name)
+        if role is None:
             continue
         wavs = sorted(sub.glob("*.wav"))
         if wavs:
-            out[role] = wavs
+            out.setdefault(role, []).extend(wavs)
     return out
 
 
@@ -355,7 +404,7 @@ def load_kit_from_folder(path, rate: int = RATE, choices: dict | None = None) ->
                 continue
     if not voices and p.is_dir():  # flat folder of role-named files (kick.wav, snare.wav)
         for wav in sorted(p.glob("*.wav")):
-            role = FOLDER_ROLE_MAP.get(wav.stem.upper())
+            role = folder_to_role(wav.stem)
             if role and role not in voices:
                 try:
                     voices[role] = load_sample(wav, rate)
