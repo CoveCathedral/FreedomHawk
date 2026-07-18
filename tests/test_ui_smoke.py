@@ -70,7 +70,7 @@ def _block_page(frame, slot_id):
 
 
 def test_has_presets_page_and_all_blocks(frame):
-    # Presets + Tuner + Metronome + Drum Looper pages, plus one per slot.
+    # Presets + Tuner + Metronome + Sequin (drums) pages, plus one per slot.
     assert frame.listbook.GetPageCount() == len(SLOT_LAYOUT) + 4
     assert isinstance(frame.listbook.GetPage(0), PresetsPanel)
 

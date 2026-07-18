@@ -54,7 +54,7 @@ launched with.
 The window is a list of tabs down the left side, with each tab's controls to the right.
 The tabs are: **Presets**, one tab per signal-chain block (Wah, Compressor, Noise Gate,
 Amp, Cabinet, EQ, FX 1–3, Reverb, Volume Pedal, Variax, Global), and the practice tools
-(**Tuner**, **Metronome**, **Drum Looper**).
+(**Tuner**, **Metronome**, and **Sequin** — the accessible drum sequencer).
 
 ### Moving around
 
@@ -123,11 +123,12 @@ Tune by ear against a sustained reference tone — no lights, no meters.
 - The metronome **keeps running while you work in other tabs** — press Stop or close
   the app to end it.
 
-## The Drum Looper
+## Sequin — the drum sequencer
 
-A full accessible drum machine. The short version: pick a kit and a groove, press
-Start, and jam — then go as deep as you like. The complete guide, including how to use
-your own sample libraries, is in `docs/drum-kits.md`; this is the tour.
+**Sequin** is FreedomHawk's full accessible drum machine and step sequencer (it also ships
+standalone). The short version: pick a kit and a groove, press Start, and jam — then go as
+deep as you like. The complete guide, including how to use your own sample libraries, is in
+`docs/drum-kits.md`; this is the tour.
 
 ### The main tab
 

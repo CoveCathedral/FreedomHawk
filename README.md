@@ -32,14 +32,16 @@ app did, minus the cloud.
   remaining on-wire frame format is being finalised (`docs/protocol.md`). **Nothing is
   written to the pedal** until that is validated against a real capture.
 
-## The accessible drum machine
+## Sequin — the accessible drum machine
 
-A step sequencer **designed non-visually from the ground up** — the spoken tracker grid
+**Sequin** is FreedomHawk's built-in **accessible step sequencer / drum machine** — a
+screen-reader-first, keyboard-only groove sequencer for blind and low-vision musicians
+(NVDA-tested). It's **designed non-visually from the ground up** — the spoken tracker grid
 *is* the interface, not a visual surface being narrated. That sets it apart from
 screen-reader layers added onto sighted DAWs (OSARA over Reaper, and the like), where the
 grid is a visual surface a screen reader reads back: here it was built for the ear first,
 not retrofitted. Designed hands-on with the blind and low-vision musician it's built for,
-and headed for a standalone open-source project of its own:
+Sequin ships inside FreedomHawk and is released **standalone** as its own module too:
 
 - **500 built-in grooves** across ~60 genres (rock, metal, funk, hip-hop, trap, house,
   techno, drum & bass, reggae, latin, jazz, 5/4, 7/8, 9/8, djent polymeters, and more) plus your own

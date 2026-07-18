@@ -22,8 +22,9 @@ CONFIG_FILE = _config_dir() / "settings.json"
 
 def all_views() -> list[tuple[str, str]]:
     """Every navigable view as (view_id, display_name), in canonical order."""
+    # "drums" is the stable view id; the display name is the product name, Sequin.
     views = [("presets", "Presets"), ("tuner", "Tuner"), ("metronome", "Metronome"),
-             ("drums", "Drum Looper")]
+             ("drums", "Sequin")]
     views += [(s.id, s.display_name) for s in SLOT_LAYOUT]
     return views
 

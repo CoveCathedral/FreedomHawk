@@ -160,7 +160,8 @@ All screen-reader-first, native controls only.
   defined ramp that holds at target vs. continuous endurance climb; `tempo_ramp`).
   **Planned next (Kaylea approved):** song mode (pattern chaining) · audition-step &
   speak-rhythm keys · **MIDI controller input** (craft beats from a keyboard). Long-term:
-  spin the sequencer out as its own open-source project (engine already firehawk-independent).
+  spin the sequencer out as its own open-source project — **Sequin**, the accessible step
+  sequencer — released standalone in tandem (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully

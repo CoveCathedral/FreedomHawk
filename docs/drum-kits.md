@@ -1,12 +1,14 @@
-# The Drum Looper
+# Sequin — the accessible drum sequencer
 
-A customizable, screen-reader-first drum machine built into the app. It works out of the
-box with a **built-in synth kit** (no files needed), and you can load **your own drum
-libraries** for higher-fidelity sounds.
+**Sequin** is FreedomHawk's customizable, screen-reader-first drum machine and step
+sequencer. It works out of the box with a **built-in synth kit** (no files needed), and you
+can load **your own drum libraries** for higher-fidelity sounds. (Sequin also ships as a
+standalone module, so this guide applies whether you reach it through FreedomHawk or on its
+own.)
 
 ## Quick start
 
-1. Open the **Drum Looper** tab.
+1. Open the **Sequin** tab.
 2. Leave **Kit** on "Synth (built-in)", pick a **Groove** (500 built in across ~60 genres —
    basics plus generated variations, many with drum fills), set the **Tempo**, press **Start**.
 3. To customize a groove, press **Edit Pattern…** — see the Pattern Editor below.
@@ -169,7 +171,7 @@ Buttons (all a Tab away):
   arrangement (which spans many bars) plays on the main tab, not here, so the editor loop
   stays short and easy to work in. **Save** keeps everything; **Cancel** or Escape discards.
 
-**Ctrl+D** anywhere in the app opens a fresh, empty editor on the Drum Looper tab —
+**Ctrl+D** anywhere in the app opens a fresh, empty editor on the Sequin tab —
 build a pattern from scratch mid-session, save it as a preset, jam on.
 
 ## The Tools menu: library, sharing, MIDI

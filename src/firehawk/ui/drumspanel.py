@@ -1,6 +1,9 @@
-"""The Drum Looper page — a customizable, screen-reader-first drum machine.
+"""Sequin — the accessible step sequencer: a customizable, screen-reader-first drum machine.
 
-The main tab stays lean: kit, groove (200 built in), fill cadence and style, tempo,
+Sequin is the drum sequencer that ships inside FreedomHawk and is designed to spin out as
+its own standalone project (the ``practice`` engine is deliberately UI-free for that).
+
+The main tab stays lean: kit, groove (500 built in), fill cadence and style, tempo,
 drum volume, Start.  Deeper editing lives in the **Pattern Editor** — a tracker-style
 grid designed with its blind user: one list row per part, a time cursor on the arrow
 keys (step / Ctrl=beat / Ctrl+Shift=bar) with positions spoken directly through the

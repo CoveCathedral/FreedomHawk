@@ -369,7 +369,7 @@ class MainFrame(wx.Frame):
         manual_item = help_menu.Append(wx.ID_ANY, "&User Manual...")
         keys_item = help_menu.Append(wx.ID_ANY, "&Keyboard Commands\tF1")
         metronome_help_item = help_menu.Append(wx.ID_ANY, "Using the Me&tronome...")
-        drums_help_item = help_menu.Append(wx.ID_ANY, "Using the &Drum Looper...")
+        drums_help_item = help_menu.Append(wx.ID_ANY, "Using &Sequin (the sequencer)...")
         music_item = help_menu.Append(wx.ID_ANY, "Playing Along with &Music...")
         about_item = help_menu.Append(wx.ID_ABOUT, "&About")
         menubar.Append(help_menu, "&Help")
@@ -499,14 +499,14 @@ class MainFrame(wx.Frame):
         self.status.SetStatusText("Dark mode on." if self.dark_mode else "Dark mode off.")
 
     def _on_drum_editor(self, event) -> None:
-        """Ctrl+D from anywhere: jump to the Drum Looper and open an empty editor."""
+        """Ctrl+D from anywhere: jump to Sequin (the sequencer) and open an empty editor."""
         if self.drums_page is None:
             return
         self._goto_view("drums")
         self.drums_page.open_editor(blank=True)
 
     def _drums_action(self, method: str):
-        """A menu handler that jumps to the Drum Looper and runs one of its actions."""
+        """A menu handler that jumps to Sequin (the sequencer) and runs one of its actions."""
         def handler(event) -> None:
             if self.drums_page is None:
                 return
@@ -751,7 +751,7 @@ class MainFrame(wx.Frame):
 
     def _on_drums_help(self, event) -> None:
         wx.MessageBox(
-            "Using the Drum Looper\n\n"
+            "Using Sequin - the accessible drum sequencer\n\n"
             "1. Kit: 'Synth (built-in)' works with no files; kit folders in Samples appear\n"
             "   in the list too. 'Import Drum Kit...' loads a kit folder from anywhere.\n"
             "2. Groove: 500 built-in patterns across ~60 genres (Rock, Metal, Funk,\n"
@@ -782,7 +782,7 @@ class MainFrame(wx.Frame):
             "pattern file sharing, and MIDI export/import.\n\n"
             "The loop keeps playing across tabs. To use your own drum libraries, see the\n"
             "guide in docs/drum-kits.md. Samples of any length land exactly on the beat.",
-            "Using the Drum Looper", wx.ICON_INFORMATION)
+            "Using Sequin", wx.ICON_INFORMATION)
 
     def _on_music(self, event) -> None:
         wx.MessageBox(
@@ -803,7 +803,7 @@ class MainFrame(wx.Frame):
         wx.MessageBox(
             f"{APP_TITLE}\n\n"
             "An accessible, screen-reader-first controller for the Line 6 Firehawk FX,\n"
-            "with a built-in accessible drum machine, metronome, and tuner.\n"
+            "with Sequin - a built-in accessible drum sequencer - plus a metronome and tuner.\n"
             f"Loaded {len(self.catalog)} models.\n\n"
             "Editing and practice tools work offline now; live pedal control is in\n"
             "progress. Free the hardware from the dead cloud.\n\n"
