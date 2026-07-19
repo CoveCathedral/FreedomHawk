@@ -22,6 +22,7 @@ a tone. Press **Stop** (or close the app) to end it.
 | Control | What it does |
 |---------|--------------|
 | **Kit** | The sound set for the **whole pattern**: "Synth (built-in)" plus any kit folder found in `Samples/`. It applies globally — every part follows it, including any groove or saved pattern you load — unless you deliberately give a line its own source in the editor. Arrowing this list only switches kits; it never opens a dialog. |
+| **Build Kit…** | Make a **new kit from scratch**, part by part, by ear — see below. It lands in the Kit list next to Import. |
 | **Import Drum Kit…** | A separate button that opens the folder picker to load a kit from anywhere. The app remembers where your kits live. |
 | **Category** | Filters the Groove list by genre family (Rock, Funk, Trap, 5/4…) — plus any categories you create when saving your own patterns. |
 | **Groove** | 500 built-in patterns across ~60 genres — rock, punk, metal, funk, disco, hip-hop, trap, drill, house, techno, drum & bass, dubstep, reggae, ska, bossa, samba, afrobeat, jazz swing, blues shuffle, waltz, gospel 6/8, odd meters (5/4, 7/8, 9/8, 11/8…), and more — each a base groove plus numbered variations (names ending in "fill" include a drum fill), followed by **your saved patterns** shown with their category. First-letter navigation works in the list. |
@@ -460,6 +461,26 @@ the hats from an 808 pack. Two things worth knowing:
   in the editor's follow-the-kit lines, and in songs that name it as a section kit. If a
   borrowed kit is later renamed or removed, that part quietly falls back to this kit's own
   default rather than breaking.
+
+## Building a kit from scratch (Build Kit…)
+
+**Build Kit…** (next to the Kit list) makes a **brand-new kit**, part by part, by ear —
+where Kit Sounds tweaks an existing kit, this starts from nothing.
+
+1. **Name** the kit.
+2. Pick a **Part** (every part of the full kit is available — kick through floor tom,
+   cowbell, ride bell, and the rest).
+3. Choose the **Sound from** — **Synth** (the built-in voice, the default) or any kit
+   you've imported — then arrow the **Sample** list to hear each option. Tuned sounds
+   speak their key, so you can match 808s and toms.
+4. **Save Kit** writes it and selects it straight away.
+
+The result is a **real, self-contained kit folder** under `Samples/`: the samples you
+chose are copied in, and every part you left on **Synth** has the synth voice baked to a
+file — so nothing is silent, the kit plays even if you later delete the kits you borrowed
+from, and you can refine it afterwards in **Kit Sounds** or share the folder like any other
+kit. (Built kits live under the git-ignored `Samples/`, so borrowed third-party sounds
+never end up in the public repo.)
 
 ## Bringing your own kit
 

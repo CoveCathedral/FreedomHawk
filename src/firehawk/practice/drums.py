@@ -74,6 +74,18 @@ ROLE_LABELS = {
 #: The tom roles, high to low — the fill engine rolls down these.
 TOM_ROLES = ["tom1", "tom2", "tom", "tom4", "tom5"]
 
+#: The folder name to write for each role when saving a kit (the Kit Builder), chosen so
+#: ``folder_to_role`` maps it straight back to the same role.
+ROLE_FOLDER = {
+    "kick": "KICK", "snare": "SNARE", "rimshot": "RIMSHOT", "clap": "CLAP",
+    "hihat": "HIHAT", "pedalhat": "PEDALHAT", "openhat": "OPENHAT",
+    "tom1": "TOM1", "tom2": "TOM2", "tom": "TOM3", "tom4": "TOM4", "tom5": "TOM5",
+    "crash": "CRASH", "crash2": "CRASH2", "splash": "SPLASH", "china": "CHINA",
+    "ride": "RIDE", "ridebell": "RIDEBELL", "cowbell": "COWBELL",
+    "tambourine": "TAMBOURINE", "shaker": "SHAKER", "808": "808", "perc": "PERC",
+    "fx": "FX",
+}
+
 #: A sensible starting set of lines for a fresh/loaded pattern, so the editor isn't a wall
 #: of 24 empty parts — the rest of the full kit is one "Add Line" away.
 CORE_ROLES = ["kick", "snare", "hihat", "openhat"]
@@ -92,6 +104,9 @@ FOLDER_ROLE_MAP = {
     "808": "808", "808S": "808", "BASS": "808", "SUB": "808",
     "TOM": "tom", "TOMS": "tom", "RACKTOM": "tom1", "HITOM": "tom1", "HIGHTOM": "tom1",
     "MIDTOM": "tom", "LOWTOM": "tom4", "FLOORTOM": "tom5", "FLOOR": "tom5",
+    # A clean numbered scheme (exact matches beat the "TOM" keyword) so all five toms
+    # round-trip through folder names — needed for kits the Kit Builder writes.
+    "TOM1": "tom1", "TOM2": "tom2", "TOM3": "tom", "TOM4": "tom4", "TOM5": "tom5",
     "RIDE": "ride", "RIDEBELL": "ridebell", "BELL": "ridebell",
     "CRASH": "crash", "CRASH2": "crash2", "CYMBAL": "crash",
     "SPLASH": "splash", "CHINA": "china",

@@ -154,6 +154,14 @@ def test_full_standard_kit_has_every_part():
     assert peaks == sorted(peaks, reverse=True)     # descending fundamentals
 
 
+def test_role_folder_names_round_trip():
+    # Every part's write-folder must map straight back to that part, so a kit the Kit
+    # Builder writes reloads with exactly the roles it saved (the five toms included).
+    assert set(drums.ROLE_FOLDER) == set(drums.ROLES)
+    for role, folder in drums.ROLE_FOLDER.items():
+        assert drums.folder_to_role(folder) == role
+
+
 def test_legacy_roles_still_render():
     # Existing library/saved patterns key hits on "tom" and "crash"; those must keep
     # working unchanged (tom = the mid tom, crash = crash 1).

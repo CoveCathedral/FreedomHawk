@@ -17,6 +17,7 @@ different-length samples still land exactly on the beat (see practice/drums.py).
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Callable
 
@@ -52,6 +53,7 @@ from ..practice import (
 from ..practice.drums import (
     ORNAMENTS,
     RATE,
+    ROLE_FOLDER,
     _auto_hat_choke,
     _buf_to_wav,
     fill_span,
@@ -1553,6 +1555,197 @@ class KitSoundsDialog(wx.Dialog):
         self.EndModal(wx.ID_CANCEL)
 
     def _on_close(self, event) -> None:
+        self._player.dispose()
+        self.EndModal(wx.ID_CANCEL)
+
+
+class KitBuilderDialog(wx.Dialog):
+    """Build a new drum kit from scratch, part by part, by ear.
+
+    Every part starts on the synth; for each one you keep the synth voice or borrow a
+    sample from a kit you've imported, auditioning with the arrow keys.  Save returns the
+    name and the per-part sample picks; the panel writes a real, self-contained kit folder
+    (chosen samples copied in, the synth voice baked to a WAV for every untouched part) so
+    it then behaves like any imported kit and every part plays.
+    """
+
+    def __init__(self, parent: wx.Window, kits_dir, existing_names, dark: bool = True):
+        super().__init__(parent, title="Build Kit", size=(560, 460),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._kits_dir = Path(kits_dir)
+        self._existing = {str(n).lower() for n in existing_names}
+        self._kits: dict[str, dict] = {}    # kit name -> {role: [Path]}
+        if self._kits_dir.is_dir():
+            for d in sorted(p for p in self._kits_dir.iterdir() if p.is_dir()):
+                files = list_role_files(d)
+                if files:
+                    self._kits[d.name] = files
+        self._roles = list(ROLES)
+        self.choices: dict[str, Path] = {}   # role -> chosen sample Path; absent = synth
+        self.kit_name = ""                   # set on Save
+        self._sources: list[str] = []
+        self._player = _PreviewPlayer()
+        self._synth = synth_kit() if NUMPY_AVAILABLE else None
+        self._pitch_cache: dict = {}
+
+        root = wx.BoxSizer(wx.VERTICAL)
+        intro = wx.StaticText(self, label=(
+            "Build a kit part by part. Type a name, pick a part, then choose Synth (the "
+            "built-in voice) or a kit to borrow a sample from — arrow the samples to hear "
+            "each. Parts you leave on Synth keep the synth voice. Save writes a new kit "
+            "folder you can play, edit in Kit Sounds, and share."))
+        intro.Wrap(520)
+        root.Add(intro, 0, wx.ALL, 10)
+
+        namer = wx.BoxSizer(wx.HORIZONTAL)
+        namer.Add(wx.StaticText(self, label="Kit name:"), 0,
+                  wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 6)
+        self.name_field = wx.TextCtrl(self)
+        set_accessible_name(self.name_field, "New kit name")
+        namer.Add(self.name_field, 1)
+        root.Add(namer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+
+        grid = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
+        grid.AddGrowableCol(1, 1)
+        grid.Add(wx.StaticText(self, label="Part:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.part_choice = wx.Choice(self, choices=[ROLE_LABELS.get(r, r) for r in self._roles])
+        set_accessible_name(self.part_choice, "Part")
+        self.part_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_sources())
+        grid.Add(self.part_choice, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(self, label="Sound from:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.source_choice = wx.Choice(self)
+        set_accessible_name(self.source_choice, "Sound source for this part")
+        self.source_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_samples())
+        grid.Add(self.source_choice, 0, wx.EXPAND)
+        grid.Add(wx.StaticText(self, label="Sample:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.sample_choice = wx.Choice(self)
+        set_accessible_name(self.sample_choice, "Sample")
+        self.sample_choice.Bind(wx.EVT_CHOICE, self._on_sample)
+        grid.Add(self.sample_choice, 0, wx.EXPAND)
+        root.Add(grid, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        preview_btn = wx.Button(self, label="&Preview")
+        preview_btn.Bind(wx.EVT_BUTTON, lambda e: self._preview())
+        btns.Add(preview_btn, 0, wx.RIGHT, 8)
+        save_btn = wx.Button(self, wx.ID_OK, "&Save Kit")
+        save_btn.Bind(wx.EVT_BUTTON, self._on_save)
+        btns.Add(save_btn, 0, wx.RIGHT, 8)
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        cancel_btn.Bind(wx.EVT_BUTTON, self._on_cancel)
+        btns.Add(cancel_btn, 0)
+        root.Add(btns, 0, wx.ALL, 10)
+        self.SetSizer(root)
+        self.Bind(wx.EVT_CLOSE, self._on_cancel)
+        theme.apply(self, dark)
+        self.part_choice.SetSelection(0)
+        self._load_sources()
+        wx.CallAfter(self.name_field.SetFocus)
+
+    def _current_role(self) -> str | None:
+        sel = self.part_choice.GetSelection()
+        return self._roles[sel] if 0 <= sel < len(self._roles) else None
+
+    def _current_source(self) -> str | None:
+        sel = self.source_choice.GetSelection()
+        return self._sources[sel] if 0 <= sel < len(self._sources) else None
+
+    def _load_sources(self) -> None:
+        """Sources for the current part: Synth first, then every kit that HAS this part."""
+        role = self._current_role()
+        self._sources = ["Synth"] + [k for k in sorted(self._kits)
+                                     if role in self._kits[k]]
+        self.source_choice.Set(["Synth (built-in)" if s == "Synth" else s
+                                for s in self._sources])
+        chosen, sel = self.choices.get(role), 0
+        if chosen is not None:
+            for i, s in enumerate(self._sources):
+                if s != "Synth" and chosen in self._kits.get(s, {}).get(role, []):
+                    sel = i
+                    break
+        self.source_choice.SetSelection(sel)
+        self._load_samples()
+
+    def _source_files(self) -> list:
+        src = self._current_source()
+        if not src or src == "Synth":
+            return []
+        return self._kits.get(src, {}).get(self._current_role(), [])
+
+    def _load_samples(self) -> None:
+        role = self._current_role()
+        files = self._source_files()
+        self.sample_choice.Set([f"{f.stem}  ({wav_duration(f):.2f}s)"
+                                if wav_duration(f) else f.stem for f in files])
+        if not files:                        # Synth source -> this part is a synth voice
+            self.choices.pop(role, None)
+            return
+        chosen, names = self.choices.get(role), [f.name for f in files]
+        if chosen is not None and chosen in files:
+            self.sample_choice.SetSelection(names.index(chosen.name))
+        else:
+            default = default_sample_for(role, files)
+            i = names.index(default.name) if default is not None else 0
+            self.sample_choice.SetSelection(i)
+            self.choices[role] = files[i]    # choosing a kit assigns its default sample
+
+    def _on_sample(self, event: wx.CommandEvent) -> None:
+        role, files = self._current_role(), self._source_files()
+        i = self.sample_choice.GetSelection()
+        if role is None or not (0 <= i < len(files)):
+            return
+        self.choices[role] = files[i]
+        self._preview()
+
+    def _preview(self) -> None:
+        role = self._current_role()
+        if role is None or not NUMPY_AVAILABLE:
+            return
+        files = self._source_files()
+        i = self.sample_choice.GetSelection()
+        if 0 <= i < len(files):
+            try:
+                voice = load_sample(files[i])
+            except Exception:  # noqa: BLE001 - preview is best-effort
+                return
+            self._player.play_voice(voice)
+            if path_note := self._note(files[i], voice, role):
+                speech.speak(path_note, interrupt=False)
+        else:                                # Synth source: play the synth voice
+            v = self._synth.voice(role) if self._synth is not None else None
+            if v is not None:
+                self._player.play_voice(v)
+                speech.speak("synth voice", interrupt=False)
+            else:                            # FX has no synth voice — never leave it silent
+                speech.speak("No synth voice for this part; pick a sample from a kit.")
+
+    def _note(self, path, voice, role: str) -> str | None:
+        if path not in self._pitch_cache:
+            self._pitch_cache[path] = estimate_pitch(voice, RATE, role=role)
+        p = self._pitch_cache[path]
+        return p.note if (p and p.pitched) else None
+
+    def _on_save(self, event: wx.CommandEvent) -> None:
+        name = self.name_field.GetValue().strip()
+        # Reject empties, path punctuation, and relative names (. / .. / leading dot) that
+        # would escape or land on the kits directory itself.
+        if (not name or set(name) & set('\\/:*?"<>|')
+                or name.startswith(".") or name in (".", "..")):
+            wx.MessageBox("Please give the kit a plain name with no slashes, leading dot, "
+                          "or punctuation like : * ? < >.",
+                          "Build Kit", wx.OK | wx.ICON_INFORMATION, self)
+            self.name_field.SetFocus()
+            return
+        if name.lower() in self._existing or name == SYNTH_LABEL:
+            wx.MessageBox(f"A kit named '{name}' already exists. Choose another name.",
+                          "Build Kit", wx.OK | wx.ICON_INFORMATION, self)
+            self.name_field.SetFocus()
+            return
+        self.kit_name = name
+        self._player.dispose()
+        self.EndModal(wx.ID_OK)
+
+    def _on_cancel(self, event=None) -> None:
         self._player.dispose()
         self.EndModal(wx.ID_CANCEL)
 
@@ -3207,8 +3400,11 @@ class DrumsPanel(wx.Panel):
         set_accessible_name(self.kit_choice, "Drum kit")
         self.kit_choice.Bind(wx.EVT_CHOICE, self._on_kit)
         kit_row.Add(self.kit_choice, 1, wx.EXPAND | wx.RIGHT, 8)
-        # A separate button (not a dropdown entry) so arrowing through kits never
-        # springs a folder dialog on you.
+        # Separate buttons (not dropdown entries) so arrowing through kits never springs
+        # a dialog on you: build one from scratch, or import a folder.
+        self.build_button = wx.Button(self, label="&Build Kit...")
+        self.build_button.Bind(wx.EVT_BUTTON, self._on_build_kit)
+        kit_row.Add(self.build_button, 0, wx.RIGHT, 8)
         self.import_button = wx.Button(self, label="&Import Drum Kit...")
         self.import_button.Bind(wx.EVT_BUTTON, self._on_import_kit)
         kit_row.Add(self.import_button, 0)
@@ -3432,6 +3628,69 @@ class DrumsPanel(wx.Panel):
             self._announce(f"Kit '{sel}' loaded: {len(kit.roles())} parts.")
         except Exception as exc:  # noqa: BLE001
             wx.MessageBox(f"Could not load kit:\n{exc}", "Drum kit", wx.ICON_ERROR)
+
+    def _build_kit_folder(self, name: str, choices: dict) -> Path:
+        """Write a self-contained kit folder: each chosen sample copied into its part's
+        folder, and the synth voice baked to a WAV for every other part (so parts left on
+        the synth still play, and the kit stands on its own).  Returns the folder path."""
+        dest = self._kits_dir() / name
+        synth = synth_kit()
+        try:
+            for role in ROLES:
+                role_dir = dest / ROLE_FOLDER[role]
+                src = choices.get(role)
+                if src is not None:
+                    role_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, role_dir / Path(src).name)
+                else:
+                    voice = synth.voice(role)      # fx has no synth voice; skip it
+                    if voice is not None:
+                        role_dir.mkdir(parents=True, exist_ok=True)
+                        (role_dir / f"synth_{role}.wav").write_bytes(
+                            _buf_to_wav(voice, 1.0, RATE))
+        except Exception:                          # don't leave a half-written kit behind
+            shutil.rmtree(dest, ignore_errors=True)
+            raise
+        return dest
+
+    def _on_build_kit(self, event: wx.CommandEvent) -> None:
+        self._kits_dir().mkdir(parents=True, exist_ok=True)
+        dark = getattr(wx.GetTopLevelParent(self), "dark_mode", True)
+        was_playing = self._playing
+        if was_playing:
+            self.player.stop()               # previews share the audio channel
+        try:
+            dlg = KitBuilderDialog(self, self._kits_dir(), self._kit_folder_names(), dark)
+        except Exception as exc:  # noqa: BLE001 - surface, don't leave a dead button
+            wx.MessageBox(f"Could not open Build Kit:\n{exc}", "Build Kit", wx.ICON_ERROR)
+            if was_playing:
+                self._render_and_play()
+            return
+        if dlg.ShowModal() == wx.ID_OK:
+            name, choices = dlg.kit_name, dlg.choices
+            try:
+                dest = self._build_kit_folder(name, choices)
+                kit = load_kit_from_folder(dest)
+            except Exception as exc:  # noqa: BLE001
+                wx.MessageBox(f"Could not save the kit:\n{exc}", "Build Kit", wx.ICON_ERROR)
+                dlg.Destroy()
+                if was_playing:
+                    self._render_and_play()
+                return
+            self.kit_choice.Set(self._kit_choices())
+            idx = self.kit_choice.FindString(name)
+            self.kit_choice.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+            self._kit_dir = dest
+            self._set_kit(kit)
+            n = len(choices)
+            self._announce(f"Kit '{name}' built and selected: {n} sampled "
+                           f"part{'s' if n != 1 else ''}, the rest synth.")
+            was_playing = False              # a new kit is selected; don't resume the old mix
+        else:
+            self._announce("Build Kit cancelled.")
+        dlg.Destroy()
+        if was_playing:
+            self._render_and_play()
 
     def _on_import_kit(self, event: wx.CommandEvent) -> None:
         with wx.DirDialog(self, "Choose a drum-kit folder (with KICK, SNARE, ... subfolders)",

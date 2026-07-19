@@ -932,6 +932,65 @@ def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence
         dlg.Destroy()
 
 
+def test_kit_builder_builds_a_loadable_kit(frame, monkeypatch, tmp_path, _silence_audio):
+    import struct
+    import wave
+    from firehawk.ui.drumspanel import KitBuilderDialog
+    from firehawk.practice import ROLES
+    from firehawk.practice.drums import ROLE_FOLDER, load_kit_from_folder
+    d = frame.drums_page
+
+    def write_wav(p):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        w = wave.open(str(p), "wb")
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(struct.pack("<200h", *([1500] * 200)))
+        w.close()
+
+    kits = tmp_path / "kits"
+    kick_wav = kits / "MyPack" / "KICK" / "boom.wav"
+    write_wav(kick_wav)
+    monkeypatch.setattr(d, "_kits_dir", lambda: kits)
+
+    dlg = KitBuilderDialog(d, kits, ["MyPack"], dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)
+    try:
+        assert set(dlg._roles) == set(ROLES)              # every part buildable
+        dlg.part_choice.SetStringSelection("Kick")
+        dlg._load_sources()
+        assert dlg._sources[0] == "Synth"                 # defaults to synth
+        dlg.source_choice.SetStringSelection("MyPack")
+        dlg._load_samples()
+        assert "kick" in dlg.choices                      # borrowing a kit assigns its sample
+        # A blank / bad name is refused.
+        seen = []
+        monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: seen.append(a))
+        dlg.name_field.SetValue("")
+        dlg._on_save(None)
+        assert seen and not dlg.kit_name
+        # A relative name that would escape / pollute the kits dir is refused too.
+        dlg.name_field.SetValue("..")
+        dlg._on_save(None)
+        assert not dlg.kit_name
+        dlg.name_field.SetValue("My Build")
+        dlg._on_save(None)
+        assert dlg.kit_name == "My Build"
+    finally:
+        dlg.Destroy()
+
+    # The panel writes a self-contained folder: kick from the sample, every other part
+    # baked from the synth, and it loads back with those exact roles.
+    dest = d._build_kit_folder("My Build", {"kick": kick_wav})
+    assert (dest / ROLE_FOLDER["kick"] / "boom.wav").exists()
+    kit = load_kit_from_folder(dest)
+    assert "kick" in kit.roles() and "snare" in kit.roles() and "tom2" in kit.roles()
+    assert kit.voice("kick") is not None and kit.voice("tom2") is not None
+    # A failed save (a source sample vanished) leaves no half-written folder behind.
+    with pytest.raises(Exception):
+        d._build_kit_folder("Broken", {"kick": kits / "gone.wav"})
+    assert not (kits / "Broken").exists()
+
+
 def test_pattern_editor_fill_span(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import _FillOptionsDialog
     dlg = _grid_dialog(frame)
