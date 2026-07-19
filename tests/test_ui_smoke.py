@@ -76,7 +76,8 @@ def test_sequin_standalone_frame(tmp_path, monkeypatch, _silence_audio):
     f = SequinFrame()
     try:
         assert isinstance(f.drums, DrumsPanel)
-        assert f.drums.groove_choice.GetCount() == 500      # built-ins, fresh settings
+        from sequin.practice.drums import PATTERN_LIBRARY
+        assert f.drums.groove_choice.GetCount() == len(PATTERN_LIBRARY)
         assert f.GetMenuBar().GetMenuCount() == 3            # Tools, Settings, Help
         assert "Sequin" in f.GetTitle()
         # Two tabs down the left: the sequencer and a metronome.
