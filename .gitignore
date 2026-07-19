@@ -29,6 +29,9 @@ Firehalk Decompiled from Webchat/
 /Samples/*
 !/Samples/README.md
 
+# Local working notes (session thread map) — not for the public repo
+THREADS.md
+
 # OS
 Thumbs.db
 .DS_Store
