@@ -1705,9 +1705,11 @@ class SongDialog(wx.Dialog):
         av.Add(wx.StaticText(arrange, label=(
             "Up/Down select a section; Left/Right change its repeats (Left takes one "
             "away; Shift for HALF a loop); Alt+Up/Alt+Down reorder; Delete removes; "
-            "E edits it. Per-section tempo, kit, swing and fills are below — they "
-            "apply as the song plays. Alt+1, Alt+2, Alt+3 switch tabs; Alt+P plays "
-            "or stops from anywhere.")),
+            "E edits it. M marks a section for a group edit: with the cursor ON a marked "
+            "section, the Tempo, Kit, Swing and Fills controls below change every marked "
+            "section at once; on an unmarked section they change just that one. They "
+            "apply as the song plays. Alt+1, Alt+2, Alt+3 switch tabs; Alt+P plays or "
+            "stops from anywhere.")),
             0, wx.ALL, 8)
         self.list = wx.ListBox(arrange, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Song sections")
@@ -1961,9 +1963,17 @@ class SongDialog(wx.Dialog):
         if track is not None:
             track.refresh_view()
 
+    def _row_label(self, i: int, s: dict) -> str:
+        """A section's list row.  A marked section (for a bulk edit) carries a spoken,
+        visible ' — marked' so NVDA announces the mark as you arrow and low vision can
+        see it; the transient '_sel' flag never persists (dropped by normalize_section,
+        ignored by _state_key), so marking sections is not an unsaved change."""
+        mark = "  ✓ marked" if s.get("_sel") else ""
+        return f"{i + 1}. {self._section_label(s)}{mark}"
+
     def _rebuild(self) -> None:
         keep = max(0, self.list.GetSelection())
-        self.list.Set([f"{i + 1}. {self._section_label(s)}" for i, s in enumerate(self._sections)])
+        self.list.Set([self._row_label(i, s) for i, s in enumerate(self._sections)])
         if self._sections:
             self.list.SetSelection(min(keep, len(self._sections) - 1))
         # The Add tab's insert positions track the arrangement; back to the
@@ -1987,6 +1997,61 @@ class SongDialog(wx.Dialog):
         self.list.SetSelection(i)
         self._sync_section_props()
         self._refresh_visual()
+
+    def _toggle_mark(self) -> None:
+        """M marks/unmarks the current section for a bulk edit, spoken with the running
+        count so a blind user always knows the selection.  The cursor stays put."""
+        i = self._selected()
+        if i < 0:
+            return
+        s = self._sections[i]
+        on = not s.get("_sel")
+        s["_sel"] = on
+        self.list.SetString(i, self._row_label(i, s))   # refresh just this row's mark
+        self.list.SetSelection(i)                        # SetString can drop selection
+        n = self._marked_count()
+        tail = (" No sections marked; edits apply to the current one."
+                if n == 0 else
+                f" {n} section{'s' if n != 1 else ''} marked.")
+        speech.speak(f"{s.get('pattern', 'section')} {'marked' if on else 'unmarked'}.{tail}")
+
+    def _marked_count(self) -> int:
+        return sum(1 for s in self._sections if s.get("_sel"))
+
+    def _targets(self) -> list:
+        """Sections a property change affects.
+
+        The edit ALWAYS includes the section under the cursor (what the property row is
+        showing), so it can never land silently on a section you're not on: a bulk edit
+        happens only when the cursor is itself on a marked section — then it reaches every
+        marked section. On an unmarked section, marks elsewhere are ignored and only the
+        cursor section changes. (This is why a stray leftover mark can't misdirect an
+        edit made from somewhere else.)"""
+        i = self._selected()
+        if i < 0:
+            return []
+        cursor = self._sections[i]
+        marked = [s for s in self._sections if s.get("_sel")]
+        if cursor.get("_sel") and len(marked) > 1:
+            return marked
+        return [cursor]
+
+    def _apply_to_targets(self, field: str, value, one_msg: str, many_verb: str) -> None:
+        """Set *field* to *value* on every target section, keep the cursor and its
+        property row put, restart playback if live, and speak the scope (one section vs
+        'N sections') so the reach of a bulk edit is never silent."""
+        targets = self._targets()
+        if not targets:
+            return
+        for s in targets:
+            s[field] = value
+        i = self._selected()
+        self._rebuild()
+        if i >= 0:
+            self.list.SetSelection(i)
+        n = len(targets)
+        speech.speak(one_msg if n == 1 else f"{n} sections {many_verb}.")
+        self._reaudition()
 
     def _add(self) -> None:
         i = self.groove.GetSelection()
@@ -2069,6 +2134,8 @@ class SongDialog(wx.Dialog):
             self._remove()
         elif code in (ord("E"), ord("e")):
             self._edit_section()
+        elif code in (ord("M"), ord("m")):
+            self._toggle_mark()
         else:
             event.Skip()
 
@@ -2100,64 +2167,41 @@ class SongDialog(wx.Dialog):
         self.sec_fill_amt.SetSelection(idx if idx != wx.NOT_FOUND else 0)
 
     def _on_section_tempo(self, event: wx.CommandEvent) -> None:
-        i = self._selected()
-        if i < 0:
-            return
         sel = self.sec_tempo.GetStringSelection()
-        self._sections[i]["tempo"] = None if sel == "Song tempo" else int(sel)
-        self._rebuild()
-        self.list.SetSelection(i)
-        t = self._sections[i]["tempo"]
-        speech.speak(f"Section tempo {t} BPM." if t else "Section follows the song tempo.")
-        self._reaudition()
+        val = None if sel == "Song tempo" else int(sel)
+        one = f"Section tempo {val} BPM." if val else "Section follows the song tempo."
+        self._apply_to_targets("tempo", val, one,
+                               f"set to {val} BPM" if val else "follow the song tempo")
 
     def _on_section_kit(self, event: wx.CommandEvent) -> None:
-        i = self._selected()
-        if i < 0:
-            return
         sel = self.sec_kit.GetStringSelection()
-        self._sections[i]["kit"] = None if sel == "Global kit" else sel
-        self._rebuild()
-        self.list.SetSelection(i)
-        speech.speak(f"Section kit: {sel}.")
-        self._reaudition()
+        val = None if sel == "Global kit" else sel
+        self._apply_to_targets("kit", val, f"Section kit: {sel}.", f"set to kit {sel}")
 
     def _on_section_swing(self, event: wx.CommandEvent) -> None:
-        i = self._selected()
-        if i < 0:
-            return
         sel = self.sec_swing.GetSelection()
-        self._sections[i]["swing"] = None if sel <= 0 else (sel - 1) * 10
-        self._rebuild()
-        self.list.SetSelection(i)
-        sw = self._sections[i]["swing"]
-        speech.speak("Section uses its groove's own swing." if sw is None
-                     else f"Section swing {sw} percent.")
-        self._reaudition()
+        val = None if sel <= 0 else (sel - 1) * 10
+        one = ("Section uses its groove's own swing." if val is None
+               else f"Section swing {val} percent.")
+        self._apply_to_targets("swing", val, one,
+                               "use their groove's own swing" if val is None
+                               else f"set to swing {val} percent")
 
     def _on_section_fill(self, event: wx.CommandEvent) -> None:
-        i = self._selected()
-        if i < 0:
-            return
         improv = self.sec_fill.GetSelection() == 1
-        self._sections[i]["fill"] = "improv" if improv else None
-        self._rebuild()
-        self.list.SetSelection(i)
-        speech.speak("Section fills improvised: each repeat ends in a fresh fill."
-                     if improv else "Section plays as written.")
-        self._reaudition()
+        val = "improv" if improv else None
+        one = ("Section fills improvised: each repeat ends in a fresh fill."
+               if improv else "Section plays as written.")
+        self._apply_to_targets("fill", val, one,
+                               "set to improvised fills" if improv else "play as written")
 
     def _on_section_fill_amount(self, event: wx.CommandEvent) -> None:
-        i = self._selected()
-        if i < 0:
-            return
         sel = self.sec_fill_amt.GetStringSelection()
-        self._sections[i]["fill_amount"] = None if sel == "Default" else int(sel.rstrip("%"))
-        self._rebuild()
-        self.list.SetSelection(i)
-        amt = self._sections[i]["fill_amount"]
-        speech.speak("Fill amount default." if amt is None else f"Fill amount {amt} percent.")
-        self._reaudition()
+        val = None if sel == "Default" else int(sel.rstrip("%"))
+        one = "Fill amount default." if val is None else f"Fill amount {val} percent."
+        self._apply_to_targets("fill_amount", val, one,
+                               "set to default fill amount" if val is None
+                               else f"set to fill amount {val} percent")
 
     def _on_poly_tails(self, event) -> None:
         """Song-wide toggle: contained polymeter (default) vs let-lines-run-over."""
@@ -2293,8 +2337,12 @@ class SongDialog(wx.Dialog):
             self.preview_btn.SetLabel("Pre&view Groove")
 
     def _state_key(self) -> str:
-        """The current arrangement as a comparable snapshot (for unsaved-changes checks)."""
-        return repr((self._sections, self._poly_tails))
+        """The current arrangement as a comparable snapshot (for unsaved-changes checks).
+        Transient UI-only keys (the "_sel" bulk-edit checkmarks) are excluded — checking
+        sections to edit them together is not a change to the song."""
+        clean = [{k: v for k, v in s.items() if not k.startswith("_")}
+                 for s in self._sections]
+        return repr((clean, self._poly_tails))
 
     def _unsaved(self) -> bool:
         return bool(self._sections) and self._state_key() != self._baseline

@@ -816,6 +816,49 @@ def test_song_builder_insert_position(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_song_builder_mark_and_bulk_edit(frame, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        for name in ("Rock", "Funk", "Rock"):
+            dlg.groove.SetStringSelection(name)
+            dlg._add()
+        # Marking is a transient selection, NOT an edit to the song.
+        before = dlg._state_key()
+        dlg.list.SetSelection(0)
+        dlg._toggle_mark()
+        dlg.list.SetSelection(2)
+        dlg._toggle_mark()                          # cursor ends on the last marked one
+        assert dlg._marked_count() == 2
+        assert dlg._sections[0].get("_sel") and dlg._sections[2].get("_sel")
+        assert dlg._state_key() == before          # marks don't dirty the song
+        assert "marked" in dlg.list.GetString(0) and "marked" in dlg.list.GetString(2)
+        # Cursor is ON a marked section (2): the edit reaches every marked section.
+        assert dlg._sections[2].get("_sel")
+        dlg.sec_tempo.SetStringSelection("150")
+        dlg._on_section_tempo(None)
+        assert [s.get("tempo") for s in dlg._sections] == [150, None, 150]
+        # Safety (the reviewed footgun): with the cursor on an UNMARKED section, marks
+        # elsewhere are ignored — the edit lands ONLY on the cursor section, never
+        # silently on a marked one you're not looking at.
+        dlg.list.SetSelection(1)                    # unmarked middle section
+        dlg.sec_swing.SetSelection(1 + 5)           # 50%
+        dlg._on_section_swing(None)
+        assert [s.get("swing") for s in dlg._sections] == [None, 50, None]
+        assert dlg._sections[0].get("swing") is None and dlg._sections[2].get("swing") is None
+        # A lone mark (not under the cursor) is likewise ignored — edit hits the cursor.
+        dlg.list.SetSelection(2)
+        dlg._toggle_mark()                          # only section 0 stays marked now
+        assert dlg._marked_count() == 1
+        dlg.list.SetSelection(1)                    # cursor on unmarked section 1
+        dlg.sec_kit.SetStringSelection(dlg.sec_kit.GetString(1))
+        dlg._on_section_kit(None)
+        assert dlg._sections[1].get("kit") and dlg._sections[0].get("kit") is None
+    finally:
+        dlg.Destroy()
+
+
 def test_song_builder_unsaved_close_guard(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import SongDialog
     from firehawk.practice.patternstore import delete_song, make_song_record, save_song

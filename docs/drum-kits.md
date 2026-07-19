@@ -268,6 +268,17 @@ The **Song Builder** has three tabs so it doesn't crowd:
     downbeat), so a 4-repeat verse gets four different turnarounds. Fill amount makes
     them longer and busier.
 
+  **Bulk edit — mark several sections with M.** Press **M** on a section to mark it (spoken,
+  with the running count; the row reads "marked"). To put sections 3 and 4 — but not the
+  others — at 140 BPM: mark both, then **with the cursor on one of them** set Tempo once,
+  instead of tab-down-set, tab-down-set. The change reaches **every marked section** (mark
+  any combination — 3 and 4, or 5 and 9). The edit always includes the section you're on,
+  so if the cursor is on an **unmarked** section the controls change just that one and any
+  marks elsewhere are ignored — a stray leftover mark can never quietly redirect an edit
+  to a section you can't see. Repeats, reorder, Delete and Edit always act on the section
+  under the cursor, never the whole marked set — no accidental bulk deletes. Press **M**
+  again to unmark.
+
   **Keyboard, from anywhere in the dialog:** **Alt+1 / Alt+2 / Alt+3** jump straight to
   the Arrange / Add / My Songs tabs (spoken, focus landing on the tab's list), **Alt+P**
   plays or stops the song, and **Alt+V** previews the Add tab's groove — all **without

@@ -249,6 +249,13 @@ bridge, and so on. It has three tabs:
   per-section 0–100% override of the groove's own feel), and **Fills** + **Fill amount**
   (**Improvised** ends every repeat in a freshly generated fill; amount makes them longer
   and busier). All of them apply **live while the song plays**.
+  **Bulk edit with M:** press **M** to mark a section (spoken, with the running count).
+  To change several at once — say sections 3 and 4 both need 140 BPM — mark them, then
+  **with the cursor on one of the marked sections** set the Tempo once; the change hits
+  **every marked section**. On an **unmarked** section those controls change just that
+  one, and any marks elsewhere are ignored — so a stray mark can never redirect an edit
+  to a section you're not on. Repeats, reorder, Delete and Edit always act on the section
+  under the cursor. M again unmarks.
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
   the **Groove**, set Repeats (plus starting Swing/Fills), press **Add Section**.
   **Insert at** chooses where the new section lands — the end of the song (the default)
