@@ -203,6 +203,9 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   before), **drag** (two — a ruff), **roll** (the stroke rebounds across its step, a
   ratchet), then back to plain. Spoken, marked on the visual track, saved with the
   pattern; grace strokes follow the hit's tuning, volume, dynamics, feel, and chance.
+- **Ctrl+Z / Ctrl+Y** — **undo / redo** any edit (steps, dynamics, chances, ornaments,
+  tuning, volume, chokes, line length, meter changes, add/remove line, sample picks,
+  Load Groove), up to 100 steps. Spoken with what changed ("Undone: step change").
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).

@@ -348,6 +348,8 @@ class PatternEditorDialog(wx.Dialog):
         self._dark = dark
         self._auditioning = False
         self._cursor = 0
+        self._undo: list = []   # (what, snapshot) pairs; Ctrl+Z / Ctrl+Y
+        self._redo: list = []
         self._preview = _PreviewPlayer()
         self._pitch_cache: dict = {}   # (id, kit, sample) -> estimated base Pitch
         self._line_kit = build_line_kit(self.lines, self._kits_dir, base_kit=self._base_kit)
@@ -360,6 +362,7 @@ class PatternEditorDialog(wx.Dialog):
             "Left/Right brackets tune the line (Shift for an octave); "
             "comma and period set its volume; C sets a choke group; number keys set "
             "a hit's chance (0 = always); F cycles flam, drag, roll; "
+            "Ctrl+Z / Ctrl+Y undo and redo; "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -604,6 +607,13 @@ class PatternEditorDialog(wx.Dialog):
         | _CHANCE_KEYS | _ORNAMENT_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        # Undo/redo work dialog-wide (no text controls here to want Ctrl+Z natively).
+        if event.ControlDown() and event.GetKeyCode() in (ord("Z"), ord("z")):
+            self._redo_last() if event.ShiftDown() else self._undo_last()
+            return
+        if event.ControlDown() and event.GetKeyCode() in (ord("Y"), ord("y")):
+            self._redo_last()
+            return
         # Route grid keys only while the grid list has focus; everything else (Tab,
         # Escape, arrows inside the meter dropdowns, button activation) stays native.
         if wx.Window.FindFocus() is self.grid_list and event.GetKeyCode() in self._GRID_KEYS:
@@ -675,7 +685,9 @@ class PatternEditorDialog(wx.Dialog):
                 "hit rolls fresh on every pass, so the loop varies itself. "
                 "F cycles a hit's ornament: flam, one soft grace stroke before it; "
                 "drag, two; roll, the stroke rebounds across its step; then back to "
-                "plain. Enter picks this line's sample or None. "
+                "plain. Control Z undoes the last edit, up to one hundred steps; "
+                "Control Y or Control Shift Z redoes. "
+                "Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
                 "and Cancel.")
@@ -687,6 +699,7 @@ class PatternEditorDialog(wx.Dialog):
         line = self._current_line()
         if line is None:
             return
+        self._push_undo("length change")
         new_len = max(1, min(POLY_MAX_LINE, self._line_len() + delta))
         self.pattern.set_line_length(line["id"], new_len)
         self._cursor = min(self._cursor, new_len - 1)
@@ -716,6 +729,8 @@ class PatternEditorDialog(wx.Dialog):
             return
         cur = clamp_tune(line.get("tune"))
         new = max(-MAX_TUNE, min(MAX_TUNE, cur + delta))
+        if new != cur:
+            self._push_undo("tuning change")
         line["tune"] = new
         self._rebuild_line_kit()
         self._refresh_row(line)
@@ -735,6 +750,8 @@ class PatternEditorDialog(wx.Dialog):
             return
         cur = clamp_gain_db(line.get("gain_db"))
         new = max(MIN_GAIN_DB, min(MAX_GAIN_DB, cur + delta))
+        if new != cur:
+            self._push_undo("volume change")
         line["gain_db"] = new
         self._rebuild_line_kit()
         self._refresh_row(line)
@@ -753,6 +770,7 @@ class PatternEditorDialog(wx.Dialog):
             return
         cur = clamp_choke(line.get("choke"))
         new = 0 if cur >= MAX_CHOKE_GROUP else cur + 1
+        self._push_undo("choke change")
         line["choke"] = new
         self._refresh_row(line)
         if new == 0:
@@ -769,6 +787,7 @@ class PatternEditorDialog(wx.Dialog):
         line = self._current_line()
         if line is None:
             return
+        self._push_undo("step change")
         line_id = line["id"]
         steps = set(self.pattern.hits.get(line_id, []))
         if self._cursor not in steps:
@@ -807,6 +826,7 @@ class PatternEditorDialog(wx.Dialog):
         if self._cursor not in self.pattern.hits.get(line_id, []):
             speech.speak("No hit at this step. Space places one first.")
             return
+        self._push_undo("chance change")
         self.pattern.set_chance(line_id, self._cursor, percent or None)
         self._refresh_row(line)
         what = f"{percent} percent chance" if percent else "always plays"
@@ -824,6 +844,7 @@ class PatternEditorDialog(wx.Dialog):
         if self._cursor not in self.pattern.hits.get(line_id, []):
             speech.speak("No hit at this step. Space places one first.")
             return
+        self._push_undo("ornament change")
         order = [None] + list(ORNAMENTS)
         cur = self.pattern.ornament_of(line_id, self._cursor)
         new = order[(order.index(cur) + 1) % len(order)]
@@ -887,6 +908,7 @@ class PatternEditorDialog(wx.Dialog):
                 speech.speak(f"{kit_name} has no {ROLE_LABELS[role]} samples; "
                              "using the synth sound.")
                 kit_name = None
+        self._push_undo("add line")
         line = make_line(role, kit_name, sample, existing=self.lines)
         self.lines.append(line)
         self._rebuild_line_kit()
@@ -901,10 +923,13 @@ class PatternEditorDialog(wx.Dialog):
         if len(self.lines) <= 1:
             speech.speak("Cannot remove the last line.")
             return
+        self._push_undo("remove line")
         self.lines.remove(line)
         self.pattern.hits.pop(line["id"], None)
         self.pattern.levels.pop(line["id"], None)
         self.pattern.lengths.pop(line["id"], None)
+        self.pattern.probs.pop(line["id"], None)      # or a later line reusing this
+        self.pattern.ornaments.pop(line["id"], None)  # id would inherit stale state
         self.silenced.discard(line["id"])
         self._rebuild_line_kit()
         self._rebuild_rows()
@@ -928,6 +953,7 @@ class PatternEditorDialog(wx.Dialog):
                                     f"{line['label']} sample", options)
         theme.apply(dlg, self._dark)
         if dlg.ShowModal() == wx.ID_OK:
+            self._push_undo("sample change")
             choice = options[dlg.GetSelection()]
             if choice.startswith("None"):
                 self.silenced.add(line["id"])
@@ -978,6 +1004,7 @@ class PatternEditorDialog(wx.Dialog):
             return
         sel = dlg.GetSelection()
         dlg.Destroy()
+        self._push_undo("load groove")
         if sel < len(PATTERN_LIBRARY):
             pattern = PATTERN_LIBRARY[sel].copy()
             self.lines = lines_for_kit(pattern, self._line_kit, None)
@@ -992,6 +1019,7 @@ class PatternEditorDialog(wx.Dialog):
         self._cursor = 0
         self._rebuild_line_kit()
         self._sync_meter_controls()
+        self._sync_feel_controls()  # the loaded groove carries its own saved feel
         self._rebuild_rows()
         if self.lines:
             self.grid_list.SetSelection(0)
@@ -1044,6 +1072,10 @@ class PatternEditorDialog(wx.Dialog):
         self.bars_choice.SetSelection(bars - 1)
         # Non-destructive: bar-count changes tile; grid/beat changes remap hits by
         # musical time so nothing drops or drifts out of time (see retime_pattern).
+        p = self.pattern
+        if (beats, unit, grid, bars) != (p.beats_per_bar, p.beat_unit,
+                                         p.steps_per_beat, p.bars):
+            self._push_undo("meter change")
         grid_changed = grid != self.pattern.steps_per_beat
         was_poly = self.pattern.is_polymetric()
         self.pattern = retime_pattern(self.pattern, beats, unit, grid, bars)
@@ -1118,6 +1150,54 @@ class PatternEditorDialog(wx.Dialog):
         sw = self.swing_slider.GetValue()
         self.swing_label.SetLabel(f"Swing: {sw}%" + (" (straight)" if sw == 0 else ""))
         self.humanize_label.SetLabel(f"Humanize: {self.humanize_slider.GetValue()}%")
+
+    def _sync_feel_controls(self) -> None:
+        """Point the feel sliders at the current pattern's saved swing/humanize —
+        needed whenever the pattern object is replaced (load groove, undo)."""
+        self.swing_slider.SetValue(int(round(self.pattern.swing * 100)))
+        self.humanize_slider.SetValue(int(round(self.pattern.humanize * 100)))
+        self._sync_feel_labels()
+
+    # -- undo / redo -----------------------------------------------------------
+
+    _UNDO_DEPTH = 100
+
+    def _snapshot(self):
+        return (self.pattern.copy(), [dict(ln) for ln in self.lines], set(self.silenced))
+
+    def _push_undo(self, what: str) -> None:
+        """Call at the START of every mutation, with a spoken-friendly description."""
+        self._undo.append((what, self._snapshot()))
+        if len(self._undo) > self._UNDO_DEPTH:
+            self._undo.pop(0)
+        self._redo.clear()
+
+    def _restore(self, snap) -> None:
+        self.pattern, self.lines, self.silenced = snap
+        self._rebuild_line_kit()
+        self._sync_meter_controls()
+        self._sync_feel_controls()
+        self._rebuild_rows()
+        self._cursor = max(0, min(self._cursor, self._line_len() - 1))
+        self._reaudition()
+
+    def _undo_last(self) -> None:
+        if not self._undo:
+            speech.speak("Nothing to undo.")
+            return
+        what, snap = self._undo.pop()
+        self._redo.append((what, self._snapshot()))
+        self._restore(snap)
+        speech.speak(f"Undone: {what}.")
+
+    def _redo_last(self) -> None:
+        if not self._redo:
+            speech.speak("Nothing to redo.")
+            return
+        what, snap = self._redo.pop()
+        self._undo.append((what, self._snapshot()))
+        self._restore(snap)
+        speech.speak(f"Redone: {what}.")
 
     def _on_save(self, event: wx.CommandEvent) -> None:
         self._stop_audition()

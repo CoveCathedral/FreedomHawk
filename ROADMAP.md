@@ -151,7 +151,8 @@ All screen-reader-first, native controls only.
   looping; songs re-roll every repeat; through transforms/saves/round-trips).
   **Ornaments** (F cycles flam/drag/roll on a hit — grace strokes and ratchets that follow
   the hit's tuning/volume/dynamics/feel/chance; spoken, ticked on the visual track,
-  saved/shared). **Hybrid
+  saved/shared). **Editor undo/redo** (Ctrl+Z / Ctrl+Y, 100 steps, every edit incl.
+  meter changes and Load Groove, spoken with what changed). **Hybrid
   kits** (Kit Sounds' From-kit dropdown sources any part from any sibling kit, or fills a
   part the kit never shipped; stored as "Kit/file.wav" in the kit's choices). **Per-line
   polymeter**
@@ -181,9 +182,9 @@ All screen-reader-first, native controls only.
   milestone / when a contributor joins.
   Song Builder **Preview Groove** (audition a groove in the Add tab before adding it);
   **F5** plays/stops the current tab from anywhere (spoken).
-  **Planned next (Kaylea approved):** editor undo/redo · audition-step & speak-rhythm
-  keys · **MIDI controller input** (craft beats from a keyboard). Long-term: extract
-  Sequin to its own repo (engine already firehawk-independent).
+  **Planned next (Kaylea approved):** audition-step & speak-rhythm keys · **MIDI
+  controller input** (craft beats from a keyboard). Long-term: extract Sequin to its
+  own repo (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully

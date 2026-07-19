@@ -79,6 +79,7 @@ Beat 3.2, hit"):
 | **C** | Cycle this line's **choke group** (none → 1 → … → none). Lines in the same group cut each other's ring — see below. |
 | **Number keys** (`1`–`9`, `0`) | Set the cursor hit's **play chance**: 1–9 is 10–90%, 0 makes it always play. A "sometimes" hit **rolls fresh on every pass**, so the groove varies itself — see below. Spoken ("Hi-hat 50 percent chance, Beat 2.3"). |
 | **F** | Cycle the cursor hit's **ornament**: plain → **flam** (one soft grace stroke just before) → **drag** (two — a ruff) → **roll** (the stroke rebounds across its step, a ratchet) → plain. Spoken ("Snare flam, Beat 2"). See below. |
+| **Ctrl+Z / Ctrl+Y** | **Undo / redo** any edit — steps, dynamics, chances, ornaments, tuning, volume, choke, line length, meter changes, adding/removing lines, sample picks, even a whole Load Groove — up to 100 steps, from anywhere in the editor. Spoken with what changed ("Undone: meter change"). |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 

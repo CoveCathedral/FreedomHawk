@@ -387,6 +387,42 @@ def test_grid_f_cycles_ornaments(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_editor_undo_redo(frame, _silence_audio):
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        idx = _line_index(dlg, "kick")
+        dlg.grid_list.SetSelection(idx)
+        # A step edit undoes and redoes, spoken with what it was.
+        dlg._cursor = 1
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert 1 in dlg.pattern.hits["kick"]
+        dlg._undo_last()
+        assert 1 not in dlg.pattern.hits["kick"] and "Undone: step change" in spoken[-1]
+        dlg._redo_last()
+        assert 1 in dlg.pattern.hits["kick"] and "Redone: step change" in spoken[-1]
+        # A line-property edit (tuning) undoes too, and the kit is rebuilt.
+        dlg._change_tune(2)
+        assert dlg.lines[idx]["tune"] == 2
+        dlg._undo_last()
+        assert not dlg.lines[idx].get("tune")
+        # A meter change restores the whole shape.
+        steps_before = dlg.pattern.steps
+        dlg.bars_choice.SetSelection(1)  # 2 bars
+        dlg._on_meter(None)
+        assert dlg.pattern.steps == steps_before * 2
+        dlg._undo_last()
+        assert dlg.pattern.steps == steps_before
+        # A new edit clears the redo branch; an empty stack says so.
+        dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert not dlg._redo
+        for _ in range(len(dlg._undo) + 1):
+            dlg._undo_last()
+        assert "Nothing to undo" in spoken[-1]
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_polymeter_line_length(frame, _silence_audio):
     # Minus/plus set a line's own loop length; the cursor stays inside that line's cycle.
     spoken = _silence_audio
