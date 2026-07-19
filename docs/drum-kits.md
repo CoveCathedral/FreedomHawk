@@ -329,11 +329,25 @@ Because the surface is much bigger, the cursor moves by **musical unit**:
 | **Home / End** | the start / end of the whole song |
 | **Up / Down** | choose a part |
 
-Every move is spoken with where you are — e.g. *"Chorus, repeat 2, bar 1, beat 3. Snare:
-hit"*. **Space** cycles the hit under the cursor (on → accent → ghost → off) and **F**
-cycles its ornament (flam → drag → roll), exactly as in the Pattern Editor. **F1** lists
-the keys.
+Every move is spoken with where you are — e.g. *"Section 2, Chorus, repeat 2, bar 1, beat
+3. Snare: hit"* (the section number leads, so two same-named sections are never confused).
+**Space** cycles the hit under the cursor (on → accent → ghost → off) and **F** cycles its
+ornament (flam → drag → roll), exactly as in the Pattern Editor. **F1** lists the keys.
 
+- **Markers and fills** — press **`[`** to set a start marker and **`]`** an end marker
+  (a span across all parts, spoken as you set them). **`L`** drops an **improvised fill**
+  across that span — or across the whole section if nothing's marked. It asks two things:
+  a **complexity** slider (how busy — a sparse tom-and-snare run up to a dense roll) and
+  **"let the fill spill past the end"** (off by default, so the fill **resolves on the
+  bar** with a crash on the next downbeat; on, it stays busy right through). Fills use the
+  full kit's toms, descending from Tom 1 to the floor tom as the run goes.
+- **`T`** opens a tempo dialog for the section under the cursor — set a per-section BPM
+  (or "Song tempo" to follow the song) without leaving the grid.
+- **Hearing it** — three ways to listen: **Play section** (button) loops the section
+  you're on, the working audition while you edit; **Play song** plays the whole
+  arrangement through once from the top; **Play from here** (or the **`P`** key) plays the
+  whole song from the cursor position, so you can drop in right where you're working
+  (**Shift+P** plays from the top). Press **`P`** again to stop.
 - **Add Line…** brings any part of the full kit into the song (a floor tom, a cowbell, a
   second crash), ready to place across any section.
 - **Edit scope** — by default an edit changes the section's pattern **everywhere it

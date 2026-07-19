@@ -273,8 +273,10 @@ bridge, and so on. It has three tabs:
   Shift = beat, Ctrl = bar, Ctrl+Shift or Page Up/Down = section, Home/End = the song's
   ends, Up/Down = parts), each move spoken as "section, repeat, bar, beat". Space cycles a
   hit, F its ornament, Add Line brings in any kit part, and "Edit this repeat only" varies
-  a single repeat (it splits off as its own section). See the drum-kits guide for the full
-  key list, or press F1 in the editor.
+  a single repeat (it splits off as its own section). **`[`** and **`]`** mark a span and
+  **`L`** drops an improvised fill across it (complexity slider; "spill past the end" off
+  by default, so it resolves on the bar); **`T`** sets the section's tempo. See the
+  drum-kits guide for the full key list, or press F1 in the editor.
 
 **Play** (at the bottom) renders the whole song end to end (gapless, sections can even be in
 different meters) and **plays it through once, then ends**.

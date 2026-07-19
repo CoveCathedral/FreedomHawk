@@ -581,6 +581,45 @@ def test_song_polymeter_tails_toggle_restores_lcm():
         p.loop_seconds(120), abs=0.001)
 
 
+def test_fill_span_replaces_span_and_resolves():
+    p = drums.Pattern("t", 16, 4,
+                      {"kick": [0, 4, 8, 12], "snare": [4, 12],
+                       "hihat": list(range(16))}, 4, 4, 1)
+    drums.fill_span(p, 8, 16, complexity=0.8, spill=False, seed=3)
+    # The melodic parts in the span are cleared and replaced.
+    assert all(not (8 <= s < 16) for s in p.hits.get("hihat", []))
+    assert any(r in p.hits and any(8 <= s < 16 for s in p.hits[r]) for r in drums.TOM_ROLES)
+    # Kick outside the span is preserved; a resolving crash lands on the loop start.
+    assert 0 in p.hits["kick"] and 4 in p.hits["kick"]
+    assert 0 in p.hits.get("crash", [])
+    # Deterministic with a seed.
+    a = drums.Pattern("t", 16, 4, {"snare": [4]}, 4, 4, 1)
+    b = a.copy()
+    drums.fill_span(a, 0, 8, 0.6, False, seed=9)
+    drums.fill_span(b, 0, 8, 0.6, False, seed=9)
+    assert a.hits == b.hits and a.levels == b.levels
+
+
+def test_fill_span_respects_polymeter_line_length():
+    # A fill must not place a hit past a line's own loop length — it would be dropped on
+    # save (lines_to_pattern filters out-of-length steps), a silent divergence.
+    p = drums.Pattern("t", 16, 4, {"tom1": [0]}, 4, 4, 1)
+    p.set_line_length("tom1", 8)                 # tom1 loops every 8 steps
+    drums.fill_span(p, 8, 16, complexity=1.0, spill=False, seed=2)
+    assert all(s < 8 for s in p.hits.get("tom1", []))   # nothing placed beyond its length
+
+
+def test_fill_span_spill_places_no_resolving_crash():
+    p = drums.Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1)
+    drums.fill_span(p, 0, 16, complexity=1.0, spill=True, seed=1)
+    # Spilling: the run fills through and no resolving crash is forced at the boundary.
+    assert 0 not in p.hits.get("crash", [])
+    # An empty / degenerate span is a no-op.
+    q = drums.Pattern("t", 16, 4, {"snare": [0]}, 4, 4, 1)
+    drums.fill_span(q, 8, 8, 0.5, False, seed=1)
+    assert q.hits == {"snare": [0]}
+
+
 def test_tempo_ramp_sequence():
     assert drums.tempo_ramp(100, 120, 5) == [100, 105, 110, 115, 120]
     assert drums.tempo_ramp(100, 118, 5) == [100, 105, 110, 115, 118]   # last jump clamps

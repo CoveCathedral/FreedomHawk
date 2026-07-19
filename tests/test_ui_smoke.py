@@ -932,6 +932,105 @@ def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence
         dlg.Destroy()
 
 
+def test_song_beat_editor_markers_fill_and_tempo(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
+    from firehawk.practice.patternstore import normalize_section
+    d = frame.drums_page
+    sections = [normalize_section({"pattern": "Rock", "repeats": 2})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)
+    try:
+        # Markers: [ then ] across a span (steps 8..12 of the pattern).
+        dlg._pos = 8
+        dlg._set_mark("start")
+        dlg._pos = 12
+        dlg._set_mark("end")
+        assert dlg._mark_a == (0, 8) and dlg._mark_b == (0, 12)
+        # L fills that span — stub the options dialog to complexity 100, no spill.
+        monkeypatch.setattr(_FillOptionsDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(_FillOptionsDialog, "values", lambda self: (100, False))
+        monkeypatch.setattr(_FillOptionsDialog, "Destroy", lambda self: None)
+        dlg._do_fill()
+        assert dlg._entries[0]["dirty"]
+        # A no-spill fill resolves with a crash on the downbeat at the span's end (13).
+        assert 13 in dlg._entries[0]["pattern"].hits.get("crash", [])
+        # Clearing the markers, L fills the whole section — a descending tom appears.
+        dlg._mark_a = dlg._mark_b = None
+        dlg._do_fill()
+        pat = dlg._entries[0]["pattern"]
+        assert any(r in pat.hits for r in ("tom1", "tom2", "tom", "tom4", "tom5", "snare"))
+        # T sets the section tempo — stub the choice dialog to pick 150.
+        monkeypatch.setattr(wx.SingleChoiceDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(wx.SingleChoiceDialog, "GetStringSelection", lambda self: "150")
+        dlg._do_tempo()
+        assert dlg._entries[0]["section"]["tempo"] == 150
+        dlg._on_save()
+        assert dlg.result_sections[0]["tempo"] == 150
+        assert dlg.result_sections[0].get("inline") is not None   # the fill was saved
+    finally:
+        dlg.Destroy()
+
+
+def test_song_beat_editor_fill_honors_this_repeat_scope(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
+    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    d = frame.drums_page
+    sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)
+    monkeypatch.setattr(_FillOptionsDialog, "ShowModal", lambda self: wx.ID_OK)
+    monkeypatch.setattr(_FillOptionsDialog, "values", lambda self: (80, False))
+    monkeypatch.setattr(_FillOptionsDialog, "Destroy", lambda self: None)
+    try:
+        rock = resolve_section_pattern(sections[0], d._settings)
+        # "Edit this repeat only" + L must split the repeat off, not overwrite all three.
+        dlg.scope_cb.SetValue(True)
+        dlg._pos = rock.steps          # repeat 2
+        dlg._do_fill()
+        assert len(dlg._entries) == 3          # before x1, variant x1, after x1 — split happened
+        assert [e["section"].get("repeats") for e in dlg._entries] == [1, 1, 1]
+        # The fill (a resolving crash lands in the variant) is only on the split-off repeat.
+        assert "crash" in dlg._entries[1]["pattern"].hits
+        assert "crash" not in dlg._entries[0]["pattern"].hits
+    finally:
+        dlg.Destroy()
+
+
+def test_song_beat_editor_play_modes(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog
+    from firehawk.practice.patternstore import normalize_section
+    d = frame.drums_page
+    if not d.player.available:
+        pytest.skip("no audio device available")
+    sections = [normalize_section({"pattern": "Rock", "repeats": 2}),
+                normalize_section({"pattern": "Funk", "repeats": 1})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    calls = []
+    monkeypatch.setattr(d.player, "play", lambda wav, loop=True: calls.append((len(wav), loop)))
+    monkeypatch.setattr(d.player, "stop", lambda: None)
+    monkeypatch.setattr(d, "stop", lambda: None)
+    try:
+        # Play the whole song: once (loop=False), from the top.
+        dlg._play_song(from_here=False)
+        assert dlg._playing and calls[-1][1] is False and dlg._end_timer is not None
+        whole_len = calls[-1][0]
+        dlg._stop()
+        assert not dlg._playing and dlg._end_timer is None
+        # Play from the cursor: a later position yields a shorter clip than the whole song.
+        dlg._pos = dlg._grid.total_steps - 2      # near the end
+        dlg._play_song(from_here=True)
+        assert dlg._playing and calls[-1][1] is False
+        assert calls[-1][0] < whole_len           # from-here is shorter than the whole song
+        dlg._song_ended()
+        assert not dlg._playing
+        # Play section loops.
+        dlg._play_section()
+        assert dlg._playing and calls[-1][1] is True
+        dlg._stop()
+    finally:
+        dlg.Destroy()
+
+
 def test_song_beat_editor_edit_then_split_keeps_earlier_edits(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import SongBeatEditorDialog
     from firehawk.practice.patternstore import normalize_section, resolve_section_pattern

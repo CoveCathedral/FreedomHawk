@@ -1291,6 +1291,80 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
                    ornaments=ornaments)
 
 
+def _clear_span(p: Pattern, roles, start: int, end: int) -> None:
+    """Drop every hit (and its dynamics/chance/ornament) of *roles* in ``[start, end)``."""
+    for role in roles:
+        if role in p.hits:
+            p.hits[role] = [s for s in p.hits[role] if not (start <= s < end)]
+            if not p.hits[role]:
+                del p.hits[role]
+        for store in (p.levels, p.probs, p.ornaments):
+            if role in store:
+                store[role] = {s: v for s, v in store[role].items()
+                               if not (start <= s < end)}
+                if not store[role]:
+                    del store[role]
+
+
+def fill_span(p: Pattern, start: int, end: int, complexity: float = 0.5,
+              spill: bool = False, seed: int | None = None) -> Pattern:
+    """Carve an improvised drum fill across steps ``[start, end)`` of *p*, in place.
+
+    The melodic parts (snares, toms, hats, perc) in the span are cleared and replaced with
+    a **descending tom-and-snare run** drawn from the full kit — Tom 1 down to the floor
+    tom as the fill progresses — with the density set by *complexity* (0..1).  The first
+    stroke is accented so the fill announces itself.
+
+    Unless *spill* is set, the fill **resolves on the bar**: the final beat of the span is
+    left open and a crash (with a kick) lands on the downbeat at ``end`` (wrapping to the
+    loop start if the span runs to the pattern's end).  With *spill* on, the run stays busy
+    right through the span and no resolving crash is placed — the fill spills past the end.
+
+    A *seed* makes the fill deterministic; ``None`` improvises fresh each call.  Returns *p*.
+    """
+    steps = p.steps
+    start = max(0, min(steps, int(start)))
+    end = max(start, min(steps, int(end)))
+    if end <= start:
+        return p
+    rng = random.Random(seed)
+    complexity = max(0.0, min(1.0, complexity))
+    beat_len = _metrical_beat_len(p)
+    _clear_span(p, _FILL_CLEAR_ROLES + ("crash", "crash2", "splash", "china", "ride",
+                                        "ridebell"), start, end)
+    run_end = end if spill else max(start + 1, end - beat_len)   # reserve a beat to resolve
+    density = 0.5 + 0.45 * complexity
+    toms = TOM_ROLES                                            # high -> low
+    span = max(1, run_end - start)
+    first = True
+    for i, s in enumerate(range(start, run_end)):
+        if rng.random() >= density:
+            continue
+        # Descend the toms across the span; sprinkle snare so it isn't only toms.
+        if rng.random() < 0.4:
+            role = "snare"
+        else:
+            role = toms[min(len(toms) - 1, int(i / span * len(toms)))]
+        if s >= p.line_length(role):     # never place past a polymetric line's own length
+            continue                     # (it would be silently dropped on save)
+        p.hits.setdefault(role, []).append(s)
+        if first:
+            p.set_level(role, s, LEVEL_ACCENT)
+            first = False
+        elif rng.random() < 0.25 + 0.25 * complexity:
+            p.set_level(role, s, LEVEL_GHOST)
+    if not spill:
+        crash_at = end if end < steps else 0
+        if crash_at < p.line_length("crash"):
+            p.hits.setdefault("crash", []).append(crash_at)
+            p.set_level("crash", crash_at, LEVEL_ACCENT)
+        if crash_at < p.line_length("kick"):
+            p.hits.setdefault("kick", []).append(crash_at)
+    for role in list(p.hits):
+        p.hits[role] = sorted(set(p.hits[role]))
+    return p
+
+
 # -- rendering (the compensator) -------------------------------------------------
 
 def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
@@ -1583,6 +1657,14 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
     (LCM) loop instead — the pre-containment behavior, where an extended line pushes
     everything after it.
     """
+    buf = render_song_buffer(sections, rate, swing, humanize, contain_polymeter)
+    return _buf_to_wav(buf, volume, rate)
+
+
+def render_song_buffer(sections, rate: int = RATE, swing: float | None = None,
+                       humanize: float | None = None, contain_polymeter: bool = True):
+    """The raw float32 mix of a song (before peak-limit/volume) — see :func:`render_song`
+    for the semantics.  Exposed so callers can slice it (e.g. play from a cursor position)."""
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     parts = []
@@ -1617,8 +1699,7 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
         if frac:
             tail = mix()
             parts.append(tail[: max(1, int(round(len(tail) * frac)))])
-    whole = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
-    return _buf_to_wav(whole, volume, rate)
+    return np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
 
 
 def section_seconds(pattern: Pattern, repeats, bpm: float,

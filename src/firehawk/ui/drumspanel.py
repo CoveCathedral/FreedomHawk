@@ -53,9 +53,12 @@ from ..practice.drums import (
     ORNAMENTS,
     RATE,
     _auto_hat_choke,
+    _buf_to_wav,
+    fill_span,
     load_sample,
     render_count_in,
     render_song,
+    render_song_buffer,
     section_seconds,
     song_seconds,
     split_kit_choice,
@@ -2521,6 +2524,35 @@ class SongDialog(wx.Dialog):
         self.EndModal(wx.ID_CANCEL)
 
 
+class _FillOptionsDialog(wx.Dialog):
+    """A tiny accessible prompt for an improvised fill: how busy, and may it spill past
+    the end.  A slider (never a spin control) and a checkbox — both read cleanly to NVDA."""
+
+    def __init__(self, parent: wx.Window, complexity: int, spill: bool, dark: bool):
+        super().__init__(parent, title="Fill", style=wx.DEFAULT_DIALOG_STYLE)
+        root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(wx.StaticText(self, label="Complexity (how busy the fill is):"),
+                 0, wx.ALL, 8)
+        self.slider = wx.Slider(self, value=complexity, minValue=0, maxValue=100,
+                                style=wx.SL_HORIZONTAL)
+        set_accessible_name(self.slider, "Fill complexity",
+                            value_fn=lambda: f"{self.slider.GetValue()} percent")
+        root.Add(self.slider, 0, wx.EXPAND | wx.ALL, 8)
+        self.spill = wx.CheckBox(self, label="Let the fill spill past the end "
+                                             "(off = it resolves on the bar)")
+        self.spill.SetValue(spill)
+        root.Add(self.spill, 0, wx.ALL, 8)
+        btns = self.CreateButtonSizer(wx.OK | wx.CANCEL)
+        if btns:
+            root.Add(btns, 0, wx.EXPAND | wx.ALL, 8)
+        self.SetSizerAndFit(root)
+        theme.apply(self, dark)
+        wx.CallAfter(self.slider.SetFocus)
+
+    def values(self) -> tuple[int, bool]:
+        return self.slider.GetValue(), self.spill.GetValue()
+
+
 class SongBeatEditorDialog(wx.Dialog):
     """Edit a whole song on one spoken tracker grid — the section editor's grid expanded
     across every section and repeat, for fine beat-by-beat control of an arrangement.
@@ -2548,6 +2580,11 @@ class SongBeatEditorDialog(wx.Dialog):
         # Editable working copy: one entry per playable section, each with a private
         # pattern copy so edits don't touch the shared library groove until Save.
         self._did_split = False            # a split happened during the current edit
+        self._mark_a = None                # ( section, step ) span markers, set by [ and ]
+        self._mark_b = None
+        self._fill_complexity = 50         # remembered between fills
+        self._fill_spill = False
+        self._end_timer = None             # ends a once-through song playback
         self._entries = []
         for s in sections:
             p = resolve_section_pattern(s, self._settings)
@@ -2610,7 +2647,8 @@ class SongBeatEditorDialog(wx.Dialog):
             "One grid across the whole song. Left/Right move a step, Shift a beat, Ctrl a "
             "bar, Ctrl+Shift or Page Up/Down a section; Home/End jump to the song's ends; "
             "Up/Down pick a part. Space cycles a hit (on, accent, ghost, off); F cycles its "
-            "ornament. F1 lists the keys.")),
+            "ornament. [ and ] mark a span, L drops a fill across it (or the whole "
+            "section), T sets the section's tempo. F1 lists the keys.")),
             0, wx.ALL, 8)
         self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.grid_list, "Song beat grid, parts")
@@ -2624,9 +2662,15 @@ class SongBeatEditorDialog(wx.Dialog):
         add_btn = wx.Button(self, label="&Add Line...")
         add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add_line())
         btns.Add(add_btn, 0, wx.RIGHT, 8)
-        self.play_btn = wx.Button(self, label="&Play section")
-        self.play_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_play())
+        self.play_btn = wx.Button(self, label="Play &section")
+        self.play_btn.Bind(wx.EVT_BUTTON, lambda e: self._play_section())
         btns.Add(self.play_btn, 0, wx.RIGHT, 8)
+        song_btn = wx.Button(self, label="Play s&ong")
+        song_btn.Bind(wx.EVT_BUTTON, lambda e: self._play_song(from_here=False))
+        btns.Add(song_btn, 0, wx.RIGHT, 8)
+        here_btn = wx.Button(self, label="Play from &here")
+        here_btn.Bind(wx.EVT_BUTTON, lambda e: self._play_song(from_here=True))
+        btns.Add(here_btn, 0, wx.RIGHT, 8)
         save_btn = wx.Button(self, wx.ID_OK, "&Save")
         save_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_save())
         btns.Add(save_btn, 0, wx.RIGHT, 8)
@@ -2721,6 +2765,7 @@ class SongBeatEditorDialog(wx.Dialog):
                                 "name": sd.get("pattern") or entry["name"],
                                 "dirty": False})
         self._entries[si:si + 1] = new_entries
+        self._mark_a = self._mark_b = None    # entry indices shifted; markers are now stale
         self._reload_grid()
         self._rebuild_rows()
         # Land on the split-off variant's start plus the same in-pattern step.
@@ -2793,6 +2838,75 @@ class SongBeatEditorDialog(wx.Dialog):
         speech.speak(f"{prefix}{ROLE_LABELS.get(part, part)} {new or 'plain stroke'}, "
                      f"{self._grid.describe(self._pos)}")
 
+    # -- markers, fills, tempo ------------------------------------------------
+
+    def _set_mark(self, which: str) -> None:
+        """[ and ] drop a start / end marker across all parts (a span for a fill)."""
+        loc = self._grid.locate(self._pos)
+        mark = (loc.section, loc.step_in_pattern)
+        if which == "start":
+            self._mark_a = mark
+        else:
+            self._mark_b = mark
+        speech.speak(f"{'Start' if which == 'start' else 'End'} marker at "
+                     f"{self._grid.describe(self._pos)}.")
+
+    def _fill_range(self, entry_section: int, pattern: Pattern) -> tuple[int, int, str]:
+        """The step range a fill covers: the marked span when both markers sit in this
+        section, otherwise the whole section."""
+        a, b = self._mark_a, self._mark_b
+        if a and b and a[0] == entry_section and b[0] == entry_section:
+            lo, hi = sorted((a[1], b[1]))
+            return lo, min(pattern.steps, hi + 1), "the marked span"
+        return 0, pattern.steps, "the section"
+
+    def _do_fill(self) -> None:
+        """L drops an improvised fill across the marked span (or the whole section),
+        after asking for its complexity and whether it may spill past the end."""
+        loc = self._grid.locate(self._pos)
+        entry = self._entries[loc.section]
+        dlg = _FillOptionsDialog(self, self._fill_complexity, self._fill_spill, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            speech.speak("Fill cancelled.")
+            return
+        self._fill_complexity, self._fill_spill = dlg.values()
+        dlg.Destroy()
+        start, end, where = self._fill_range(loc.section, entry["pattern"])
+        # Honour "Edit this repeat only" like Space/F do — split the repeat off first so
+        # the fill lands on that repeat alone instead of overwriting every repeat.
+        self._did_split = False
+        if self.scope_cb.GetValue() and entry["section"].get("repeats", 1) > 1:
+            entry = self._split_here(loc)
+        entry["dirty"] = True
+        fill_span(entry["pattern"], start, end, self._fill_complexity / 100.0,
+                  self._fill_spill)
+        self._mark_a = self._mark_b = None       # markers consumed; don't let them go stale
+        self._reload_grid()
+        self._rebuild_rows()
+        prefix = "Repeat split off as its own section. " if self._did_split else ""
+        spill = "spilling past the end" if self._fill_spill else "resolving on the bar"
+        speech.speak(f"{prefix}Fill dropped across {where} of {entry['name']}, "
+                     f"complexity {self._fill_complexity} percent, {spill}.")
+
+    def _do_tempo(self) -> None:
+        """T sets the tempo of the section under the cursor (the marked section)."""
+        loc = self._grid.locate(self._pos)
+        entry = self._entries[loc.section]
+        choices = ["Song tempo"] + [str(t) for t in range(TEMPO_MIN, TEMPO_MAX + 1, 5)]
+        dlg = wx.SingleChoiceDialog(self, f"Tempo for {entry['name']}:",
+                                    "Section tempo", choices)
+        theme.apply(dlg, self._dark)
+        cur = entry["section"].get("tempo")
+        if cur and str(cur) in choices:
+            dlg.SetSelection(choices.index(str(cur)))
+        if dlg.ShowModal() == wx.ID_OK:
+            sel = dlg.GetStringSelection()
+            entry["section"]["tempo"] = None if sel == "Song tempo" else int(sel)
+            speech.speak(f"{entry['name']} tempo "
+                         + ("follows the song." if sel == "Song tempo" else f"{sel} BPM."))
+        dlg.Destroy()
+
     def _add_line(self) -> None:
         available = [r for r in ROLES if r not in self._parts]
         if not available:
@@ -2812,13 +2926,40 @@ class SongBeatEditorDialog(wx.Dialog):
 
     # -- playback & save ------------------------------------------------------
 
-    def _on_play(self) -> None:
+    def _resolved(self) -> list:
+        """[(pattern, repeats, bpm, kit)] for the whole song at its current edit state."""
+        bpm0 = self._panel.bpm
+        return [(e["pattern"], e["section"].get("repeats", 1),
+                 e["section"].get("tempo") or bpm0, self._panel._kit)
+                for e in self._entries]
+
+    def _cursor_seconds(self) -> float:
+        """Playing time from the song's start up to the cursor (per-section tempos)."""
+        loc = self._grid.locate(self._pos)
+        secs = 0.0
+        for i, e in enumerate(self._entries):
+            bpm = e["section"].get("tempo") or self._panel.bpm
+            if i < loc.section:
+                secs += section_seconds(e["pattern"], e["section"].get("repeats", 1), bpm)
+            elif i == loc.section:
+                step_offset = self._pos - self._grid.section_start(i)
+                secs += step_offset * e["pattern"].step_seconds(bpm)
+                break
+        return secs
+
+    def _audio_ok(self) -> bool:
+        if not self._panel.player.available or self._panel._kit is None:
+            speech.speak("Audio isn't available on this system.")
+            return False
+        return True
+
+    def _play_section(self) -> None:
+        """Loop the section under the cursor — the working audition while you edit."""
         if self._playing:
             self._stop()
             speech.speak("Stopped.")
             return
-        if not self._panel.player.available or self._panel._kit is None:
-            speech.speak("Audio isn't available on this system.")
+        if not self._audio_ok():
             return
         entry = self._entry_at(self._pos)
         bpm = entry["section"].get("tempo") or self._panel.bpm
@@ -2831,11 +2972,44 @@ class SongBeatEditorDialog(wx.Dialog):
         self.play_btn.SetLabel("&Stop section")
         speech.speak(f"Playing {entry['name']}.")
 
+    def _play_song(self, from_here: bool) -> None:
+        """Play the whole song once — from the top, or from the cursor position."""
+        if self._playing:
+            self._stop()
+            speech.speak("Stopped.")
+            return
+        if not self._audio_ok():
+            return
+        vol = self._panel.volume_slider.GetValue() / 100.0
+        buf = render_song_buffer(self._resolved())
+        if from_here:
+            offset = max(0, min(len(buf) - 1, int(self._cursor_seconds() * RATE)))
+            buf = buf[offset:]
+        wav = _buf_to_wav(buf, vol, RATE)
+        self._panel.stop()
+        self._panel.player.play(wav, loop=False)      # a song plays through once
+        self._playing = True
+        self.play_btn.SetLabel("&Stop")
+        secs = len(buf) / RATE
+        where = (f"from {self._grid.describe(self._pos)}" if from_here else "from the top")
+        self._end_timer = wx.CallLater(int(secs * 1000) + 300, self._song_ended)
+        speech.speak(f"Playing the song {where}.")
+
+    def _song_ended(self) -> None:
+        self._end_timer = None
+        if self._playing:
+            self._playing = False
+            self.play_btn.SetLabel("Play &section")
+            speech.speak("Song finished.")
+
     def _stop(self) -> None:
+        if getattr(self, "_end_timer", None) is not None:
+            self._end_timer.Stop()
+            self._end_timer = None
         if self._playing:
             self._panel.player.stop()
             self._playing = False
-            self.play_btn.SetLabel("&Play section")
+            self.play_btn.SetLabel("Play &section")
 
     def _on_save(self) -> None:
         out = []
@@ -2866,6 +3040,11 @@ class SongBeatEditorDialog(wx.Dialog):
             "Up/Down — choose a part\n"
             "Space — cycle a hit: on, accent, ghost, off\n"
             "F — cycle the hit's ornament: flam, drag, roll\n"
+            "[ and ] — set the start / end marker of a span\n"
+            "L — drop an improvised fill across the span (or the whole section)\n"
+            "T — set the tempo of the section under the cursor\n"
+            "P — play the whole song from the cursor (Shift+P from the top); P again stops\n"
+            "Play section button — loop the section you're on while you edit\n"
             "Add Line — add any part of the kit to the song\n"
             "'Edit this repeat only' checkbox — edit one repeat as its own variation\n"
             "Save / Cancel — keep or discard your edits",
@@ -2900,6 +3079,16 @@ class SongBeatEditorDialog(wx.Dialog):
             self._toggle()
         elif code in (ord("F"), ord("f")):
             self._cycle_ornament()
+        elif code in (ord("["), ord("{")):
+            self._set_mark("start")
+        elif code in (ord("]"), ord("}")):
+            self._set_mark("end")
+        elif code in (ord("L"), ord("l")):
+            self._do_fill()
+        elif code in (ord("T"), ord("t")):
+            self._do_tempo()
+        elif code in (ord("P"), ord("p")):
+            self._play_song(from_here=not shift)   # P from the cursor, Shift+P from the top
         elif code == wx.WXK_F1:
             self._keys_help()
         else:
