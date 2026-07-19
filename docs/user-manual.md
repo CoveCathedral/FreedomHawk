@@ -140,7 +140,10 @@ this is the tour. Sequin also **runs on its own** — double-click **`Sequin.bat
 - **Kit** — the built-in synth kit (works with no files), plus any drum-kit folders in
   your `Samples` folder. **Import Drum Kit…** loads a kit folder from anywhere.
 - **Kit Sounds…** — choose which sample each part uses, by ear: pick a part, arrow
-  through its samples (each plays as you land on it), Save.
+  through its samples (each plays as you land on it), Save. The **From kit** dropdown
+  sources a part from **any other kit** — build a hybrid (this kit's kick, another's
+  snare), or borrow a part this kit doesn't have (an 808 for a kit that shipped none).
+  Hybrids save with the kit and come back whenever you select it.
 - **Category** — filter the grooves by genre family, including categories you create.
 - **Groove** — 500 built-in patterns spanning ~60 genres (rock, metal, funk, hip-hop,
   trap, house, techno, drum & bass, reggae, latin, jazz, odd meters, and many more) plus

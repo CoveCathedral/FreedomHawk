@@ -687,3 +687,35 @@ def test_load_kit_honors_choices(tmp_path):
     assert len(kit.voice("kick")) == 2000  # the chosen file, not the first
     kit2 = drums.load_kit_from_folder(tmp_path, choices={"kick": "nonexistent.wav"})
     assert len(kit2.voice("kick")) == 1000  # bad choice falls back to the default
+
+
+def test_split_kit_choice():
+    assert drums.split_kit_choice(None) == (None, None)
+    assert drums.split_kit_choice("kick.wav") == (None, "kick.wav")          # this kit
+    assert drums.split_kit_choice("Other Kit/x.wav") == ("Other Kit", "x.wav")
+
+
+def test_load_kit_borrows_parts_from_sibling_kits(tmp_path):
+    # Two kits side by side, like the real Samples/ folder.
+    a_kick = tmp_path / "Kit A" / "KICK"
+    a_kick.mkdir(parents=True)
+    _write_int16_wav(a_kick / "own.wav", np.full(1000, 0.1))
+    b_kick = tmp_path / "Kit B" / "KICK"
+    b_kick.mkdir(parents=True)
+    _write_int16_wav(b_kick / "borrowed.wav", np.full(3000, 0.1))
+    b_808 = tmp_path / "Kit B" / "808"
+    b_808.mkdir()
+    _write_int16_wav(b_808 / "sub.wav", np.full(4000, 0.1))
+
+    # A hybrid: Kit A, but the kick comes from Kit B.
+    kit = drums.load_kit_from_folder(tmp_path / "Kit A",
+                                     choices={"kick": "Kit B/borrowed.wav"})
+    assert len(kit.voice("kick")) == 3000
+    # A borrowed part can fill a gap Kit A has no folder for at all (the 808).
+    kit = drums.load_kit_from_folder(
+        tmp_path / "Kit A", choices={"808": "Kit B/sub.wav"})
+    assert len(kit.voice("808")) == 4000
+    # A broken borrow (kit or file gone) falls back to this kit's own default.
+    kit = drums.load_kit_from_folder(tmp_path / "Kit A",
+                                     choices={"kick": "Kit Gone/x.wav"})
+    assert len(kit.voice("kick")) == 1000

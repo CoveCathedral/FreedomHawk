@@ -919,18 +919,75 @@ def test_kit_sounds_dialog(frame, tmp_path):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
         w.writeframes(pcm.tobytes()); w.close()
 
-    (tmp_path / "KICK").mkdir()
-    write_wav(tmp_path / "KICK" / "a.wav", 4000)
-    write_wav(tmp_path / "KICK" / "b.wav", 4000)
-    dlg = KitSoundsDialog(frame.drums_page, tmp_path, {}, dark=True)
+    # A dedicated kits folder: the dialog scans the kit's SIBLINGS for cross-kit
+    # sourcing, so the parent directory must be controlled, not pytest's shared root.
+    home = tmp_path / "kits" / "My Kit"
+    (home / "KICK").mkdir(parents=True)
+    write_wav(home / "KICK" / "a.wav", 4000)
+    write_wav(home / "KICK" / "b.wav", 4000)
+    dlg = KitSoundsDialog(frame.drums_page, home, {}, dark=True)
     try:
         assert dlg.part_choice.GetCount() == 1  # just Kick
+        assert dlg.source_choice.GetCount() == 1  # no siblings -> just this kit
+        assert "This kit" in dlg.source_choice.GetString(0)
         assert dlg.sample_choice.GetCount() == 2
         # Selecting a sample records the choice for that part.
         dlg.sample_choice.SetSelection(1)
         dlg._on_sample(None)
         assert dlg.choices["kick"] == "b.wav"
         dlg._stop_preview()
+    finally:
+        dlg.Destroy()
+
+
+def test_kit_sounds_cross_kit_sources(frame, tmp_path):
+    import numpy as np
+    import wave as wave_mod
+    from firehawk.ui.drumspanel import KitSoundsDialog
+
+    def write_wav(path, n):
+        pcm = (0.3 * np.sin(np.arange(n) / 5) * 32767).astype("<i2")
+        w = wave_mod.open(str(path), "wb")
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100)
+        w.writeframes(pcm.tobytes()); w.close()
+
+    kits = tmp_path / "kits"
+    home = kits / "Kit A"
+    (home / "KICK").mkdir(parents=True)
+    write_wav(home / "KICK" / "own.wav", 4000)
+    other = kits / "Kit B"
+    (other / "KICK").mkdir(parents=True)
+    write_wav(other / "KICK" / "loan.wav", 4000)
+    (other / "808").mkdir()
+    write_wav(other / "808" / "sub.wav", 4000)
+
+    dlg = KitSoundsDialog(frame.drums_page, home, {}, dark=True)
+    try:
+        # The Part list is the union: Kick (both kits) plus 808 (only Kit B has one).
+        assert dlg.part_choice.GetCount() == 2
+        # Kick can be sourced from either kit; borrowing stores "Kit/file.wav".
+        assert dlg._sources == ["Kit A", "Kit B"]
+        dlg.source_choice.SetSelection(1)
+        dlg._load_samples()
+        dlg.sample_choice.SetSelection(0)
+        dlg._on_sample(None)
+        assert dlg.choices["kick"] == "Kit B/loan.wav"
+        # The 808 part exists only in Kit B, so that's its only source (no dead end).
+        dlg.part_choice.SetSelection(1)
+        dlg._load_sources()
+        assert dlg._sources == ["Kit B"]
+        dlg.sample_choice.SetSelection(0)
+        dlg._on_sample(None)
+        assert dlg.choices["808"] == "Kit B/sub.wav"
+        # Reopening with saved hybrid choices lands source AND sample back where saved.
+        dlg._stop_preview()
+        dlg2 = KitSoundsDialog(frame.drums_page, home, dict(dlg.choices), dark=True)
+        try:
+            assert dlg2._current_source() == "Kit B"
+            files = dlg2._source_files()
+            assert files[dlg2.sample_choice.GetSelection()].name == "loan.wav"
+        finally:
+            dlg2.Destroy()
     finally:
         dlg.Destroy()
 

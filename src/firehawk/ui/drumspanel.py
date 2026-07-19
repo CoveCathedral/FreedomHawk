@@ -55,6 +55,7 @@ from ..practice.drums import (
     render_count_in,
     render_song,
     song_seconds,
+    split_kit_choice,
     tempo_ramp,
 )
 from ..practice.patternstore import (
@@ -1048,20 +1049,35 @@ class PatternEditorDialog(wx.Dialog):
 
 
 class KitSoundsDialog(wx.Dialog):
-    """Choose which sample each drum part uses, by ear.
+    """Choose which sample each drum part uses, by ear — from this kit or any other.
 
-    Part dropdown -> Sample dropdown (that part's folder).  Arrowing through the
-    samples previews each one, so you audition with the arrow keys alone; Save
-    remembers the choices for this kit.
+    Part dropdown -> From-kit dropdown -> Sample dropdown.  Arrowing through the
+    samples previews each one, so you audition with the arrow keys alone.  Sourcing a
+    part from a different kit builds a **hybrid kit** (this kit's kick, another's
+    snare), stored with this kit's choices; a borrowed part can even fill a gap this
+    kit never shipped (a kit with no 808 folder can take one from a neighbour).
+    Save remembers the choices for this kit.
     """
 
     def __init__(self, parent: wx.Window, kit_dir: Path, choices: dict[str, str],
                  dark: bool = True):
-        super().__init__(parent, title="Kit Sounds", size=(560, 360),
+        super().__init__(parent, title="Kit Sounds", size=(560, 400),
                          style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._files = list_role_files(kit_dir)
-        self._roles = [r for r in ROLES if r in self._files]
-        self.choices = dict(choices)  # role -> filename; edited in place, read on Save
+        self._home = Path(kit_dir).name
+        # Sibling kits (same parent folder — exactly where the loader resolves borrowed
+        # parts from), listed by role so every part can be sourced from any of them.
+        self._kit_files: dict[str, dict] = {self._home: list_role_files(kit_dir)}
+        parent_dir = Path(kit_dir).parent
+        if parent_dir.is_dir():
+            for d in sorted(p for p in parent_dir.iterdir() if p.is_dir()):
+                if d.name != self._home:
+                    files = list_role_files(d)
+                    if files:
+                        self._kit_files[d.name] = files
+        all_roles = {r for files in self._kit_files.values() for r in files}
+        self._roles = [r for r in ROLES if r in all_roles]
+        self.choices = dict(choices)  # role -> "file.wav" | "Kit/file.wav"; read on Save
+        self._sources: list[str] = []  # kit names aligned with source_choice's entries
         self._player = _PreviewPlayer()
         self._pitch_cache: dict = {}   # file path -> estimated Pitch (lazy)
 
@@ -1069,8 +1085,10 @@ class KitSoundsDialog(wx.Dialog):
         intro = wx.StaticText(self, label=(
             "Pick a part, then arrow through its samples — each one plays as you land on "
             "it (lengths are shown; names are the kit maker's own). Tuned sounds speak "
-            "their musical key after the name, so you can match 808s and toms. Save keeps "
-            "your choices for this kit; Cancel or Escape leaves it unchanged."))
+            "their musical key after the name, so you can match 808s and toms. From kit "
+            "sources the part from ANOTHER kit — mix kits into a hybrid, or borrow a part "
+            "this kit doesn't have. Save keeps your choices for this kit; Cancel or "
+            "Escape leaves it unchanged."))
         intro.Wrap(520)
         root.Add(intro, 0, wx.ALL, 10)
 
@@ -1079,8 +1097,14 @@ class KitSoundsDialog(wx.Dialog):
         grid.Add(wx.StaticText(self, label="Part:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.part_choice = wx.Choice(self, choices=[ROLE_LABELS.get(r, r) for r in self._roles])
         set_accessible_name(self.part_choice, "Part")
-        self.part_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_samples())
+        self.part_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_sources())
         grid.Add(self.part_choice, 0, wx.EXPAND)
+
+        grid.Add(wx.StaticText(self, label="From kit:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.source_choice = wx.Choice(self)
+        set_accessible_name(self.source_choice, "Kit to take this part from")
+        self.source_choice.Bind(wx.EVT_CHOICE, lambda e: self._load_samples())
+        grid.Add(self.source_choice, 0, wx.EXPAND)
 
         grid.Add(wx.StaticText(self, label="Sample:"), 0, wx.ALIGN_CENTER_VERTICAL)
         self.sample_choice = wx.Choice(self)
@@ -1107,7 +1131,7 @@ class KitSoundsDialog(wx.Dialog):
         theme.apply(self, dark)
         if self._roles:
             self.part_choice.SetSelection(0)
-            self._load_samples()
+            self._load_sources()
         # Announce the dialog by focusing its primary control on open.
         wx.CallAfter(self.part_choice.SetFocus)
 
@@ -1117,35 +1141,67 @@ class KitSoundsDialog(wx.Dialog):
         sel = self.part_choice.GetSelection()
         return self._roles[sel] if 0 <= sel < len(self._roles) else None
 
+    def _current_source(self) -> str | None:
+        sel = self.source_choice.GetSelection()
+        return self._sources[sel] if 0 <= sel < len(self._sources) else None
+
+    def _source_files(self) -> list:
+        return self._kit_files.get(self._current_source() or "", {}).get(
+            self._current_role(), [])
+
+    def _load_sources(self) -> None:
+        """Rebuild the From-kit list for the current part: only kits that HAVE the part
+        (no silent dead ends), this kit first, the saved choice's source selected."""
+        role = self._current_role()
+        self._sources = [k for k in ([self._home] + sorted(
+            n for n in self._kit_files if n != self._home))
+            if role in self._kit_files[k]]
+        self.source_choice.Set(
+            [f"This kit ({k})" if k == self._home else k for k in self._sources])
+        src_kit, _name = split_kit_choice(self.choices.get(role))
+        wanted = src_kit if src_kit in self._sources else (
+            self._home if self._home in self._sources else
+            (self._sources[0] if self._sources else None))
+        if wanted is not None:
+            self.source_choice.SetSelection(self._sources.index(wanted))
+        self._load_samples()
+
+    def _choice_value(self, filename: str) -> str:
+        """How a pick is stored: plain for this kit, 'Kit/file.wav' when borrowed."""
+        source = self._current_source()
+        return filename if source == self._home else f"{source}/{filename}"
+
     def _load_samples(self) -> None:
         role = self._current_role()
-        files = self._files.get(role, [])
+        files = self._source_files()
         labels = []
         for f in files:
             dur = wav_duration(f)
             labels.append(f"{f.stem}  ({dur:.2f}s)" if dur else f.stem)
         self.sample_choice.Set(labels)
-        current = self.choices.get(role)
-        default = default_sample_for(role, files)
+        src_kit, current = split_kit_choice(self.choices.get(role))
         names = [f.name for f in files]
-        if current in names:
+        source = self._current_source()
+        if (src_kit or self._home) == source and current in names:
             self.sample_choice.SetSelection(names.index(current))
-        elif default is not None:
-            self.sample_choice.SetSelection(names.index(default.name))
+        else:
+            default = default_sample_for(role, files)
+            if default is not None:
+                self.sample_choice.SetSelection(names.index(default.name))
 
     def _on_sample(self, event: wx.CommandEvent) -> None:
         role = self._current_role()
-        files = self._files.get(role, [])
+        files = self._source_files()
         i = self.sample_choice.GetSelection()
         if role is None or not (0 <= i < len(files)):
             return
-        self.choices[role] = files[i].name
+        self.choices[role] = self._choice_value(files[i].name)
         self._preview()
 
     def _preview(self) -> None:
         """Play the selected sample once, and speak its musical key if it has one."""
         role = self._current_role()
-        files = self._files.get(role, [])
+        files = self._source_files()
         i = self.sample_choice.GetSelection()
         if not NUMPY_AVAILABLE or role is None or not (0 <= i < len(files)):
             return

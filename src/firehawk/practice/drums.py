@@ -379,22 +379,46 @@ def default_sample_for(role: str, files: list):
     return files[0]
 
 
+def split_kit_choice(value: str | None) -> tuple[str | None, str | None]:
+    """Split a Kit Sounds choice into (source kit or None, filename).
+
+    A plain filename means this kit's own folders (the historical format); a
+    ``"Other Kit/file.wav"`` value borrows the file from a sibling kit's same part —
+    that's how hybrid kits are stored.  Folder names can't contain a slash on
+    Windows, so the separator is unambiguous.
+    """
+    if not value:
+        return None, None
+    if "/" in value:
+        kit, _, name = value.partition("/")
+        return (kit or None), (name or None)
+    return None, value
+
+
 def load_kit_from_folder(path, rate: int = RATE, choices: dict | None = None) -> DrumKit:
     """Load one sample per recognised ROLE subfolder (or role-named files).
 
     *choices* optionally maps role -> filename (basename) to use instead of the
     automatic pick, so users can select each part's sample (see the Kit Sounds
-    dialog).  Unknown or missing filenames fall back to the automatic pick.
+    dialog).  A ``"Other Kit/file.wav"`` value borrows that part from a SIBLING kit
+    folder (same parent directory) — a hybrid kit — and can even add a part this kit
+    has no folder for.  Unknown or missing entries fall back to the automatic pick.
     """
     p = Path(path)
+    choices = choices or {}
     voices: dict = {}
+
+    def sibling_files(kit_name: str, role: str) -> list:
+        return list_role_files(p.parent / kit_name).get(role, [])
+
     for role, wavs in list_role_files(p).items():
         ordered = list(wavs)
-        chosen_name = (choices or {}).get(role)
-        chosen = next((w for w in ordered if w.name == chosen_name), None)
+        src_kit, chosen_name = split_kit_choice(choices.get(role))
+        pool = sibling_files(src_kit, role) if src_kit else ordered
+        chosen = next((w for w in pool if w.name == chosen_name), None)
         if chosen is None:
             chosen = default_sample_for(role, ordered)
-        if chosen is not None:  # try the pick first, then the rest as fallbacks
+        if chosen is not None:  # try the pick first, then this kit's own as fallbacks
             ordered = [chosen] + [w for w in ordered if w != chosen]
         for wav in ordered:
             try:
@@ -402,6 +426,20 @@ def load_kit_from_folder(path, rate: int = RATE, choices: dict | None = None) ->
                 break
             except Exception:  # noqa: BLE001 - skip unreadable files
                 continue
+    # Borrowed parts this kit has no folder of its own for (say, an 808 from another
+    # kit dropped into a kit that never shipped one).
+    for role, value in choices.items():
+        if role in voices:
+            continue
+        src_kit, chosen_name = split_kit_choice(value)
+        if not src_kit:
+            continue
+        chosen = next((w for w in sibling_files(src_kit, role) if w.name == chosen_name), None)
+        if chosen is not None:
+            try:
+                voices[role] = load_sample(chosen, rate)
+            except Exception:  # noqa: BLE001
+                pass
     if not voices and p.is_dir():  # flat folder of role-named files (kick.wav, snare.wav)
         for wav in sorted(p.glob("*.wav")):
             role = folder_to_role(wav.stem)

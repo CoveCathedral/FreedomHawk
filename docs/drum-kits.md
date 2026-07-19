@@ -288,14 +288,31 @@ to pick sounds**: it sets which sample a part uses **for the whole kit at once**
 each drum line. Every part follows this globally.
 
 1. Pick a **Part** (Kick, Snare, Perc, …).
-2. Arrow through its **Samples** — **each one plays as you land on it**, with its length
+2. Pick the **From kit** — normally "This kit", but you can source the part from **any
+   other kit you have** (see hybrid kits below).
+3. Arrow through its **Samples** — **each one plays as you land on it**, with its length
    shown. **Preview** replays the current one.
-3. **Save** remembers your choices for that kit (they persist across restarts and
+4. **Save** remembers your choices for that kit (they persist across restarts and
    reloads); **Cancel** or Escape leaves everything as it was.
 
 When you haven't chosen, the app picks a sensible default: for drum parts it skips
 vocal-named files (AHH, HEY, OOH, …) and anything too long to be a hit, taking the first
 short, drum-like sample instead. 808 and FX parts are allowed to ring.
+
+### Hybrid kits (mixing kits in Kit Sounds)
+
+The **From kit** dropdown lists every kit that has the selected part, so a kit can borrow
+parts from its neighbours: keep this kit's kick, take the snare from your cassette kit and
+the hats from an 808 pack. Two things worth knowing:
+
+- **Gaps get filled.** The Part list includes parts this kit never shipped — a kit with no
+  808 folder can still get an 808, sourced from any kit that has one. Only kits that
+  actually have the part are offered, so there are no empty dead ends.
+- **It saves with this kit.** The borrowed picks are stored as part of this kit's Kit
+  Sounds choices, so the hybrid comes back whenever you select the kit — in the main tab,
+  in the editor's follow-the-kit lines, and in songs that name it as a section kit. If a
+  borrowed kit is later renamed or removed, that part quietly falls back to this kit's own
+  default rather than breaking.
 
 ## Bringing your own kit
 
