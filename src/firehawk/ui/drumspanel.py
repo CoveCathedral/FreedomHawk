@@ -50,6 +50,7 @@ from ..practice import (
 )
 from ..practice.drums import (
     RATE,
+    _auto_hat_choke,
     load_sample,
     render_count_in,
     render_song,
@@ -82,6 +83,7 @@ from ..practice.patternstore import (
     record_to_pattern,
     rename_category,
     rename_pattern,
+    resolve_pattern_by_name,
     resolve_section_pattern,
     save_song,
     save_user_pattern,
@@ -1337,6 +1339,7 @@ class SongDialog(wx.Dialog):
         self._sections: list[dict] = []   # [{pattern, repeats, tempo, kit, inline}, ...]
         self._kit_cache: dict = {}         # kit name -> DrumKit (loaded once per song)
         self._playing = False
+        self._previewing = False           # auditioning a groove in the Add tab
         self._end_timer: wx.CallLater | None = None
         try:
             self._build()
@@ -1432,9 +1435,14 @@ class SongDialog(wx.Dialog):
         self.repeats.SetSelection(0)
         grid.Add(self.repeats, 0)
         ap.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
+        add_row = wx.BoxSizer(wx.HORIZONTAL)
         add_btn = wx.Button(addp, label="&Add Section")
         add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add())
-        ap.Add(add_btn, 0, wx.ALL, 10)
+        add_row.Add(add_btn, 0, wx.RIGHT, 8)
+        self.preview_btn = wx.Button(addp, label="Pre&view Groove")
+        self.preview_btn.Bind(wx.EVT_BUTTON, lambda e: self._preview_groove())
+        add_row.Add(self.preview_btn, 0)
+        ap.Add(add_row, 0, wx.ALL, 10)
         addp.SetSizer(ap)
         self.notebook.AddPage(addp, "Add")
         self._rebuild_grooves()
@@ -1565,6 +1573,7 @@ class SongDialog(wx.Dialog):
             return
         name = self.groove.GetString(i)
         r = self.repeats.GetSelection() + 1
+        self._stop_preview()             # done auditioning; it's a section now
         self._sections.append(normalize_section({"pattern": name, "repeats": r}))
         self._rebuild()
         self.list.SetSelection(len(self._sections) - 1)
@@ -1711,6 +1720,7 @@ class SongDialog(wx.Dialog):
         if wav is None:
             speech.speak("Add a section first.")
             return
+        self._stop_preview()             # a song takes over the shared audio channel
         self._panel.stop()               # stop the main loop; the audio channel is shared
         self._panel.player.play(wav, loop=False)   # a song plays through once and ends
         self._playing = True
@@ -1737,6 +1747,7 @@ class SongDialog(wx.Dialog):
             speech.speak("Song finished.")
 
     def _stop(self) -> None:
+        self._stop_preview()
         if self._end_timer is not None:
             self._end_timer.Stop()
             self._end_timer = None
@@ -1748,6 +1759,42 @@ class SongDialog(wx.Dialog):
     def _reaudition(self) -> None:
         if self._playing:                # a live edit while playing: restart from the top
             self._start_playback(announce=False)
+
+    def _preview_groove(self) -> None:
+        """Audition the groove selected in the Add tab — looping — so you can hear it
+        before committing it as a section.  Toggles: press again (or Add Section) to stop."""
+        if self._previewing:
+            self._stop_preview()
+            speech.speak("Preview stopped.")
+            return
+        i = self.groove.GetSelection()
+        if i < 0:
+            speech.speak("Pick a groove to preview.")
+            return
+        name = self.groove.GetString(i)
+        pattern = resolve_pattern_by_name(name, self._settings)
+        if pattern is None:
+            speech.speak("That groove is missing.")
+            return
+        kit = self._panel._kit
+        if kit is None or not self._panel.player.available:
+            speech.speak("Audio isn't available on this system.")
+            return
+        self._stop()                     # the audio channel is shared with the song
+        self._panel.stop()               # and with the main tab's loop
+        wav = render_loop(pattern, kit, self._panel.bpm,
+                          volume=self._panel.volume_slider.GetValue() / 100.0,
+                          choke_groups=_auto_hat_choke(pattern))
+        self._panel.player.play(wav, loop=True)
+        self._previewing = True
+        self.preview_btn.SetLabel("Stop Pre&view")
+        speech.speak(f"Previewing {name}. Add Section keeps it.")
+
+    def _stop_preview(self) -> None:
+        if self._previewing:
+            self._panel.player.stop()
+            self._previewing = False
+            self.preview_btn.SetLabel("Pre&view Groove")
 
     def _save(self) -> None:
         if not self._sections:

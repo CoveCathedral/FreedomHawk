@@ -214,9 +214,11 @@ The **Song Builder** has three tabs so it doesn't crowd:
   - **Kit** — "Global kit" (follow) or a specific kit, so a **verse can be on one kit and
     the chorus on another** (e.g. acoustic verse, 808 chorus).
 - **Add** — narrow the **Category** dropdown to a genre first (so you're not scrolling all
-  500), choose the **Groove**, set **Repeats**, press **Add Section**. (Sections reference
-  grooves by name — built-in or your saved patterns — so **save your own pattern as a preset
-  first** to use it in a song.)
+  500), choose the **Groove**, set **Repeats**, press **Add Section**. **Preview Groove**
+  loops the selected groove (on the current kit and tempo) so you can **hear it before you
+  add it**; press it again — or Add Section — to stop. (Sections reference grooves by name —
+  built-in or your saved patterns — so **save your own pattern as a preset first** to use it
+  in a song.)
 - **My Songs** — a list of your saved arrangements: select one and **Load** it into Arrange,
   **Play** it, or **Delete** it. **Save Current Song** stores what you've built, and **Export
   as WAV** writes the whole thing as one audio file.

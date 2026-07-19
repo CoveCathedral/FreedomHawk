@@ -536,6 +536,28 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_song_builder_preview_groove_before_adding(frame, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    d = frame.drums_page
+    if not d.player.available:
+        pytest.skip("no audio device available")
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        dlg.groove.SetStringSelection("Rock")
+        assert not dlg._previewing
+        dlg._preview_groove()                       # audition the selected groove, looping
+        assert dlg._previewing and "Stop" in dlg.preview_btn.GetLabel()
+        dlg._preview_groove()                       # press again to stop
+        assert not dlg._previewing and "Groove" in dlg.preview_btn.GetLabel()
+        # Adding a section stops a running preview (it's a section now, not an audition).
+        dlg._preview_groove()
+        assert dlg._previewing
+        dlg._add()
+        assert not dlg._previewing and len(dlg._sections) == 1
+    finally:
+        dlg.Destroy()
+
+
 def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import SongDialog
     from firehawk.practice.patternstore import make_song_record, save_song

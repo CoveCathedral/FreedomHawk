@@ -227,7 +227,8 @@ bridge, and so on. It has three tabs:
   **Tempo** (its own BPM — build speed into the chorus), and **Kit** (verse on one kit,
   chorus on another).
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
-  the **Groove**, set Repeats, press **Add Section**.
+  the **Groove**, set Repeats, press **Add Section**. **Preview Groove** loops the picked
+  groove so you can hear it before adding; press it again (or Add Section) to stop.
 - **My Songs** — a list of your saved arrangements: Load one into Arrange, Play it, or
   Delete it; plus Save Current Song and Export as WAV.
 
