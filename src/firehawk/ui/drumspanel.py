@@ -362,7 +362,8 @@ class PatternEditorDialog(wx.Dialog):
             "Left/Right brackets tune the line (Shift for an octave); "
             "comma and period set its volume; C sets a choke group; number keys set "
             "a hit's chance (0 = always); F cycles flam, drag, roll; "
-            "Ctrl+Z / Ctrl+Y undo and redo; "
+            "Ctrl+Z / Ctrl+Y undo and redo; R reads the line's rhythm; S plays "
+            "the cursor step across lines; "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -599,14 +600,21 @@ class PatternEditorDialog(wx.Dialog):
     _CHANCE_KEYS = frozenset(range(ord("0"), ord("9") + 1)) | frozenset(
         range(wx.WXK_NUMPAD0, wx.WXK_NUMPAD9 + 1))      # 1-9 = 10-90% chance, 0 = always
     _ORNAMENT_KEYS = frozenset({ord("F"), ord("f")})    # cycle flam / drag / roll
+    _RHYTHM_KEYS = frozenset({ord("R"), ord("r")})      # speak this line's rhythm
+    _STEP_AUDITION_KEYS = frozenset({ord("S"), ord("s")})  # hear/name the cursor step
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
                             ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
         | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS | _CHOKE_KEYS \
-        | _CHANCE_KEYS | _ORNAMENT_KEYS
+        | _CHANCE_KEYS | _ORNAMENT_KEYS | _RHYTHM_KEYS | _STEP_AUDITION_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        # Alt+P plays/pauses the audition WITHOUT moving focus off the grid (the
+        # audio starting or stopping is the feedback).
+        if event.AltDown() and event.GetKeyCode() in (ord("P"), ord("p")):
+            self._on_play(None)
+            return
         # Undo/redo work dialog-wide (no text controls here to want Ctrl+Z natively).
         if event.ControlDown() and event.GetKeyCode() in (ord("Z"), ord("z")):
             self._redo_last() if event.ShiftDown() else self._undo_last()
@@ -665,6 +673,10 @@ class PatternEditorDialog(wx.Dialog):
             self._set_chance(digit * 10)
         elif code in self._ORNAMENT_KEYS and not ctrl:
             self._cycle_ornament()
+        elif code in self._RHYTHM_KEYS and not ctrl:
+            self._speak_rhythm()
+        elif code in self._STEP_AUDITION_KEYS and not ctrl:
+            self._audition_step()
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -687,6 +699,9 @@ class PatternEditorDialog(wx.Dialog):
                 "drag, two; roll, the stroke rebounds across its step; then back to "
                 "plain. Control Z undoes the last edit, up to one hundred steps; "
                 "Control Y or Control Shift Z redoes. "
+                "R reads this line's whole rhythm as beat positions. "
+                "S names and plays everything landing on the cursor step, across "
+                "all lines. Alt P plays and pauses without leaving the grid. "
                 "Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
@@ -970,6 +985,63 @@ class PatternEditorDialog(wx.Dialog):
             speech.speak(f"{line['label']}: {self._sample_desc(line)}")
             self._reaudition()
         dlg.Destroy()
+
+    def _speak_rhythm(self) -> None:
+        """R: read the current line's rhythm as musical positions, so you can learn a
+        groove by ear-and-description without arrowing across every step."""
+        line = self._current_line()
+        if line is None:
+            return
+        length = self.pattern.line_length(line["id"])
+        steps = [s for s in self.pattern.hits.get(line["id"], []) if s < length]
+        if not steps:
+            speech.speak(f"{line['label']}: no hits")
+            return
+        cap = 24                                     # keep dense lines listenable
+        spoken = "; ".join(step_label(self.pattern, s) for s in steps[:cap])
+        more = f"; and {len(steps) - cap} more" if len(steps) > cap else ""
+        n = len(steps)
+        speech.speak(f"{line['label']}, {n} hit{'s' if n != 1 else ''}: {spoken}{more}")
+
+    def _audition_step(self) -> None:
+        """S: name and play everything that lands on the cursor step, across all
+        lines — one vertical slice of the groove, in your ears and in words."""
+        here, voices = [], []
+        for ln in self.lines:
+            lid = ln["id"]
+            if lid in self.silenced or self._cursor >= self.pattern.line_length(lid):
+                continue
+            if self._cursor in self.pattern.hits.get(lid, []):
+                desc = ln["label"]
+                level = self.pattern.level_of(lid, self._cursor)
+                if level:
+                    desc += f" {level}"
+                orn = self.pattern.ornament_of(lid, self._cursor)
+                if orn:
+                    desc += f" {orn}"
+                chance = self.pattern.chance_of(lid, self._cursor)
+                if chance:
+                    desc += f" {chance} percent"
+                here.append(desc)
+                v = self._line_kit.voice(lid)
+                if v is not None and len(v):
+                    voices.append(v)
+        where = step_label(self.pattern, self._cursor)
+        if not here:
+            speech.speak(f"{where}: nothing")
+            return
+        if voices and NUMPY_AVAILABLE:
+            import numpy as np
+            mix = np.zeros(max(len(v) for v in voices), dtype=np.float32)
+            for v in voices:
+                mix[: len(v)] += v
+            peak = float(np.max(np.abs(mix)))
+            if peak > 1.0:
+                mix = mix / peak
+            if self._auditioning:
+                self._stop_audition()                # the preview needs the channel
+            self._preview.play_voice(mix)
+        speech.speak(f"{where}: {', '.join(here)}")
 
     def _preview_line(self) -> None:
         line = self._current_line()
@@ -1572,8 +1644,34 @@ class SongDialog(wx.Dialog):
             self.EndModal(wx.ID_CANCEL)
             return
         self.Bind(wx.EVT_CLOSE, self._on_close)
+        # Alt shortcuts that DON'T move focus (NVDA stays on the list you're working):
+        # Alt+1/2/3 switch tabs, Alt+P plays/stops the song, Alt+V previews a groove.
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_dialog_key)
         theme.apply(self, dark)
         wx.CallAfter(self.list.SetFocus)
+
+    def _on_dialog_key(self, event: wx.KeyEvent) -> None:
+        code = event.GetKeyCode()
+        if event.AltDown() and not event.ControlDown():
+            if ord("1") <= code <= ord("9"):
+                page = code - ord("1")
+                if page < self.notebook.GetPageCount():
+                    self._goto_tab(page)
+                    return
+            if code in (ord("P"), ord("p")):
+                self._on_play(None)          # speaks Playing/Stopped; focus unmoved
+                return
+            if code in (ord("V"), ord("v")):
+                self._preview_groove()       # speaks Previewing/stopped; focus unmoved
+                return
+        event.Skip()
+
+    def _goto_tab(self, page: int) -> None:
+        """Jump to a tab and land focus on its main control, the tab name spoken."""
+        self.notebook.SetSelection(page)
+        target = [self.list, self.groove, self.songs_list][min(page, 2)]
+        wx.CallAfter(target.SetFocus)
+        speech.speak(f"{self.notebook.GetPageText(page)} tab.")
 
     def _groove_categories(self) -> tuple[list[str], dict]:
         """All groove names (built-in + saved) and a name -> category map."""
@@ -1602,9 +1700,11 @@ class SongDialog(wx.Dialog):
         arrange = wx.Panel(self.notebook)
         av = wx.BoxSizer(wx.VERTICAL)
         av.Add(wx.StaticText(arrange, label=(
-            "Up/Down select a section; Left/Right change its repeats; Alt+Up/Alt+Down "
-            "reorder; Delete removes; E edits it. Per-section tempo and kit are below. "
-            "Add grooves on the Add tab; Play is below.")),
+            "Up/Down select a section; Left/Right change its repeats (Left takes one "
+            "away; Shift for HALF a loop); Alt+Up/Alt+Down reorder; Delete removes; "
+            "E edits it. Per-section tempo, kit, swing and fills are below — they "
+            "apply as the song plays. Alt+1, Alt+2, Alt+3 switch tabs; Alt+P plays "
+            "or stops from anywhere.")),
             0, wx.ALL, 8)
         self.list = wx.ListBox(arrange, choices=[], style=wx.LB_SINGLE)
         set_accessible_name(self.list, "Song sections")
@@ -1630,6 +1730,32 @@ class SongDialog(wx.Dialog):
         self.sec_kit.Bind(wx.EVT_CHOICE, self._on_section_kit)
         props.Add(self.sec_kit, 0)
         av.Add(props, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        # On-the-fly feel and fills for the selected section — trial a swung chorus or
+        # improvised fills while the song plays, no Edit Section round-trip needed.
+        props2 = wx.BoxSizer(wx.HORIZONTAL)
+        props2.Add(wx.StaticText(arrange, label="Swing:"), 0,
+                   wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self.sec_swing = wx.Choice(
+            arrange, choices=["Groove's own"] + [f"{v}%" for v in range(0, 101, 10)])
+        set_accessible_name(self.sec_swing, "This section's swing")
+        self.sec_swing.Bind(wx.EVT_CHOICE, self._on_section_swing)
+        props2.Add(self.sec_swing, 0, wx.RIGHT, 8)
+        props2.Add(wx.StaticText(arrange, label="Fills:"), 0,
+                   wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self.sec_fill = wx.Choice(arrange, choices=["As written", "Improvised"])
+        set_accessible_name(self.sec_fill, "This section's fill style")
+        self.sec_fill.Bind(wx.EVT_CHOICE, self._on_section_fill)
+        props2.Add(self.sec_fill, 0, wx.RIGHT, 8)
+        props2.Add(wx.StaticText(arrange, label="Fill amount:"), 0,
+                   wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self.sec_fill_amt = wx.Choice(
+            arrange, choices=["Default"] + [f"{v}%" for v in (25, 50, 75, 100)])
+        set_accessible_name(self.sec_fill_amt,
+                            "This section's fill amount, longer busier fills")
+        self.sec_fill_amt.Bind(wx.EVT_CHOICE, self._on_section_fill_amount)
+        props2.Add(self.sec_fill_amt, 0)
+        av.Add(props2, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         self.song_track = _SongTrack(arrange, self)
         self.song_track.SetMinSize((-1, 92))
@@ -1657,6 +1783,18 @@ class SongDialog(wx.Dialog):
         set_accessible_name(self.repeats, "Repeats for the added groove")
         self.repeats.SetSelection(0)
         grid.Add(self.repeats, 0)
+        # Starting swing/fills for the new section (editable later on Arrange).
+        grid.Add(wx.StaticText(addp, label="Swing:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.add_swing = wx.Choice(
+            addp, choices=["Groove's own"] + [f"{v}%" for v in range(0, 101, 10)])
+        set_accessible_name(self.add_swing, "Swing for the added section")
+        self.add_swing.SetSelection(0)
+        grid.Add(self.add_swing, 0)
+        grid.Add(wx.StaticText(addp, label="Fills:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.add_fill = wx.Choice(addp, choices=["As written", "Improvised"])
+        set_accessible_name(self.add_fill, "Fill style for the added section")
+        self.add_fill.SetSelection(0)
+        grid.Add(self.add_fill, 0)
         ap.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
         add_row = wx.BoxSizer(wx.HORIZONTAL)
         add_btn = wx.Button(addp, label="&Add Section")
@@ -1734,14 +1872,27 @@ class SongDialog(wx.Dialog):
         return self._kit_cache[name]
 
     def _resolved(self) -> list:
-        """[(Pattern, repeats, bpm, kit)] for render — per-section tempo and kit applied."""
+        """[(Pattern, repeats, bpm, kit)] for render — per-section tempo, kit, swing
+        and fill overrides applied."""
         out = []
         for s in self._sections:
             pattern = resolve_section_pattern(s, self._settings)
             if pattern is None:
                 continue
             bpm = s.get("tempo") or self._panel.bpm
-            out.append((pattern, max(1, int(s["repeats"])), bpm, self._resolve_kit(s.get("kit"))))
+            reps = max(0.5, float(s["repeats"]))
+            if s.get("swing") is not None:      # override the groove's own saved feel
+                pattern = pattern.copy()
+                pattern.swing = s["swing"] / 100.0
+            if s.get("fill") == "improv":
+                # Each repeat becomes a cycle ending in a freshly generated fill; the
+                # section renders as one long pattern (same total length as the repeats).
+                # Fills need whole cycles, so half repeats round here.
+                pattern = improvised_loop(
+                    pattern, max(1, pattern.bars), max(1, int(round(reps))),
+                    fill_amount=(s.get("fill_amount") or 0) / 100.0)
+                reps = 1
+            out.append((pattern, reps, bpm, self._resolve_kit(s.get("kit"))))
         return out
 
     @staticmethod
@@ -1759,6 +1910,11 @@ class SongDialog(wx.Dialog):
             extra.append(f"{s['tempo']} BPM")
         if s.get("kit"):
             extra.append(s["kit"])
+        if s.get("swing") is not None:
+            extra.append(f"swing {s['swing']}%")
+        if s.get("fill"):
+            amt = s.get("fill_amount")
+            extra.append("improvised fills" + (f" {amt}%" if amt is not None else ""))
         return f"{base} x{s['repeats']}" + (", " + ", ".join(extra) if extra else "")
 
     def _section_blocks(self) -> list:
@@ -1797,7 +1953,12 @@ class SongDialog(wx.Dialog):
         name = self.groove.GetString(i)
         r = self.repeats.GetSelection() + 1
         self._stop_preview()             # done auditioning; it's a section now
-        self._sections.append(normalize_section({"pattern": name, "repeats": r}))
+        sw_sel = self.add_swing.GetSelection()
+        self._sections.append(normalize_section({
+            "pattern": name, "repeats": r,
+            "swing": None if sw_sel <= 0 else (sw_sel - 1) * 10,
+            "fill": "improv" if self.add_fill.GetSelection() == 1 else None,
+        }))
         self._rebuild()
         self.list.SetSelection(len(self._sections) - 1)
         speech.speak(f"Added {name}, {r} repeat{'s' if r != 1 else ''}. "
@@ -1805,16 +1966,26 @@ class SongDialog(wx.Dialog):
                      f"{self._fmt(self._song_len())}.")
         self._reaudition()
 
-    def _change_repeats(self, delta: int) -> None:
+    @staticmethod
+    def _say_reps(r) -> str:
+        whole, half = int(r), float(r) != int(r)
+        if half:
+            return f"{whole} and a half repeats" if whole else "half a repeat"
+        return f"{whole} repeat{'s' if whole != 1 else ''}"
+
+    def _change_repeats(self, delta: float) -> None:
+        """Left/Right change the selected section's repeats by one; with Shift, by
+        HALF a loop — extend a verse by just half. (Improvised-fill sections play
+        whole cycles, so halves round when they render.)"""
         i = self._selected()
         if i < 0:
             return
         s = self._sections[i]
-        s["repeats"] = max(1, min(self._MAX_REPEATS, s["repeats"] + delta))
+        r = max(0.5, min(self._MAX_REPEATS, float(s["repeats"]) + delta))
+        s["repeats"] = int(r) if r == int(r) else r
         self._rebuild()
         self.list.SetSelection(i)
-        speech.speak(f"{s.get('pattern', 'section')}, {s['repeats']} "
-                     f"repeat{'s' if s['repeats'] != 1 else ''}")
+        speech.speak(f"{s.get('pattern', 'section')}, {self._say_reps(s['repeats'])}")
         self._reaudition()
 
     def _move(self, delta: int) -> None:
@@ -1842,9 +2013,9 @@ class SongDialog(wx.Dialog):
     def _on_list_key(self, event: wx.KeyEvent) -> None:
         code = event.GetKeyCode()
         if code == wx.WXK_LEFT:
-            self._change_repeats(-1)
+            self._change_repeats(-0.5 if event.ShiftDown() else -1)
         elif code == wx.WXK_RIGHT:
-            self._change_repeats(1)
+            self._change_repeats(0.5 if event.ShiftDown() else 1)
         elif code == wx.WXK_UP and event.AltDown():
             self._move(-1)
         elif code == wx.WXK_DOWN and event.AltDown():
@@ -1859,14 +2030,16 @@ class SongDialog(wx.Dialog):
     # -- per-section properties (tempo / kit / inline edit) -------------------
 
     def _sync_section_props(self) -> None:
-        """Reflect the selected section's tempo/kit in the property controls."""
+        """Reflect the selected section's tempo/kit/swing/fills in the property controls."""
         i = self._selected()
         s = self._sections[i] if i >= 0 else None
-        for ctl in (self.edit_btn, self.sec_tempo, self.sec_kit):
+        for ctl in (self.edit_btn, self.sec_tempo, self.sec_kit,
+                    self.sec_swing, self.sec_fill, self.sec_fill_amt):
             ctl.Enable(s is not None)
         if s is None:
-            self.sec_tempo.SetSelection(0)
-            self.sec_kit.SetSelection(0)
+            for ctl in (self.sec_tempo, self.sec_kit, self.sec_swing,
+                        self.sec_fill, self.sec_fill_amt):
+                ctl.SetSelection(0)
             return
         tempo = s.get("tempo")
         idx = self.sec_tempo.FindString(str(tempo)) if tempo else 0
@@ -1874,6 +2047,12 @@ class SongDialog(wx.Dialog):
         kit = s.get("kit")
         idx = self.sec_kit.FindString(kit) if kit else 0
         self.sec_kit.SetSelection(idx if idx != wx.NOT_FOUND else 0)
+        swing = s.get("swing")
+        self.sec_swing.SetSelection(0 if swing is None else 1 + swing // 10)
+        self.sec_fill.SetSelection(1 if s.get("fill") == "improv" else 0)
+        amt = s.get("fill_amount")
+        idx = self.sec_fill_amt.FindString(f"{amt}%") if amt is not None else 0
+        self.sec_fill_amt.SetSelection(idx if idx != wx.NOT_FOUND else 0)
 
     def _on_section_tempo(self, event: wx.CommandEvent) -> None:
         i = self._selected()
@@ -1896,6 +2075,43 @@ class SongDialog(wx.Dialog):
         self._rebuild()
         self.list.SetSelection(i)
         speech.speak(f"Section kit: {sel}.")
+        self._reaudition()
+
+    def _on_section_swing(self, event: wx.CommandEvent) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        sel = self.sec_swing.GetSelection()
+        self._sections[i]["swing"] = None if sel <= 0 else (sel - 1) * 10
+        self._rebuild()
+        self.list.SetSelection(i)
+        sw = self._sections[i]["swing"]
+        speech.speak("Section uses its groove's own swing." if sw is None
+                     else f"Section swing {sw} percent.")
+        self._reaudition()
+
+    def _on_section_fill(self, event: wx.CommandEvent) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        improv = self.sec_fill.GetSelection() == 1
+        self._sections[i]["fill"] = "improv" if improv else None
+        self._rebuild()
+        self.list.SetSelection(i)
+        speech.speak("Section fills improvised: each repeat ends in a fresh fill."
+                     if improv else "Section plays as written.")
+        self._reaudition()
+
+    def _on_section_fill_amount(self, event: wx.CommandEvent) -> None:
+        i = self._selected()
+        if i < 0:
+            return
+        sel = self.sec_fill_amt.GetStringSelection()
+        self._sections[i]["fill_amount"] = None if sel == "Default" else int(sel.rstrip("%"))
+        self._rebuild()
+        self.list.SetSelection(i)
+        amt = self._sections[i]["fill_amount"]
+        speech.speak("Fill amount default." if amt is None else f"Fill amount {amt} percent.")
         self._reaudition()
 
     def _edit_section(self) -> None:

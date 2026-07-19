@@ -325,13 +325,19 @@ def resolve_pattern_by_name(name: str, settings) -> Pattern | None:
 
 def normalize_section(s: dict) -> dict:
     """A song section as stored/edited: a groove name (or an inline tweaked pattern),
-    a repeat count, and optional per-section tempo and kit overrides."""
+    a repeat count, and optional per-section tempo/kit/swing/fill overrides."""
+    reps = max(0.5, round(float(s.get("repeats", 1)) * 2) / 2)  # halves allowed
     return {
         "pattern": str(s.get("pattern", "")),
-        "repeats": max(1, int(s.get("repeats", 1))),
+        "repeats": int(reps) if reps == int(reps) else reps,
         "tempo": int(s["tempo"]) if s.get("tempo") else None,   # None = the song's tempo
         "kit": s.get("kit") or None,                            # None = the global kit
-        "inline": s.get("inline") or None,                      # an edited-in-place pattern
+        # None = the groove's own saved swing; 0 is a real override (force straight).
+        "swing": int(s["swing"]) if s.get("swing") is not None else None,
+        "fill": s.get("fill") or None,          # None = as written; "improv" = generated
+        "fill_amount": (int(s["fill_amount"])   # longer/busier improvised fills
+                        if s.get("fill_amount") is not None else None),
+        "inline": s.get("inline") or None,      # an edited-in-place pattern
     }
 
 
@@ -354,7 +360,7 @@ def song_sections(record: dict, settings) -> list:
     for s in record.get("sections", []):
         pattern = resolve_section_pattern(s, settings)
         if pattern is not None:
-            out.append((pattern, max(1, int(s.get("repeats", 1))),
+            out.append((pattern, max(0.5, round(float(s.get("repeats", 1)) * 2) / 2),
                         s.get("tempo"), s.get("kit")))
     return out
 

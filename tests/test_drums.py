@@ -668,6 +668,24 @@ def test_ornaments_survive_transforms_and_clear_with_the_hit():
     assert not p.ornaments
 
 
+def test_render_song_fractional_repeats():
+    # "Extend the verse by half": x1.5 renders one full pass plus half a pass.
+    import io
+    import wave
+    kit = drums.synth_kit()
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8]}, 4, 4, 1)
+    wav = drums.render_song([(p, 1.5, 120, kit)])
+    w = wave.open(io.BytesIO(wav))
+    assert w.getnframes() == pytest.approx(1.5 * p.loop_seconds(120) * 44100, rel=0.01)
+    assert drums.song_seconds([(p, 2.5, 120, kit)]) == pytest.approx(
+        2.5 * p.loop_seconds(120))
+    # Chance sections take a fractional tail too (a fresh-rolled truncated pass).
+    p.set_chance("kick", 8, 50)
+    wav = drums.render_song([(p, 0.5, 120, kit)])
+    w = wave.open(io.BytesIO(wav))
+    assert w.getnframes() == pytest.approx(0.5 * p.loop_seconds(120) * 44100, rel=0.01)
+
+
 def test_render_song_uses_per_section_feel():
     # Two sections, same groove/tempo/kit but one swung: the mixes must differ, proving
     # render_song reads each section pattern's own feel (not a single song-wide value).

@@ -1430,21 +1430,31 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
     for pattern, repeats, bpm, kit in sections:
         sw = pattern.swing if swing is None else swing
         hm = pattern.humanize if humanize is None else humanize
-        reps = max(1, int(repeats))
+        # Repeats may be fractional in halves ("extend the verse by half a loop"):
+        # whole passes then a truncated tail pass.
+        reps = max(0.5, round(float(repeats) * 2) / 2)
+        whole, frac = int(reps), reps - int(reps)
+
+        def mix():
+            return _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
+                                _auto_hat_choke(pattern))
         if pattern.probs:                # chance steps: fresh rolls every repeat
-            parts.extend(_mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
-                                      _auto_hat_choke(pattern)) for _ in range(reps))
-        else:
-            buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
-                               _auto_hat_choke(pattern))
-            parts.extend([buf] * reps)
+            parts.extend(mix() for _ in range(whole))
+        elif whole:
+            buf = mix()
+            parts.extend([buf] * whole)
+        if frac:
+            tail = mix()
+            parts.append(tail[: max(1, int(round(len(tail) * frac)))])
     whole = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
     return _buf_to_wav(whole, volume, rate)
 
 
 def song_seconds(sections) -> float:
-    """Total playing time of ``(pattern, repeats, bpm, kit)`` sections (each at its tempo)."""
-    return sum(p.loop_seconds(bpm) * max(1, int(r)) for p, r, bpm, _kit in sections)
+    """Total playing time of ``(pattern, repeats, bpm, kit)`` sections (each at its
+    tempo; repeats may be fractional in halves)."""
+    return sum(p.loop_seconds(bpm) * max(0.5, round(float(r) * 2) / 2)
+               for p, r, bpm, _kit in sections)
 
 
 # -- playback --------------------------------------------------------------------

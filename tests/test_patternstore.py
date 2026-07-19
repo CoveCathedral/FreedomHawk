@@ -197,13 +197,19 @@ def test_song_store_resolve_save_load(tmp_path, monkeypatch):
                                 [dict(ps.make_line("kick"), steps=[0, 4, 8, 12])],
                                 Pattern("x", 16, 4, {"kick": [0, 4, 8, 12]}))
     song = ps.make_song_record("Song 1", [
-        {"pattern": "Rock", "repeats": 2, "tempo": 150},
+        {"pattern": "Rock", "repeats": 2, "tempo": 150,
+         "swing": 0, "fill": "improv", "fill_amount": 75},
         {"pattern": "MyGroove", "repeats": 1, "inline": inline_rec},
         {"pattern": "Ghost", "repeats": 4}])           # missing -> skipped
     ps.save_song(s, song)
     assert [r["name"] for r in ps.user_songs(s)] == ["Song 1"]
     saved = ps.user_songs(s)[0]["sections"]
     assert saved[0]["tempo"] == 150 and saved[1]["inline"] is not None
+    # Swing 0 is a real override (force straight), distinct from None (groove's own);
+    # fill style and amount round-trip with the song.
+    assert saved[0]["swing"] == 0 and saved[0]["fill"] == "improv"
+    assert saved[0]["fill_amount"] == 75
+    assert saved[1]["swing"] is None and saved[1]["fill"] is None
     resolved = ps.song_sections(ps.user_songs(s)[0], s)
     assert [(p.name, r, tempo) for p, r, tempo, _kit in resolved] == \
         [("Rock", 2, 150), ("verse", 1, None)]         # inline resolved to its own pattern

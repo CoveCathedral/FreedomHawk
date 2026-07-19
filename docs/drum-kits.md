@@ -80,6 +80,9 @@ Beat 3.2, hit"):
 | **Number keys** (`1`–`9`, `0`) | Set the cursor hit's **play chance**: 1–9 is 10–90%, 0 makes it always play. A "sometimes" hit **rolls fresh on every pass**, so the groove varies itself — see below. Spoken ("Hi-hat 50 percent chance, Beat 2.3"). |
 | **F** | Cycle the cursor hit's **ornament**: plain → **flam** (one soft grace stroke just before) → **drag** (two — a ruff) → **roll** (the stroke rebounds across its step, a ratchet) → plain. Spoken ("Snare flam, Beat 2"). See below. |
 | **Ctrl+Z / Ctrl+Y** | **Undo / redo** any edit — steps, dynamics, chances, ornaments, tuning, volume, choke, line length, meter changes, adding/removing lines, sample picks, even a whole Load Groove — up to 100 steps, from anywhere in the editor. Spoken with what changed ("Undone: meter change"). |
+| **R** | **Read this line's rhythm** as beat positions ("Kick, 2 hits: Beat 1; Beat 3") — learn a groove without arrowing across every step. Dense lines cap at 24 positions ("and N more"). |
+| **S** | **Audition the cursor step**: names and plays everything landing there across all lines ("Beat 2.2: Kick, Hi-hat ghost") — one vertical slice of the groove. An empty step says "nothing". |
+| **Alt+P** | Play / pause the audition **without leaving the grid** — focus stays on the step you're editing. |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 
@@ -243,9 +246,13 @@ The **Song Builder** has three tabs so it doesn't crowd:
 - **Arrange** — the list of **sections** (each a groove + a repeat count) and a
   **high-contrast visual timeline** beneath it: one coloured block per section, its width
   showing its length, the selected one outlined (a low-vision aid; the list stays what you
-  operate). In the list: **Up/Down** select, **Left/Right change repeats**, **Alt+Up /
-  Alt+Down reorder**, **Delete** removes, **E** edits it — each spoken, with the running
-  song length. Below the list, the selected section has its own controls:
+  operate). In the list: **Up/Down** select, **Left/Right change repeats** (Left takes a
+  repeat away — added one too many? one keypress fixes it), **Shift+Left/Right by HALF a
+  loop** — extend a verse by just half ("Rock x2.5", spoken "2 and a half repeats"; an
+  Improvised-fill section rounds to whole cycles when it plays), **Alt+Up / Alt+Down
+  reorder**, **Delete** removes the section, **E** edits it — each spoken, with the
+  running song length. Below the list, the selected section has its own controls, all **live while the
+  song plays** (it re-renders and restarts, so you can trial a change on the fly):
   - **Edit Section…** — opens the Pattern Editor on that section's groove; your tweaks are
     stored **inline in the song** (they don't touch the original groove or your library), so
     you can pin down a section's exact feel. Edited sections read "(edited)".
@@ -253,12 +260,25 @@ The **Song Builder** has three tabs so it doesn't crowd:
     speed into the chorus** or drop for a breakdown. Each section renders at its own tempo.
   - **Kit** — "Global kit" (follow) or a specific kit, so a **verse can be on one kit and
     the chorus on another** (e.g. acoustic verse, 808 chorus).
+  - **Swing** — "Groove's own" (the feel saved with the groove) or a 0–100% override for
+    just this section: a straight verse, a swung chorus, no editor round-trip needed. 0%
+    is a real override (force straight).
+  - **Fills** + **Fill amount** — "As written", or **Improvised**: every repeat of the
+    section becomes a cycle **ending in a freshly generated fill** (crash on the next
+    downbeat), so a 4-repeat verse gets four different turnarounds. Fill amount makes
+    them longer and busier.
+
+  **Keyboard, from anywhere in the dialog:** **Alt+1 / Alt+2 / Alt+3** jump straight to
+  the Arrange / Add / My Songs tabs (spoken, focus landing on the tab's list), **Alt+P**
+  plays or stops the song, and **Alt+V** previews the Add tab's groove — all **without
+  moving your focus**, so NVDA stays on the section you're working.
 - **Add** — narrow the **Category** dropdown to a genre first (so you're not scrolling all
-  500), choose the **Groove**, set **Repeats**, press **Add Section**. **Preview Groove**
-  loops the selected groove (on the current kit and tempo) so you can **hear it before you
-  add it**; press it again — or Add Section — to stop. (Sections reference grooves by name —
-  built-in or your saved patterns — so **save your own pattern as a preset first** to use it
-  in a song.)
+  500), choose the **Groove**, set **Repeats** (plus starting **Swing** and **Fills** for
+  the new section, editable later on Arrange), press **Add Section**. **Preview Groove**
+  (or **Alt+V**) loops the selected groove (on the current kit and tempo) so you can
+  **hear it before you add it**; press it again — or Add Section — to stop. (Sections
+  reference grooves by name — built-in or your saved patterns — so **save your own pattern
+  as a preset first** to use it in a song.)
 - **My Songs** — a list of your saved arrangements: select one and **Load** it into Arrange,
   **Play** it, or **Delete** it. **Save Current Song** stores what you've built, and **Export
   as WAV** writes the whole thing as one audio file.

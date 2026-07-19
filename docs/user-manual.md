@@ -206,6 +206,10 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
 - **Ctrl+Z / Ctrl+Y** — **undo / redo** any edit (steps, dynamics, chances, ornaments,
   tuning, volume, chokes, line length, meter changes, add/remove line, sample picks,
   Load Groove), up to 100 steps. Spoken with what changed ("Undone: step change").
+- **R** — read the current line's **whole rhythm** as beat positions ("Kick, 2 hits:
+  Beat 1; Beat 3"). **S** — name and play **everything on the cursor step** across all
+  lines ("Beat 2.2: Kick, Hi-hat ghost"); an empty step says "nothing". **Alt+P** —
+  play/pause the audition without leaving the grid.
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).
@@ -236,14 +240,22 @@ bridge, and so on. It has three tabs:
 
 - **Arrange** — the list of **sections** (each a groove + repeats) with a **high-contrast
   visual timeline** beneath (coloured blocks sized by length, the selected one outlined).
-  Up/Down select, **Left/Right change the repeats**, **Alt+Up / Alt+Down reorder**,
-  **Delete** removes, **E** edits — each spoken, with the running song length. The selected
-  section has its own **Edit Section** (tweak its groove; stored inline in the song),
-  **Tempo** (its own BPM — build speed into the chorus), and **Kit** (verse on one kit,
-  chorus on another).
+  Up/Down select, **Left/Right change the repeats** (Left removes one — the fix for an
+  accidental extra repeat; **Shift steps by half a loop**, so a verse can run x2.5),
+  **Alt+Up / Alt+Down reorder**, **Delete** removes, **E** edits
+  — each spoken, with the running song length. The selected section has its own **Edit
+  Section** (tweak its groove; stored inline in the song), **Tempo** (its own BPM — build
+  speed into the chorus), **Kit** (verse on one kit, chorus on another), **Swing** (a
+  per-section 0–100% override of the groove's own feel), and **Fills** + **Fill amount**
+  (**Improvised** ends every repeat in a freshly generated fill; amount makes them longer
+  and busier). All of them apply **live while the song plays**.
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
-  the **Groove**, set Repeats, press **Add Section**. **Preview Groove** loops the picked
-  groove so you can hear it before adding; press it again (or Add Section) to stop.
+  the **Groove**, set Repeats (plus starting Swing/Fills), press **Add Section**.
+  **Preview Groove** (or **Alt+V**) loops the picked groove so you can hear it before
+  adding; press it again (or Add Section) to stop.
+- **Keyboard, from anywhere in the dialog:** **Alt+1/2/3** jump between the tabs (spoken),
+  **Alt+P** plays or stops the song, **Alt+V** previews — all without moving your focus.
+  (**Alt+P** also plays/pauses inside the Pattern Editor.)
 - **My Songs** — a list of your saved arrangements: Load one into Arrange, Play it, or
   Delete it; plus Save Current Song and Export as WAV.
 

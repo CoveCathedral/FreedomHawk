@@ -16,7 +16,7 @@ except Exception:  # pragma: no cover - no GUI available
 import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
-from firehawk.practice.patternstore import build_line_kit
+from firehawk.practice.patternstore import build_line_kit, resolve_pattern_by_name
 from firehawk.ui.drumspanel import DrumsPanel
 from firehawk.ui.mainframe import MainFrame
 from firehawk.ui.metronomepanel import MetronomePanel
@@ -214,8 +214,8 @@ def _line_index(dlg, line_id):
 
 
 class _Key:
-    def __init__(self, code, ctrl=False, shift=False):
-        self._code, self._ctrl, self._shift = code, ctrl, shift
+    def __init__(self, code, ctrl=False, shift=False, alt=False):
+        self._code, self._ctrl, self._shift, self._alt = code, ctrl, shift, alt
 
     def GetKeyCode(self):
         return self._code
@@ -225,6 +225,9 @@ class _Key:
 
     def ShiftDown(self):
         return self._shift
+
+    def AltDown(self):
+        return self._alt
 
     def Skip(self):
         pass
@@ -383,6 +386,32 @@ def test_grid_f_cycles_ornaments(frame, _silence_audio):
         dlg._cursor = 1
         dlg._on_grid_key(_Key(ord("F")))
         assert "No hit at this step" in spoken[-1]
+    finally:
+        dlg.Destroy()
+
+
+def test_grid_speak_rhythm_and_step_audition(frame, _silence_audio):
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        # R reads the current line's rhythm as beat positions (Rock kick: 1 and 3).
+        dlg.grid_list.SetSelection(_line_index(dlg, "kick"))
+        dlg._on_grid_key(_Key(ord("R")))
+        assert spoken[-1].startswith("Kick, 2 hits:")
+        assert "Beat 1" in spoken[-1] and "Beat 3" in spoken[-1]
+        # S names everything on the cursor step across lines (step 0: kick + hihat).
+        dlg._cursor = 0
+        dlg._on_grid_key(_Key(ord("S")))
+        assert spoken[-1].startswith("Beat 1:")
+        assert "Kick" in spoken[-1] and "Hi-hat" in spoken[-1]
+        # An empty step says so instead of going quiet.
+        dlg._cursor = 1
+        dlg._on_grid_key(_Key(ord("S")))
+        assert spoken[-1].endswith(": nothing")
+        # A line with no hits reads as such.
+        dlg.pattern.hits.pop("kick")
+        dlg._on_grid_key(_Key(ord("R")))
+        assert spoken[-1] == "Kick: no hits"
     finally:
         dlg.Destroy()
 
@@ -628,6 +657,70 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
             assert dlg._render() is not None  # renders the whole song without error
         dlg._remove()
         assert [s["pattern"] for s in dlg._sections] == ["Funk"]
+    finally:
+        dlg.Destroy()
+
+
+def test_song_builder_section_swing_and_fills(frame, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        dlg.groove.SetStringSelection("Rock")
+        dlg.repeats.SetSelection(2)                  # 3 repeats
+        dlg._add()
+        dlg.list.SetSelection(0)
+        # Swing override, settable on the fly from the Arrange row.
+        dlg.sec_swing.SetSelection(1 + 6)            # 60%
+        dlg._on_section_swing(None)
+        assert dlg._sections[0]["swing"] == 60
+        # Improvised fills: each repeat becomes a cycle ending in a fresh fill, so
+        # the resolved section is one long pattern (same total length), repeats 1.
+        dlg.sec_fill.SetSelection(1)
+        dlg._on_section_fill(None)
+        dlg.sec_fill_amt.SetStringSelection("75%")
+        dlg._on_section_fill_amount(None)
+        assert dlg._sections[0]["fill"] == "improv"
+        assert dlg._sections[0]["fill_amount"] == 75
+        base = resolve_pattern_by_name("Rock", d._settings)
+        (pattern, reps, _bpm, _kit), = dlg._resolved()
+        assert reps == 1 and pattern.steps == base.steps * 3
+        assert pattern.swing == pytest.approx(0.6)   # the override rode along
+        assert "swing 60%" in dlg._section_label(dlg._sections[0])
+        assert "improvised fills 75%" in dlg._section_label(dlg._sections[0])
+        # The props row reflects a reopened selection (round-trip through sync).
+        dlg._sync_section_props()
+        assert dlg.sec_swing.GetStringSelection() == "60%"
+        assert dlg.sec_fill.GetSelection() == 1
+        assert dlg.sec_fill_amt.GetStringSelection() == "75%"
+        # Alt+1/2/3 tab jumps land on each tab (spoken; focus follows async).
+        dlg._goto_tab(1)
+        assert dlg.notebook.GetSelection() == 1
+        dlg._goto_tab(0)
+        assert dlg.notebook.GetSelection() == 0
+        # The Add tab can seed swing/fills for the next section.
+        dlg.add_swing.SetSelection(1 + 3)            # 30%
+        dlg.add_fill.SetSelection(1)
+        dlg.repeats.SetSelection(0)                  # 1 repeat
+        dlg.groove.SetStringSelection("Funk")
+        dlg._add()
+        assert dlg._sections[1]["swing"] == 30 and dlg._sections[1]["fill"] == "improv"
+        # Shift+Right extends by HALF a loop; spoken as "and a half"; renders shorter.
+        dlg.list.SetSelection(1)
+        dlg._sections[1]["fill"] = None              # halves render exactly sans fills
+        dlg._change_repeats(0.5)
+        assert dlg._sections[1]["repeats"] == 1.5
+        assert "x1.5" in dlg._section_label(dlg._sections[1])
+        assert dlg._say_reps(1.5) == "1 and a half repeats"
+        assert dlg._say_reps(0.5) == "half a repeat"
+        assert dlg._say_reps(2) == "2 repeats"
+        funk = resolve_pattern_by_name("Funk", d._settings)
+        blocks = dlg._section_blocks()
+        assert blocks[1][1] == pytest.approx(funk.loop_seconds(d.bpm) * 1.5)
+        dlg._change_repeats(-1)                      # back down through the half
+        assert dlg._sections[1]["repeats"] == 0.5
+        dlg._change_repeats(-1)                      # clamps at half a repeat
+        assert dlg._sections[1]["repeats"] == 0.5
     finally:
         dlg.Destroy()
 

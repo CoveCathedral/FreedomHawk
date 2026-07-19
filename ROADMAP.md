@@ -182,9 +182,15 @@ All screen-reader-first, native controls only.
   milestone / when a contributor joins.
   Song Builder **Preview Groove** (audition a groove in the Add tab before adding it);
   **F5** plays/stops the current tab from anywhere (spoken).
-  **Planned next (Kaylea approved):** audition-step & speak-rhythm keys · **MIDI
-  controller input** (craft beats from a keyboard). Long-term: extract Sequin to its
-  own repo (engine already firehawk-independent).
+  **Audition & rhythm keys** (R reads a line's rhythm as beat positions; S names and
+  plays the cursor step across all lines; Alt+P play/pause in place). **Song Builder v3**
+  (per-section swing override + improvised fills with amount, live while playing, on
+  Arrange and seeded from Add; half-loop repeats via Shift+Left/Right; Alt+1/2/3 tab
+  jumps, Alt+P play, Alt+V preview — all without moving focus).
+  **Planned next (Kaylea approved):** **MIDI controller input** (craft beats from a
+  keyboard) · fill-extension across sections + a song-wide beat editor (design going to
+  Kaylea first). Long-term: extract Sequin to its own repo (engine already
+  firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully
