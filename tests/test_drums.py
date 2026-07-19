@@ -703,8 +703,12 @@ def test_swing_delays_offbeat_not_downbeat():
 
 def test_swing_default_matches_straight():
     kit = drums.synth_kit()
-    p = drums.GENRE_PATTERNS[0]
-    assert drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120, swing=0.0)
+    p = drums.GENRE_PATTERNS[0]          # Rock — straight (swing 0)
+    # Humanize is pinned off on BOTH sides: the genre feel gives Rock a little humanize, and
+    # humanize deliberately drifts every render, so leaving it on would compare two
+    # intentionally-different mixes. This isolates the thing under test — the swing default.
+    assert (drums.render_loop(p, kit, 120, humanize=0.0)
+            == drums.render_loop(p, kit, 120, swing=0.0, humanize=0.0))
 
 
 def test_render_loop_inherits_the_patterns_own_feel():

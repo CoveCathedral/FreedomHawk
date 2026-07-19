@@ -1440,9 +1440,12 @@ def test_swing_humanize_live_in_the_editor_and_save_with_the_pattern(frame):
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
                               set(), d.player, d.bpm, dark=True, settings=d._settings)
     try:
-        # Sliders start at the groove's own feel (a fresh groove is straight).
-        assert dlg.swing_slider.GetValue() == 0 and dlg.humanize_slider.GetValue() == 0
-        assert "straight" in dlg.swing_label.GetLabel()
+        # Sliders start at the groove's own feel. Built-in grooves now carry an idiomatic
+        # feel (see GENRE_FEEL in drums.py), so mirror the pattern rather than assuming zero.
+        assert dlg.swing_slider.GetValue() == round(dlg.pattern.swing * 100)
+        assert dlg.humanize_slider.GetValue() == round(dlg.pattern.humanize * 100)
+        if dlg.pattern.swing == 0:
+            assert "straight" in dlg.swing_label.GetLabel()
         dlg.swing_slider.SetValue(60)
         dlg.humanize_slider.SetValue(30)
         dlg._on_feel(None)
