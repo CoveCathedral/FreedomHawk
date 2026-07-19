@@ -1031,9 +1031,16 @@ def test_grid_none_silences_part(frame):
 
 
 def test_grid_save_flow(frame):
-    # Simulate the panel's save path without ShowModal.
-    dlg = _grid_dialog(frame)
+    # Simulate the panel's save path without ShowModal.  A tom line isn't shown by
+    # default now (the full kit curates to used + core parts), so add an empty one
+    # to toggle a fresh hit onto.
+    from firehawk.ui.drumspanel import PatternEditorDialog
+    from firehawk.practice.patternstore import make_line
     d = frame.drums_page
+    lines = d._current_lines()
+    lines.append(make_line("tom", existing=lines))
+    dlg = PatternEditorDialog(d, d._pattern.copy(), lines, d._kits_dir(),
+                              set(), d.player, d.bpm, dark=True, settings=d._settings)
     try:
         dlg.grid_list.SetSelection(_line_index(dlg, "tom"))
         dlg._cursor = 1
@@ -1045,7 +1052,7 @@ def test_grid_save_flow(frame):
     d._line_meta = lines
     d._rebuild_parts()
     assert 1 in d._pattern.hits["tom"]
-    assert "Tom" in d.part_choice.GetItems()
+    assert "Tom 3 (mid)" in d.part_choice.GetItems()
 
 
 def test_category_filter_and_user_presets(frame):

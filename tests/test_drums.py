@@ -136,6 +136,32 @@ def test_load_kit_from_folder(tmp_path):
     assert kit.name == tmp_path.name
 
 
+def test_full_standard_kit_has_every_part():
+    # The synth kit voices the whole standard kit so the palette is always playable and
+    # the fill engine never reaches for a part that isn't there.
+    k = drums.synth_kit()
+    for role in ("kick", "snare", "rimshot", "clap", "hihat", "pedalhat", "openhat",
+                 "tom1", "tom2", "tom", "tom4", "tom5", "crash", "crash2", "splash",
+                 "china", "ride", "ridebell", "cowbell", "tambourine", "shaker",
+                 "808", "perc"):
+        v = k.voice(role)
+        assert v is not None and len(v) > 0
+        assert np.all(np.isfinite(v)) and float(np.max(np.abs(v))) > 0.0
+    # Five toms, pitched high to low.
+    assert drums.TOM_ROLES == ["tom1", "tom2", "tom", "tom4", "tom5"]
+    peak = lambda r: float(np.argmax(np.abs(np.fft.rfft(k.voice(r)))))  # noqa: E731
+    peaks = [peak(r) for r in drums.TOM_ROLES]
+    assert peaks == sorted(peaks, reverse=True)     # descending fundamentals
+
+
+def test_legacy_roles_still_render():
+    # Existing library/saved patterns key hits on "tom" and "crash"; those must keep
+    # working unchanged (tom = the mid tom, crash = crash 1).
+    k = drums.synth_kit()
+    p = drums.Pattern("legacy", 16, 4, {"kick": [0], "tom": [4], "crash": [0]}, 4, 4, 1)
+    assert len(drums.render_loop(p, k, 120)) > 1000
+
+
 def test_folder_to_role_handles_real_pack_names():
     f = drums.folder_to_role
     # Exact + simple plurals.
@@ -146,7 +172,12 @@ def test_folder_to_role_handles_real_pack_names():
     # Keyword fallback for the names packs actually ship.
     assert f("Organic Percussions") == "perc"
     assert f("Percussion") == "perc" and f("Percussions") == "perc"
-    assert f("Shaker") == "perc" and f("Shakers") == "perc" and f("Tambourine") == "perc"
+    # The full standard kit gives shakers, tambourines and cowbells their own parts.
+    assert f("Shaker") == "shaker" and f("Shakers") == "shaker"
+    assert f("Tambourine") == "tambourine" and f("Cowbell") == "cowbell"
+    assert f("Floor Tom") == "tom5" and f("High Tom") == "tom1" and f("Rack Tom") == "tom1"
+    assert f("Ride Bell") == "ridebell" and f("China") == "china" and f("Splash") == "splash"
+    assert f("Rimshot") == "rimshot" and f("Pedal Hat") == "pedalhat"
     assert f("Closed Hats") == "hihat"
     assert f("808") == "808" and f("808 Bass") == "808" and f("Sub Bass") == "808"
     assert f("Snaps") == "clap" and f("Snap") == "clap"     # hand percussion, not the drum
@@ -158,8 +189,10 @@ def test_folder_to_role_handles_real_pack_names():
 
 
 def test_list_role_files_merges_folders_into_one_role(tmp_path):
-    # A pack with several percussion folders: every sample must stay reachable, merged.
-    for name, count in (("Percussions", 3), ("Organic Percussions", 2), ("Shakers", 2)):
+    # A pack with several percussion folders that all resolve to perc: every sample must
+    # stay reachable, merged into the one pool.  (Shakers/tambourines are their own parts
+    # now, so this uses only genuine perc-named folders.)
+    for name, count in (("Percussions", 3), ("Organic Percussions", 2), ("Congas", 2)):
         d = tmp_path / name
         d.mkdir()
         for i in range(count):

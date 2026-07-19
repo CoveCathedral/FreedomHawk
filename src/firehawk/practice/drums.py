@@ -44,28 +44,59 @@ NUMPY_AVAILABLE = np is not None
 RATE = 44100
 _MAX_SAMPLE_SECONDS = 4.0  # cap any one voice so a long sample can't bloat the loop
 
-#: Canonical drum roles, in display order.
-ROLES = ["kick", "snare", "hihat", "openhat", "clap", "perc", "808", "tom", "ride", "crash", "fx"]
+#: Canonical drum roles, in display order (top of the kit to the bottom).  This is the
+#: full standard kit — every part a complex arrangement (prog included) might reach for.
+#: The legacy roles "tom" (the mid tom) and "crash" (crash 1) are kept as-is so the shipped
+#: groove library and any saved patterns/songs render unchanged; the extra toms and cymbals
+#: are new roles added around them.
+ROLES = [
+    "kick", "snare", "rimshot", "clap",
+    "hihat", "pedalhat", "openhat",
+    "tom1", "tom2", "tom", "tom4", "tom5",          # 5 toms: high -> floor ("tom" = mid)
+    "crash", "crash2", "splash", "china",
+    "ride", "ridebell",
+    "cowbell", "tambourine", "shaker",
+    "808", "perc", "fx",
+]
 
 #: Friendly labels for the roles.
 ROLE_LABELS = {
-    "kick": "Kick", "snare": "Snare", "hihat": "Hi-hat (closed)", "openhat": "Open hat",
-    "clap": "Clap", "perc": "Perc", "808": "808 / sub", "tom": "Tom", "ride": "Ride",
-    "crash": "Crash", "fx": "FX",
+    "kick": "Kick", "snare": "Snare", "rimshot": "Rimshot / cross-stick", "clap": "Clap",
+    "hihat": "Hi-hat (closed)", "pedalhat": "Hi-hat (pedal)", "openhat": "Open hat",
+    "tom1": "Tom 1 (high)", "tom2": "Tom 2", "tom": "Tom 3 (mid)", "tom4": "Tom 4",
+    "tom5": "Floor tom",
+    "crash": "Crash 1", "crash2": "Crash 2", "splash": "Splash", "china": "China",
+    "ride": "Ride", "ridebell": "Ride bell",
+    "cowbell": "Cowbell", "tambourine": "Tambourine", "shaker": "Shaker",
+    "808": "808 / sub", "perc": "Perc", "fx": "FX",
 }
+
+#: The tom roles, high to low — the fill engine rolls down these.
+TOM_ROLES = ["tom1", "tom2", "tom", "tom4", "tom5"]
+
+#: A sensible starting set of lines for a fresh/loaded pattern, so the editor isn't a wall
+#: of 24 empty parts — the rest of the full kit is one "Add Line" away.
+CORE_ROLES = ["kick", "snare", "hihat", "openhat"]
 
 #: Folder names (upper-cased) mapped to canonical roles when loading a user kit.
 #: Exact aliases — especially short ones a keyword scan can't safely infer (OH, CH).
 FOLDER_ROLE_MAP = {
     "KICK": "kick", "KICKS": "kick",
     "SNARE": "snare", "SNARES": "snare", "SNAP": "clap", "SNAPS": "clap",
+    "RIMSHOT": "rimshot", "RIM": "rimshot", "SIDESTICK": "rimshot", "CROSSSTICK": "rimshot",
     "HIHAT": "hihat", "HAT": "hihat", "HATS": "hihat", "CH": "hihat", "CLOSEDHAT": "hihat",
+    "PEDALHAT": "pedalhat", "PEDAL": "pedalhat", "PH": "pedalhat",
     "OPENHAT": "openhat", "OH": "openhat", "OPEN": "openhat",
     "CLAP": "clap", "CLAPS": "clap",
     "PERC": "perc", "PERCUSSION": "perc",
     "808": "808", "808S": "808", "BASS": "808", "SUB": "808",
-    "TOM": "tom", "TOMS": "tom",
-    "RIDE": "ride", "CRASH": "crash", "CYMBAL": "crash",
+    "TOM": "tom", "TOMS": "tom", "RACKTOM": "tom1", "HITOM": "tom1", "HIGHTOM": "tom1",
+    "MIDTOM": "tom", "LOWTOM": "tom4", "FLOORTOM": "tom5", "FLOOR": "tom5",
+    "RIDE": "ride", "RIDEBELL": "ridebell", "BELL": "ridebell",
+    "CRASH": "crash", "CRASH2": "crash2", "CYMBAL": "crash",
+    "SPLASH": "splash", "CHINA": "china",
+    "COWBELL": "cowbell", "COW": "cowbell", "TAMBOURINE": "tambourine", "TAMB": "tambourine",
+    "SHAKER": "shaker", "MARACAS": "shaker",
     "FX": "fx",
 }
 
@@ -76,15 +107,24 @@ FOLDER_ROLE_MAP = {
 _ROLE_KEYWORDS = [
     (("LOOP",), "fx"),                                              # any *loop* -> keep aside
     (("OPENHAT", "OPEN HAT", "OPEN-HAT"), "openhat"),
+    (("PEDALHAT", "PEDAL HAT", "PEDAL-HAT"), "pedalhat"),
     (("808",), "808"),
     (("KICK",), "kick"),
-    (("SNARE", "RIMSHOT", "RIM"), "snare"),
+    (("RIMSHOT", "RIM", "SIDESTICK", "CROSSSTICK", "CROSS STICK"), "rimshot"),
+    (("SNARE",), "snare"),
     (("CLAP", "SNAP"), "clap"),
+    (("FLOOR TOM", "FLOORTOM", "FLOOR"), "tom5"),
+    (("HIGH TOM", "HITOM", "RACK TOM", "RACKTOM"), "tom1"),
     (("TOM",), "tom"),
+    (("RIDE BELL", "RIDEBELL"), "ridebell"),
     (("RIDE",), "ride"),
-    (("CRASH", "CYMBAL", "CHINA", "SPLASH"), "crash"),
-    (("SHAKER", "TAMBOURINE", "TAMB", "CONGA", "BONGO", "COWBELL", "CLAVE",
-      "WOODBLOCK", "TRIANGLE", "DJEMBE", "PERC"), "perc"),
+    (("CHINA",), "china"),
+    (("SPLASH",), "splash"),
+    (("CRASH", "CYMBAL"), "crash"),
+    (("COWBELL", "COW BELL"), "cowbell"),
+    (("TAMBOURINE", "TAMB"), "tambourine"),
+    (("SHAKER", "MARACAS"), "shaker"),
+    (("CONGA", "BONGO", "CLAVE", "WOODBLOCK", "TRIANGLE", "DJEMBE", "PERC"), "perc"),
     (("HIHAT", "HI-HAT", "HI HAT", "HAT"), "hihat"),
     (("SUB", "BASS"), "808"),
     (("TEXTURE", "IMPACT", "ATMOS", "RISER", "SWEEP", "UPLIFT", "DOWNLIFT",
@@ -246,11 +286,100 @@ def synth_808(rate: int = RATE) -> "np.ndarray":
     return _norm(np.sin(phase) * np.exp(-t * 5.0))
 
 
-def synth_tom(rate: int = RATE) -> "np.ndarray":
-    t = _t(0.25, rate)
-    freq = 90.0 + 90.0 * np.exp(-t * 9.0)
+def synth_tom(rate: int = RATE, base: float = 90.0, decay: float = 12.0,
+              secs: float = 0.25) -> "np.ndarray":
+    """A pitched tom.  *base* is the settled fundamental (high tom ~150, floor ~70); the
+    pitch drops from twice that as the head rings, like a real struck drum."""
+    t = _t(secs, rate)
+    freq = base + base * np.exp(-t * 9.0)
     phase = 2 * np.pi * np.cumsum(freq) / rate
-    return _norm(np.sin(phase) * np.exp(-t * 12.0))
+    return _norm(np.sin(phase) * np.exp(-t * decay))
+
+
+#: The five toms, high to low, as (role, settled-fundamental-Hz, decay, seconds).
+#: The mid tom uses the exact pre-expansion synth_tom defaults (90 Hz, decay 12, 0.25 s)
+#: so the legacy "tom" role stays byte-identical for the shipped library and saved patterns.
+_TOM_VOICES = {
+    "tom1": (150.0, 14.0, 0.22),   # high rack tom
+    "tom2": (118.0, 13.0, 0.24),
+    "tom":  (90.0, 12.0, 0.25),    # legacy mid tom — unchanged from before the expansion
+    "tom4": (74.0, 11.0, 0.30),
+    "tom5": (60.0, 9.0, 0.38),     # floor tom
+}
+
+
+def synth_rimshot(rate: int = RATE) -> "np.ndarray":
+    """A tight side-stick / rimshot: a short woody tone with a sharp click, very short."""
+    t = _t(0.06, rate)
+    tone = np.sin(2 * np.pi * 420.0 * t) * np.exp(-t * 55.0)
+    click = np.exp(-t * 800.0) * 0.7
+    return _norm(0.6 * tone + click, 0.85)
+
+
+def synth_pedalhat(rate: int = RATE) -> "np.ndarray":
+    """A closed pedal hi-hat: like the closed hat but shorter and a touch duller."""
+    t = _t(0.04, rate)
+    rng = np.random.default_rng(11)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)
+    return _norm(noise * np.exp(-t * 120.0), 0.8)
+
+
+def synth_crash2(rate: int = RATE) -> "np.ndarray":
+    """A second crash — a hair darker and longer than crash 1 (different seed/decay)."""
+    t = _t(1.25, rate)
+    rng = np.random.default_rng(7)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)
+    return _norm(noise * np.exp(-t * 2.6), 0.72)
+
+
+def synth_splash(rate: int = RATE) -> "np.ndarray":
+    """A splash cymbal: bright and very fast-decaying."""
+    t = _t(0.45, rate)
+    rng = np.random.default_rng(8)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)
+    return _norm(noise * np.exp(-t * 8.0), 0.7)
+
+
+def synth_china(rate: int = RATE) -> "np.ndarray":
+    """A china / trashy crash: a rougher, noisier wash with a slower onset."""
+    t = _t(1.0, rate)
+    rng = np.random.default_rng(9)
+    noise = rng.random(len(t)) * 2 - 1
+    noise = noise + 0.5 * np.diff(noise, prepend=0.0)      # trashier than a clean crash
+    return _norm(noise * np.exp(-t * 3.2), 0.72)
+
+
+def synth_ridebell(rate: int = RATE) -> "np.ndarray":
+    """A ride bell: a strong pingy fundamental with a metallic overtone."""
+    t = _t(0.7, rate)
+    ping = np.sin(2 * np.pi * 640.0 * t) + 0.5 * np.sin(2 * np.pi * 1180.0 * t)
+    return _norm(ping * np.exp(-t * 6.0), 0.7)
+
+
+def synth_cowbell(rate: int = RATE) -> "np.ndarray":
+    """A cowbell: two detuned square-ish tones, short and clanky."""
+    t = _t(0.35, rate)
+    a = np.sign(np.sin(2 * np.pi * 540.0 * t))
+    b = np.sign(np.sin(2 * np.pi * 800.0 * t))
+    return _norm((0.5 * a + 0.5 * b) * np.exp(-t * 12.0), 0.6)
+
+
+def synth_tambourine(rate: int = RATE) -> "np.ndarray":
+    """A tambourine: a burst of bright jingles (high, fast-decaying noise)."""
+    t = _t(0.3, rate)
+    rng = np.random.default_rng(12)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)
+    jingle = noise * (np.exp(-t * 20.0) + 0.4 * np.exp(-t * 6.0))
+    return _norm(jingle, 0.7)
+
+
+def synth_shaker(rate: int = RATE) -> "np.ndarray":
+    """A shaker: a soft, filtered noise 'chk' with a gentle swell."""
+    t = _t(0.12, rate)
+    rng = np.random.default_rng(13)
+    noise = np.diff(rng.random(len(t)) * 2 - 1, prepend=0.0)
+    env = np.exp(-((t - 0.03) ** 2) / (2 * 0.02 ** 2))     # soft bell-shaped burst
+    return _norm(noise * env, 0.55)
 
 
 def synth_crash(rate: int = RATE) -> "np.ndarray":
@@ -291,12 +420,25 @@ class DrumKit:
 
 
 def synth_kit(rate: int = RATE) -> DrumKit:
-    return DrumKit("Synth (built-in)", {
-        "kick": synth_kick(rate), "snare": synth_snare(rate), "hihat": synth_hihat(rate),
-        "openhat": synth_openhat(rate), "clap": synth_clap(rate), "808": synth_808(rate),
-        "tom": synth_tom(rate), "perc": synth_perc(rate), "ride": synth_ride(rate),
-        "crash": synth_crash(rate),
-    })
+    """The built-in synth kit — a voice for every part of the full standard kit, so the
+    whole palette (five toms, second crash, splash, china, ride bell, cowbell, tambourine,
+    shaker, pedal hat, rimshot) is always playable and the fill engine never asks for a
+    part that isn't there."""
+    voices = {
+        "kick": synth_kick(rate), "snare": synth_snare(rate),
+        "rimshot": synth_rimshot(rate), "clap": synth_clap(rate),
+        "hihat": synth_hihat(rate), "pedalhat": synth_pedalhat(rate),
+        "openhat": synth_openhat(rate),
+        "crash": synth_crash(rate), "crash2": synth_crash2(rate),
+        "splash": synth_splash(rate), "china": synth_china(rate),
+        "ride": synth_ride(rate), "ridebell": synth_ridebell(rate),
+        "cowbell": synth_cowbell(rate), "tambourine": synth_tambourine(rate),
+        "shaker": synth_shaker(rate),
+        "808": synth_808(rate), "perc": synth_perc(rate),
+    }
+    for role, (base, decay, secs) in _TOM_VOICES.items():
+        voices[role] = synth_tom(rate, base, decay, secs)
+    return DrumKit("Synth (built-in)", voices)
 
 
 #: Name tokens that mark a sample as a vocal chop / chant rather than a drum hit.
@@ -306,8 +448,9 @@ _VOCAL_TOKENS = {"AHH", "AH", "AAH", "UH", "UHH", "DUH", "HEY", "OOH", "OOOH", "
                  "YEAH", "YAH", "YA", "VOX", "VOCAL", "CHANT", "TALK", "LAUGH", "SKRRT"}
 
 #: Roles whose default voice should be a short drum hit (808/fx may ring long).
-_PERCUSSIVE_ROLES = {"kick", "snare", "hihat", "openhat", "clap", "perc", "tom",
-                     "ride", "crash"}
+_PERCUSSIVE_ROLES = {"kick", "snare", "rimshot", "clap", "hihat", "pedalhat", "openhat",
+                     "tom1", "tom2", "tom", "tom4", "tom5", "crash", "crash2", "splash",
+                     "china", "ride", "ridebell", "cowbell", "tambourine", "shaker", "perc"}
 _MAX_DEFAULT_HIT_SECONDS = 1.25
 
 
@@ -1023,7 +1166,8 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
 
 # -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
 
-_FILL_CLEAR_ROLES = ("snare", "hihat", "openhat", "clap", "tom", "perc")
+_FILL_CLEAR_ROLES = ("snare", "rimshot", "hihat", "pedalhat", "openhat", "clap",
+                     "tom1", "tom2", "tom", "tom4", "tom5", "perc", "tambourine", "shaker")
 
 
 def _generate_fill_zone(rng: "random.Random", beat_len: int, per_bar: int,

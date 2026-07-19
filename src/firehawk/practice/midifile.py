@@ -22,22 +22,29 @@ _LEVEL_VELOCITY = {LEVEL_ACCENT: 120, None: 90, LEVEL_GHOST: 45}
 _GHOST_BELOW = 60
 _ACCENT_ABOVE = 105
 
-#: Our roles -> General MIDI percussion note numbers.
+#: Our roles -> General MIDI percussion note numbers (full standard kit).
 ROLE_TO_GM = {
-    "kick": 36, "snare": 38, "hihat": 42, "openhat": 46, "clap": 39,
-    "perc": 37, "808": 35, "tom": 45, "ride": 51, "crash": 49, "fx": 55,
+    "kick": 36, "snare": 38, "rimshot": 37, "clap": 39,
+    "hihat": 42, "pedalhat": 44, "openhat": 46,
+    "tom1": 50, "tom2": 48, "tom": 47, "tom4": 45, "tom5": 43,
+    "crash": 49, "crash2": 57, "splash": 55, "china": 52,
+    "ride": 51, "ridebell": 53,
+    "cowbell": 56, "tambourine": 54, "shaker": 70,
+    "808": 35, "perc": 75, "fx": 76,
 }
 
-#: General MIDI percussion note numbers -> our roles.
+#: General MIDI percussion note numbers -> our roles.  Every standard GM drum note lands
+#: on the closest part of the full kit; unlisted notes fall through to perc on import.
 GM_TO_ROLE = {
     35: "kick", 36: "kick",
-    37: "perc", 39: "clap",
+    37: "rimshot", 39: "clap",
     38: "snare", 40: "snare",
-    42: "hihat", 44: "hihat",
-    46: "openhat",
-    41: "tom", 43: "tom", 45: "tom", 47: "tom", 48: "tom", 50: "tom",
-    49: "crash", 52: "crash", 55: "crash", 57: "crash",
-    51: "ride", 53: "ride", 59: "ride",
+    42: "hihat", 44: "pedalhat", 46: "openhat",
+    41: "tom5", 43: "tom5", 45: "tom4", 47: "tom", 48: "tom2", 50: "tom1",
+    49: "crash", 57: "crash2", 55: "splash", 52: "china",
+    51: "ride", 59: "ride", 53: "ridebell",
+    56: "cowbell", 54: "tambourine", 70: "shaker", 82: "shaker",
+    75: "perc", 76: "perc", 77: "perc",
 }
 
 

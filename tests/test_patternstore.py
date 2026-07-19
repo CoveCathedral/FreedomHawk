@@ -329,6 +329,18 @@ def test_lines_for_kit_covers_pattern_and_kit():
     lines = ps.lines_for_kit(p, synth_kit(), None)
     ids = [ln["id"] for ln in lines]
     assert "kick" in ids and "fx" in ids          # pattern roles present
-    assert "snare" in ids                          # kit roles present too
+    assert "snare" in ids and "hihat" in ids and "openhat" in ids   # core parts too
     kick = next(ln for ln in lines if ln["id"] == "kick")
     assert kick["steps"] == [0]
+
+
+def test_lines_for_kit_curates_to_used_plus_core():
+    # The full standard kit has ~two dozen voices; the editor must NOT dump all of them
+    # as empty lines. Only the parts the pattern uses plus a small core are shown.
+    from firehawk.practice import synth_kit
+    p = Pattern("t", 16, 4, {"kick": [0], "tom5": [8]}, 4, 4, 1)
+    ids = [ln["id"] for ln in ps.lines_for_kit(p, synth_kit(), None)]
+    assert set(ids) == {"kick", "snare", "hihat", "openhat", "tom5"}
+    assert "cowbell" not in ids and "ride" not in ids and "crash2" not in ids
+    # Order follows the canonical ROLES order (floor tom after the hats).
+    assert ids.index("tom5") == len(ids) - 1

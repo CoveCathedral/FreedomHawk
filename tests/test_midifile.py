@@ -22,6 +22,20 @@ def test_dynamics_round_trip_as_velocities():
     assert back.levels.get("snare") == {0: LEVEL_ACCENT, 8: LEVEL_GHOST}
 
 
+def test_full_kit_roles_round_trip_through_gm():
+    # Every part of the full standard kit maps to a distinct GM note and comes back to a
+    # sensible role (the granular toms/cymbals survive an export/import round trip).
+    for role in ("kick", "snare", "rimshot", "clap", "hihat", "pedalhat", "openhat",
+                 "tom1", "tom2", "tom", "tom4", "tom5", "crash", "crash2", "splash",
+                 "china", "ride", "ridebell", "cowbell", "tambourine", "shaker"):
+        note = ROLE_TO_GM[role]
+        assert GM_TO_ROLE[note] == role          # exact round trip for these
+    p = Pattern("t", 16, 4, {"tom1": [0], "tom5": [4], "crash2": [8], "cowbell": [12]},
+                4, 4, 1)
+    back, _ = midi_to_pattern(pattern_to_midi(p, 120))
+    assert set(back.hits) == {"tom1", "tom5", "crash2", "cowbell"}
+
+
 def test_round_trip_preserves_hits_and_meter():
     rock = PATTERN_LIBRARY[0]
     back, info = midi_to_pattern(pattern_to_midi(rock, 120))

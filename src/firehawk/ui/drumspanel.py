@@ -24,6 +24,7 @@ import wx
 
 from .. import config
 from ..practice import (
+    CORE_ROLES,
     DRUM_BEAT_UNITS,
     GRID_CHOICES,
     LEVEL_ACCENT,
@@ -2687,8 +2688,12 @@ class DrumsPanel(wx.Panel):
             self._part_roles = [ln["id"] for ln in self._line_meta]
             labels = [ln["label"] for ln in self._line_meta]
         else:
-            kit_roles = self._kit.roles() if self._kit else []
-            self._part_roles = [r for r in ROLES if r in kit_roles or r in self._pattern.hits]
+            # Show the parts this groove uses plus the core (kick/snare/hats), NOT every
+            # voice in the full 24-part kit — same curation as the editor's line list, so
+            # the Part chooser isn't a wall of silent parts to arrow through.
+            wanted = set(self._pattern.hits) | set(CORE_ROLES)
+            self._part_roles = [r for r in ROLES if r in wanted]
+            self._part_roles += [r for r in self._pattern.hits if r not in self._part_roles]
             labels = [ROLE_LABELS.get(r, r) for r in self._part_roles]
         self.part_choice.Set(labels)
         if self._part_roles:

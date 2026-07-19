@@ -433,18 +433,34 @@ actually ship just work — plurals (`Kicks`, `Snares`), spaced and worded names
 | Hi-hat (closed) | `HIHAT`, `HI-HAT`, `HAT`, `CH`, `CLOSEDHAT` |
 | Open hat | `OPENHAT`, `OPEN HAT`, `OH` |
 | Clap | `CLAP`, `SNAP` (finger snaps ride with the claps) |
-| Perc | `PERC`, `SHAKER`, `TAMBOURINE`, `CONGA`, `BONGO`, `COWBELL`, `CLAVE`, `WOODBLOCK`, `TRIANGLE`, `DJEMBE` |
+| Rimshot / cross-stick | `RIMSHOT`, `RIM`, `SIDESTICK`, `CROSSSTICK` |
+| Hi-hat (pedal) | `PEDALHAT`, `PEDAL`, `PH` |
+| Toms | `TOM` → the mid tom; `HIGH TOM`/`RACK TOM` → Tom 1, `FLOOR TOM` → Floor tom |
+| Crash 1 / 2 | `CRASH`, `CYMBAL`; `CRASH2` → Crash 2 |
+| Splash / China | `SPLASH`, `CHINA` |
+| Ride / Ride bell | `RIDE`; `RIDE BELL`/`BELL` → Ride bell |
+| Cowbell / Tambourine / Shaker | `COWBELL`, `TAMBOURINE`/`TAMB`, `SHAKER`/`MARACAS` |
+| Perc | `PERC`, `CONGA`, `BONGO`, `CLAVE`, `WOODBLOCK`, `TRIANGLE`, `DJEMBE` |
 | 808 / sub | `808`, `BASS`, `SUB` |
-| Tom | `TOM` |
-| Ride | `RIDE` |
-| Crash | `CRASH`, `CYMBAL`, `CHINA`, `SPLASH` |
 | FX | `FX`, `TEXTURE`, `IMPACT`, `RISER`, `SWEEP`, `NOISE`, `STAB`, and anything with **`LOOP`** in the name |
 
-**Several folders can feed one part.** If a pack has `Percussions`, `Organic Percussions`,
-`Shakers` and `Tambourine`, all four are **merged** into the Perc part — every sample stays
-pickable in Kit Sounds. Loops and textures are routed to **FX** (which grooves rarely
-trigger) so they don't crowd out the real one-shot drums. Anything the matcher doesn't
-recognise (a `Readme` or `Vocals` folder) is simply left out, never misfiled.
+**Several folders can feed one part.** If a pack has `Percussions`, `Organic Percussions`
+and `Congas`, all three are **merged** into the Perc part — every sample stays pickable in
+Kit Sounds. Loops and textures are routed to **FX** (which grooves rarely trigger) so they
+don't crowd out the real one-shot drums. Anything the matcher doesn't recognise (a `Readme`
+or `Vocals` folder) is simply left out, never misfiled.
+
+### The full standard kit
+
+Every part of a complete drum kit is always available — **kick, snare, rimshot, clap,
+closed / pedal / open hats, five toms (Tom 1 high → Floor tom), Crash 1 and 2, splash,
+china, ride, ride bell, cowbell, tambourine, shaker, 808 and perc** — with a built-in
+synth voice for each, so the whole palette is playable even before you load a sample kit,
+and improvised fills always have their parts. A kit you import only needs the parts you
+have; any part it's missing falls back to the synth voice, so nothing ever goes silent.
+The editor doesn't clutter with all of them: a pattern shows the parts it uses plus the
+core (kick, snare, hats), and **Add Line…** reaches the rest of the kit (a floor tom, a
+second crash, a cowbell) whenever you want them.
 
 A **flat folder** also works if the files themselves are named for the parts
 (`kick.wav`, `snare.wav`, `hihat.wav`, …).

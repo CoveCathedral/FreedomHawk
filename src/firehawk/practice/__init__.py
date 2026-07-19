@@ -5,6 +5,7 @@ so they can be unit-tested headlessly."""
 from .drums import (
     BEAT_UNITS as DRUM_BEAT_UNITS,
     GENRE_PATTERNS,
+    CORE_ROLES,
     GRID_CHOICES,
     LEVEL_ACCENT,
     LEVEL_GHOST,
@@ -64,6 +65,7 @@ __all__ = [
     "MAX_STEPS",
     "NUMPY_AVAILABLE",
     "PATTERN_LIBRARY",
+    "CORE_ROLES",
     "ROLE_LABELS",
     "ROLES",
     "DrumKit",

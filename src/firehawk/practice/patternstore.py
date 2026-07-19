@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .drums import (
     GENRE_PATTERNS,
+    CORE_ROLES,
     ORNAMENTS,
     PATTERN_LIBRARY,
     LEVEL_ACCENT,
@@ -114,9 +115,14 @@ def make_line(role: str, kit: str | None = None, sample: str | None = None,
 
 def lines_for_kit(pattern: Pattern, kit, kit_name: str | None,
                   sample_choices: dict | None = None) -> list[dict]:
-    """One line per part (ids match roles).  Lines follow the global kit (kit=None)."""
-    kit_roles = kit.roles() if kit else []
-    roles = [r for r in ROLES if r in kit_roles or r in pattern.hits]
+    """One line per part (ids match roles).  Lines follow the global kit (kit=None).
+
+    Shows the parts the pattern actually uses plus a small core (kick/snare/hats), NOT
+    every voice in the kit — the full standard kit has two dozen parts, and a wall of
+    empty lines is a nightmare to arrow through.  The rest of the kit is one Add Line away.
+    """
+    wanted = set(pattern.hits) | set(CORE_ROLES)
+    roles = [r for r in ROLES if r in wanted]
     roles += [r for r in pattern.hits if r not in roles]
     # Default hi-hat choke: when a groove actually plays both an open and a closed hat, put
     # them in one choke group so the closed hat cuts the open hat's ring (as on a real kit).
