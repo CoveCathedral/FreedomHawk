@@ -10,6 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Firehawk Accessible Controller project" }]
 license = { text = "MIT" }
+# Sequin (the accessible sequencer / drum machine + its practice engine and a11y helpers)
+# now lives in its own sibling repo and is consumed as an editable install:
+#   pip install -e ../Sequin      (github.com/CoveCathedral/sequin-drum-sequencer)
+# It is not a PyPI dependency yet, so it is not listed here; install it alongside.
 dependencies = [
     "pyserial>=3.5",
 ]
@@ -22,7 +26,6 @@ dev = ["pytest>=8.0", "pytest-timeout>=2.1", "numpy>=1.24", "accessible_output2>
 
 [project.scripts]
 firehawk = "firehawk.__main__:main"
-sequin = "sequin.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
