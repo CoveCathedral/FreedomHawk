@@ -12,8 +12,8 @@ from typing import Callable
 import wx
 
 from ..tuner import INSTRUMENTS, INSTRUMENTS_BY_NAME, TonePlayer, note_frequency
-from . import speech
-from .accessibility import set_accessible_name
+from sequin.ui import speech
+from sequin.ui.accessibility import set_accessible_name
 
 
 class TunerPanel(wx.Panel):

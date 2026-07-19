@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from firehawk.practice import drums
-from firehawk.practice.pitch import (
+from sequin.practice import drums
+from sequin.practice.pitch import (
     estimate_pitch,
     note_from_freq,
     note_name_for_semitones,

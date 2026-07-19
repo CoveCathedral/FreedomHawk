@@ -2,7 +2,7 @@
 
 import pytest
 
-from firehawk.practice import (
+from sequin.practice import (
     BEAT_UNITS,
     SUBDIVISIONS,
     TapTempo,

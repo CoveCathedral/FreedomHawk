@@ -14,7 +14,7 @@ from typing import Callable
 import wx
 
 from ..model import EditBuffer, ModelCatalog, ModelSpec, SlotDef
-from .accessibility import set_accessible_name
+from sequin.ui.accessibility import set_accessible_name
 from .controls import ParamControl
 
 # Parameters handled by the dedicated Enabled/Model widgets, not the generic list.

@@ -16,10 +16,10 @@ except Exception:  # pragma: no cover - no GUI available
 import firehawk.config as config
 from firehawk.model import SLOT_LAYOUT
 from firehawk.ui.blockpanel import BlockPanel
-from firehawk.practice.patternstore import build_line_kit, resolve_pattern_by_name
-from firehawk.ui.drumspanel import DrumsPanel
+from sequin.practice.patternstore import build_line_kit, resolve_pattern_by_name
+from sequin.ui.drumspanel import DrumsPanel
 from firehawk.ui.mainframe import MainFrame
-from firehawk.ui.metronomepanel import MetronomePanel
+from sequin.ui.metronomepanel import MetronomePanel
 from firehawk.ui.presetspanel import PresetsPanel
 from firehawk.ui.tunerpanel import TunerPanel
 
@@ -27,7 +27,7 @@ from firehawk.ui.tunerpanel import TunerPanel
 @pytest.fixture(autouse=True)
 def _silence_audio(monkeypatch):
     """No spoken output during tests, and stop any looping sound afterwards."""
-    from firehawk.ui import speech
+    from sequin.ui import speech
     spoken: list[str] = []
     monkeypatch.setattr(speech, "speak",
                         lambda text, interrupt=True: spoken.append(text))
@@ -73,7 +73,7 @@ def test_sequin_standalone_frame(tmp_path, monkeypatch, _silence_audio):
     # Sequin runs on its own (the tandem standalone entry point), hosting the same
     # DrumsPanel with its own Tools/Settings/Help menu.
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
-    from firehawk.sequin import SequinFrame
+    from sequin.app import SequinFrame
     f = SequinFrame()
     try:
         assert isinstance(f.drums, DrumsPanel)
@@ -167,7 +167,7 @@ def test_f5_plays_or_stops_the_current_tab(frame, _silence_audio):
 
 def test_sequin_f5_toggles_transport(tmp_path, monkeypatch, _silence_audio):
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "settings.json")
-    from firehawk.sequin import SequinFrame
+    from sequin.app import SequinFrame
     f = SequinFrame()
     try:
         if not f.metronome.player.available:
@@ -203,7 +203,7 @@ def test_drums_panel_layout(frame):
 
 
 def _grid_dialog(frame):
-    from firehawk.ui.drumspanel import PatternEditorDialog
+    from sequin.ui.drumspanel import PatternEditorDialog
     d = frame.drums_page
     return PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
                                set(), d.player, d.bpm, dark=True, settings=d._settings)
@@ -261,7 +261,7 @@ def test_grid_up_down_moves_lines_and_speaks(frame, _silence_audio):
 
 
 def test_grid_add_and_delete_line(frame, _silence_audio):
-    from firehawk.practice.patternstore import make_line
+    from sequin.practice.patternstore import make_line
     dlg = _grid_dialog(frame)
     try:
         before = len(dlg.lines)
@@ -300,7 +300,7 @@ def test_grid_cursor_speaks_positions(frame, _silence_audio):
 
 def test_grid_space_cycles_dynamics(frame, _silence_audio):
     # Space cycles off -> on -> accent -> ghost -> off, each spoken.
-    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
+    from sequin.practice import LEVEL_ACCENT, LEVEL_GHOST
     spoken = _silence_audio
     dlg = _grid_dialog(frame)
     try:
@@ -615,7 +615,7 @@ def test_tempo_trainer_continuous_passes_target(frame, _silence_audio):
 
 
 def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
+    from sequin.ui.drumspanel import SongDialog
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -662,7 +662,7 @@ def test_song_builder_add_reorder_repeats_render(frame, _silence_audio):
 
 
 def test_song_builder_section_swing_and_fills(frame, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
+    from sequin.ui.drumspanel import SongDialog
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -726,7 +726,7 @@ def test_song_builder_section_swing_and_fills(frame, _silence_audio):
 
 
 def test_song_builder_preview_groove_before_adding(frame, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
+    from sequin.ui.drumspanel import SongDialog
     d = frame.drums_page
     if not d.player.available:
         pytest.skip("no audio device available")
@@ -748,8 +748,8 @@ def test_song_builder_preview_groove_before_adding(frame, _silence_audio):
 
 
 def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
-    from firehawk.practice.patternstore import make_song_record, save_song
+    from sequin.ui.drumspanel import SongDialog
+    from sequin.practice.patternstore import make_song_record, save_song
     d = frame.drums_page
     loops = []
     monkeypatch.setattr(d.player, "play", lambda wav, loop=True: loops.append(loop))
@@ -778,7 +778,7 @@ def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio
 
 
 def test_song_builder_insert_position(frame, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
+    from sequin.ui.drumspanel import SongDialog
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -817,7 +817,7 @@ def test_song_builder_insert_position(frame, _silence_audio):
 
 
 def test_song_builder_mark_and_bulk_edit(frame, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
+    from sequin.ui.drumspanel import SongDialog
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -860,8 +860,8 @@ def test_song_builder_mark_and_bulk_edit(frame, _silence_audio):
 
 
 def test_song_beat_editor_navigate_edit_and_save(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog
-    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    from sequin.ui.drumspanel import SongBeatEditorDialog
+    from sequin.practice.patternstore import normalize_section, resolve_section_pattern
     d = frame.drums_page
     sections = [normalize_section({"pattern": "Rock", "repeats": 2}),
                 normalize_section({"pattern": "Funk", "repeats": 1})]
@@ -899,8 +899,8 @@ def test_song_beat_editor_navigate_edit_and_save(frame, monkeypatch, _silence_au
 
 
 def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog
-    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    from sequin.ui.drumspanel import SongBeatEditorDialog
+    from sequin.practice.patternstore import normalize_section, resolve_section_pattern
     d = frame.drums_page
     sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
     dlg = SongBeatEditorDialog(d, d, sections, dark=True)
@@ -908,7 +908,7 @@ def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence
     try:
         rock = resolve_section_pattern(sections[0], d._settings)
         # Add Line brings a new kit part into the whole song.
-        from firehawk.practice import ROLES
+        from sequin.practice import ROLES
         assert "cowbell" not in dlg._parts
         avail = [r for r in ROLES if r not in dlg._parts]
         monkeypatch.setattr(wx.SingleChoiceDialog, "ShowModal", lambda self: wx.ID_OK)
@@ -935,9 +935,9 @@ def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence
 def test_kit_builder_builds_a_loadable_kit(frame, monkeypatch, tmp_path, _silence_audio):
     import struct
     import wave
-    from firehawk.ui.drumspanel import KitBuilderDialog
-    from firehawk.practice import ROLES
-    from firehawk.practice.drums import ROLE_FOLDER, load_kit_from_folder
+    from sequin.ui.drumspanel import KitBuilderDialog
+    from sequin.practice import ROLES
+    from sequin.practice.drums import ROLE_FOLDER, load_kit_from_folder
     d = frame.drums_page
 
     def write_wav(p):
@@ -992,7 +992,7 @@ def test_kit_builder_builds_a_loadable_kit(frame, monkeypatch, tmp_path, _silenc
 
 
 def test_pattern_editor_fill_span(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import _FillOptionsDialog
+    from sequin.ui.drumspanel import _FillOptionsDialog
     dlg = _grid_dialog(frame)
     try:
         monkeypatch.setattr(_FillOptionsDialog, "ShowModal", lambda self: wx.ID_OK)
@@ -1022,9 +1022,9 @@ def test_pattern_editor_fill_span(frame, monkeypatch, _silence_audio):
 
 
 def test_pattern_editor_fill_respects_line_limit(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import PatternEditorDialog, _FillOptionsDialog
-    from firehawk.practice.patternstore import MAX_LINES, make_line
-    from firehawk.practice.drums import Pattern
+    from sequin.ui.drumspanel import PatternEditorDialog, _FillOptionsDialog
+    from sequin.practice.patternstore import MAX_LINES, make_line
+    from sequin.practice.drums import Pattern
     d = frame.drums_page
     lines = []
     for _ in range(MAX_LINES - 2):                 # already near the cap
@@ -1046,8 +1046,8 @@ def test_pattern_editor_fill_respects_line_limit(frame, monkeypatch, _silence_au
 
 
 def test_song_beat_editor_markers_fill_and_tempo(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
-    from firehawk.practice.patternstore import normalize_section
+    from sequin.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
+    from sequin.practice.patternstore import normalize_section
     d = frame.drums_page
     sections = [normalize_section({"pattern": "Rock", "repeats": 2})]
     dlg = SongBeatEditorDialog(d, d, sections, dark=True)
@@ -1085,8 +1085,8 @@ def test_song_beat_editor_markers_fill_and_tempo(frame, monkeypatch, _silence_au
 
 
 def test_song_beat_editor_fill_honors_this_repeat_scope(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
-    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    from sequin.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
+    from sequin.practice.patternstore import normalize_section, resolve_section_pattern
     d = frame.drums_page
     sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
     dlg = SongBeatEditorDialog(d, d, sections, dark=True)
@@ -1110,8 +1110,8 @@ def test_song_beat_editor_fill_honors_this_repeat_scope(frame, monkeypatch, _sil
 
 
 def test_song_beat_editor_play_modes(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog
-    from firehawk.practice.patternstore import normalize_section
+    from sequin.ui.drumspanel import SongBeatEditorDialog
+    from sequin.practice.patternstore import normalize_section
     d = frame.drums_page
     if not d.player.available:
         pytest.skip("no audio device available")
@@ -1145,8 +1145,8 @@ def test_song_beat_editor_play_modes(frame, monkeypatch, _silence_audio):
 
 
 def test_song_beat_editor_edit_then_split_keeps_earlier_edits(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongBeatEditorDialog
-    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    from sequin.ui.drumspanel import SongBeatEditorDialog
+    from sequin.practice.patternstore import normalize_section, resolve_section_pattern
     d = frame.drums_page
     sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
     dlg = SongBeatEditorDialog(d, d, sections, dark=True)
@@ -1176,9 +1176,9 @@ def test_song_beat_editor_edit_then_split_keeps_earlier_edits(frame, monkeypatch
 def test_song_beat_editor_leaves_untouched_inline_intact(frame, monkeypatch, _silence_audio):
     # Opening the editor and saving without editing a section must NOT re-serialize its
     # inline (which would drop per-line kit/sample/tune/volume/choke).
-    from firehawk.ui.drumspanel import SongBeatEditorDialog
-    from firehawk.practice.patternstore import make_line, make_record, normalize_section
-    from firehawk.practice.drums import Pattern
+    from sequin.ui.drumspanel import SongBeatEditorDialog
+    from sequin.practice.patternstore import make_line, make_record, normalize_section
+    from sequin.practice.drums import Pattern
     d = frame.drums_page
     rich = make_record("Chorus", "Song", 4, 4, 4, 1,
                        [dict(make_line("808"), sample="my808.wav", tune=2, choke=3)],
@@ -1197,8 +1197,8 @@ def test_song_beat_editor_leaves_untouched_inline_intact(frame, monkeypatch, _si
 
 
 def test_song_builder_unsaved_close_guard(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
-    from firehawk.practice.patternstore import delete_song, make_song_record, save_song
+    from sequin.ui.drumspanel import SongDialog
+    from sequin.practice.patternstore import delete_song, make_song_record, save_song
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -1253,8 +1253,8 @@ def test_song_builder_unsaved_close_guard(frame, monkeypatch, _silence_audio):
 
 
 def test_song_builder_polymeter_containment_toggle(frame, monkeypatch, _silence_audio):
-    from firehawk.ui.drumspanel import SongDialog
-    from firehawk.practice.patternstore import delete_song, make_song_record, save_song
+    from sequin.ui.drumspanel import SongDialog
+    from sequin.practice.patternstore import delete_song, make_song_record, save_song
     d = frame.drums_page
     dlg = SongDialog(d, d, dark=True)
     try:
@@ -1277,8 +1277,8 @@ def test_song_builder_polymeter_containment_toggle(frame, monkeypatch, _silence_
         # The timeline measures a section with the SAME resolution the audio uses, so an
         # improvised-fill section's block is its rendered (nominal) length, never a
         # polymetric LCM that the audio wouldn't play.
-        from firehawk.practice.drums import section_seconds
-        from firehawk.practice.patternstore import normalize_section
+        from sequin.practice.drums import section_seconds
+        from sequin.practice.patternstore import normalize_section
         dlg._sections = [normalize_section(
             {"pattern": "Rock", "repeats": 2, "fill": "improv"})]
         dlg._rebuild()
@@ -1335,7 +1335,7 @@ def test_line_choke_group_cycles_and_speaks(frame, _silence_audio):
         assert "choke group 1" in _silence_audio[-1]
         assert "choke group 1" in dlg._row_label(line)
         # Cycling past the max wraps back to no group.
-        from firehawk.practice.patternstore import MAX_CHOKE_GROUP
+        from sequin.practice.patternstore import MAX_CHOKE_GROUP
         for _ in range(MAX_CHOKE_GROUP):
             dlg._cycle_choke()
         assert line["choke"] == 0
@@ -1371,8 +1371,8 @@ def test_grid_save_flow(frame):
     # Simulate the panel's save path without ShowModal.  A tom line isn't shown by
     # default now (the full kit curates to used + core parts), so add an empty one
     # to toggle a fresh hit onto.
-    from firehawk.ui.drumspanel import PatternEditorDialog
-    from firehawk.practice.patternstore import make_line
+    from sequin.ui.drumspanel import PatternEditorDialog
+    from sequin.practice.patternstore import make_line
     d = frame.drums_page
     lines = d._current_lines()
     lines.append(make_line("tom", existing=lines))
@@ -1393,7 +1393,7 @@ def test_grid_save_flow(frame):
 
 
 def test_category_filter_and_user_presets(frame):
-    from firehawk.practice.patternstore import make_line, make_record, save_user_pattern
+    from sequin.practice.patternstore import make_line, make_record, save_user_pattern
     d = frame.drums_page
     all_count = len(d._groove_entries)
     assert all_count == 500  # built-ins with no user patterns yet
@@ -1406,7 +1406,7 @@ def test_category_filter_and_user_presets(frame):
     # Save a mixed-line pattern under a new category; it appears in the list.
     lines = [make_line("kick"), make_line("snare")]
     lines[0]["steps"] = [0, 8]
-    from firehawk.practice.patternstore import lines_to_pattern
+    from sequin.practice.patternstore import lines_to_pattern
     pattern = lines_to_pattern(lines, 4, 4, 4, 1, name="My Jam")
     rec = make_record("My Jam", "Prog", 4, 4, 4, 1, lines, pattern)
     save_user_pattern(d._settings, rec)
@@ -1436,7 +1436,7 @@ def test_swing_humanize_live_in_the_editor_and_save_with_the_pattern(frame):
     d = frame.drums_page
     # Feel moved OFF the main tab (it declutters + belongs with the groove).
     assert not hasattr(d, "swing_slider") and not hasattr(d, "humanize_slider")
-    from firehawk.ui.drumspanel import PatternEditorDialog
+    from sequin.ui.drumspanel import PatternEditorDialog
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
                               set(), d.player, d.bpm, dark=True, settings=d._settings)
     try:
@@ -1496,8 +1496,8 @@ def test_kit_change_revoices_saved_pattern(frame):
     # Regression: a saved pattern's follow-global lines must re-voice when the main
     # Kit dropdown changes (they used to be frozen to the kit active at save time).
     import numpy as np
-    from firehawk.practice import DrumKit
-    from firehawk.practice.patternstore import (lines_to_pattern, make_line,
+    from sequin.practice import DrumKit
+    from sequin.practice.patternstore import (lines_to_pattern, make_line,
                                                 make_record, save_user_pattern)
     d = frame.drums_page
     lines = [make_line("kick")]
@@ -1519,7 +1519,7 @@ def test_editor_audition_has_feel_but_stays_short(frame):
     # 40-second loop that reads as "slow / feel gone".
     import io
     import wave
-    from firehawk.ui.drumspanel import PatternEditorDialog
+    from sequin.ui.drumspanel import PatternEditorDialog
     d = frame.drums_page
     d.fillstyle_choice.SetSelection(1)  # improvised on the main tab
     dlg = PatternEditorDialog(d, d._pattern.copy(), d._current_lines(), d._kits_dir(),
@@ -1539,10 +1539,10 @@ def test_editor_audition_has_feel_but_stays_short(frame):
 
 
 def test_drum_library_dialog(frame, _silence_audio):
-    from firehawk.practice.patternstore import (lines_to_pattern, make_line,
+    from sequin.practice.patternstore import (lines_to_pattern, make_line,
                                                 make_record, save_user_pattern,
                                                 user_patterns)
-    from firehawk.ui.drumspanel import DrumLibraryDialog
+    from sequin.ui.drumspanel import DrumLibraryDialog
     d = frame.drums_page
     lines = [make_line("kick")]
     lines[0]["steps"] = [0]
@@ -1553,7 +1553,7 @@ def test_drum_library_dialog(frame, _silence_audio):
         assert dlg.pattern_list.GetCount() == 1
         assert dlg.pattern_list.GetString(0).startswith("Lib Test")
         # Store-backed delete reflected after reload.
-        from firehawk.practice.patternstore import delete_pattern
+        from sequin.practice.patternstore import delete_pattern
         delete_pattern(d._settings, "Lib Test")
         dlg._reload()
         assert dlg.pattern_list.GetCount() == 0
@@ -1567,8 +1567,8 @@ def test_midi_import_opens_editor_and_saves(frame, monkeypatch, tmp_path,
     # Importing a MIDI file must land straight in the Pattern Editor (live-tested
     # regression: it silently became the current pattern while the Groove dropdown
     # still displayed the old selection, which read as "nothing imported").
-    import firehawk.ui.drumspanel as dp
-    from firehawk.practice.midifile import pattern_to_midi
+    import sequin.ui.drumspanel as dp
+    from sequin.practice.midifile import pattern_to_midi
     d = frame.drums_page
     midi_path = tmp_path / "beat.mid"
     midi_path.write_bytes(pattern_to_midi(d._pattern, 120, {}))
@@ -1602,7 +1602,7 @@ def test_midi_import_opens_editor_and_saves(frame, monkeypatch, tmp_path,
 def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
     # A 1-bar cycle would put a fill in every bar and wreck the meter (live-tested
     # regression); with Fill every unset, improv must run on a 4-bar cycle.
-    import firehawk.ui.drumspanel as dp
+    import sequin.ui.drumspanel as dp
     captured = {}
 
     def fake_improv(p, cycle, cycles, seed=None, fill_amount=0.0):
@@ -1620,7 +1620,7 @@ def test_improv_defaults_to_four_bar_cycle(frame, monkeypatch):
 def test_kit_sounds_dialog(frame, tmp_path):
     import numpy as np
     import wave as wave_mod
-    from firehawk.ui.drumspanel import KitSoundsDialog
+    from sequin.ui.drumspanel import KitSoundsDialog
 
     def write_wav(path, n):
         pcm = (0.3 * np.sin(np.arange(n) / 5) * 32767).astype("<i2")
@@ -1652,7 +1652,7 @@ def test_kit_sounds_dialog(frame, tmp_path):
 def test_kit_sounds_cross_kit_sources(frame, tmp_path):
     import numpy as np
     import wave as wave_mod
-    from firehawk.ui.drumspanel import KitSoundsDialog
+    from sequin.ui.drumspanel import KitSoundsDialog
 
     def write_wav(path, n):
         pcm = (0.3 * np.sin(np.arange(n) / 5) * 32767).astype("<i2")
@@ -1706,7 +1706,7 @@ def test_fill_every_selector(frame):
     assert d._fill_every_bars() is None  # default: pattern as written
     d.fill_choice.SetSelection(4)        # 12 bars
     assert d._fill_every_bars() == 12
-    from firehawk.practice import expand_with_fill
+    from sequin.practice import expand_with_fill
     ex = expand_with_fill(d._pattern, 12)
     assert ex.bars == 12
 
@@ -1758,7 +1758,7 @@ def test_metronome_odd_meter_toggle(frame):
 
 def test_drums_start_stop_toggles(frame):
     d = frame.drums_page
-    from firehawk.practice import NUMPY_AVAILABLE
+    from sequin.practice import NUMPY_AVAILABLE
     if not (NUMPY_AVAILABLE and d.player.available):
         pytest.skip("no audio / numpy")
     d._on_start_stop(None)
@@ -1877,7 +1877,7 @@ def test_continuous_control_is_slider(frame):
 def test_forced_name_defers_to_child_items():
     """A forced accessible name must apply to the control only, not its children,
     so list items and dropdown options keep their own names (NVDA regression)."""
-    from firehawk.ui import accessibility
+    from sequin.ui import accessibility
     if not hasattr(wx, "Accessible"):
         pytest.skip("wx.Accessible not available on this build")
     acc = accessibility._NamedAccessible("Presets")

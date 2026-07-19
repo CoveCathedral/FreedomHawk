@@ -4,8 +4,8 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from firehawk.practice import GENRE_PATTERNS, Pattern
-from firehawk.practice import patternstore as ps
+from sequin.practice import GENRE_PATTERNS, Pattern
+from sequin.practice import patternstore as ps
 
 
 class _StubSettings:
@@ -29,7 +29,7 @@ def test_make_line_unique_ids_and_labels():
 
 
 def test_lines_pattern_round_trip():
-    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
+    from sequin.practice import LEVEL_ACCENT, LEVEL_GHOST
     lines = [ps.make_line("kick"), ps.make_line("snare")]
     lines[0]["steps"] = [0, 8]
     lines[1]["steps"] = [4, 12, 99]  # out-of-range step is dropped
@@ -99,7 +99,7 @@ def test_feel_saves_with_the_pattern():
 
 def test_build_line_kit_follow_global_vs_explicit(tmp_path):
     import numpy as np
-    from firehawk.practice import DrumKit
+    from sequin.practice import DrumKit
     # A distinct "global" kit: a kick voice that is clearly not the synth kick.
     global_kick = np.full(3000, 0.5, dtype=np.float32)
     global_kit = DrumKit("Global", {"kick": global_kick})
@@ -115,7 +115,7 @@ def test_build_line_kit_follow_global_vs_explicit(tmp_path):
 
 
 def test_lines_for_kit_lines_follow_global(tmp_path):
-    from firehawk.practice import synth_kit, Pattern
+    from sequin.practice import synth_kit, Pattern
     p = Pattern("t", 16, 4, {"kick": [0]}, 4, 4, 1)
     lines = ps.lines_for_kit(p, synth_kit(), "SomeKit")
     assert all(ln["kit"] is None for ln in lines)  # follow global, not baked to SomeKit
@@ -134,7 +134,7 @@ def test_build_line_kit_stacks_and_falls_back(tmp_path):
 
 def test_build_line_kit_bakes_tune_and_gain(tmp_path):
     import numpy as np
-    from firehawk.practice import DrumKit
+    from sequin.practice import DrumKit
     tone = np.sin(2 * np.pi * 100.0 * np.arange(4000) / 44100).astype(np.float32)
     base_kit = DrumKit("Base", {"kick": tone})
     plain = ps.build_line_kit([ps.make_line("kick")], tmp_path, base_kit=base_kit)
@@ -376,7 +376,7 @@ def test_polymeter_length_round_trips():
 
 
 def test_lines_for_kit_auto_chokes_played_hats():
-    from firehawk.practice import synth_kit
+    from sequin.practice import synth_kit
     both = Pattern("t", 16, 4, {"hihat": [0, 4], "openhat": [8], "kick": [0]}, 4, 4, 1)
     m = {ln["id"]: ln.get("choke", 0) for ln in ps.lines_for_kit(both, synth_kit(), None)}
     assert m["hihat"] == 1 and m["openhat"] == 1     # closed hat chokes the open hat
@@ -388,7 +388,7 @@ def test_lines_for_kit_auto_chokes_played_hats():
 
 
 def test_lines_for_kit_covers_pattern_and_kit():
-    from firehawk.practice import synth_kit
+    from sequin.practice import synth_kit
     p = Pattern("t", 16, 4, {"kick": [0], "fx": [4]}, 4, 4, 1)
     lines = ps.lines_for_kit(p, synth_kit(), None)
     ids = [ln["id"] for ln in lines]
@@ -401,7 +401,7 @@ def test_lines_for_kit_covers_pattern_and_kit():
 def test_lines_for_kit_curates_to_used_plus_core():
     # The full standard kit has ~two dozen voices; the editor must NOT dump all of them
     # as empty lines. Only the parts the pattern uses plus a small core are shown.
-    from firehawk.practice import synth_kit
+    from sequin.practice import synth_kit
     p = Pattern("t", 16, 4, {"kick": [0], "tom5": [8]}, 4, 4, 1)
     ids = [ln["id"] for ln in ps.lines_for_kit(p, synth_kit(), None)]
     assert set(ids) == {"kick", "snare", "hihat", "openhat", "tom5"}

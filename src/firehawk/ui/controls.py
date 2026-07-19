@@ -21,7 +21,7 @@ from typing import Callable
 import wx
 
 from ..model import ParamSpec, ValueType
-from .accessibility import set_accessible_name
+from sequin.ui.accessibility import set_accessible_name
 
 # Parameters whose real-world range carries a unit we can announce.
 _UNIT_HINTS = {

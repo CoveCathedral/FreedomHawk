@@ -1,23 +1,19 @@
-"""Persistent app settings (currently the tab order and dark-mode preference).
+"""FreedomHawk's persistent settings — Sequin's key/value store plus this app's tab order.
 
-Stored as JSON under the user's app-data directory so preferences survive restarts.
+The generic store lives in ``sequin.config``; here we add the FreedomHawk-specific view
+list (pedal blocks + practice tools) and the saved page order on top of it.
 """
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
+from sequin.config import AppSettings as _BaseSettings
+from sequin.config import _config_dir
 
 from .model import SLOT_LAYOUT
 
-
-def _config_dir() -> Path:
-    base = os.environ.get("APPDATA") or str(Path.home())
-    return Path(base) / "FreedomHawk"
-
-
-CONFIG_FILE = _config_dir() / "settings.json"
+#: The settings file FreedomHawk uses (its own app-data folder).  Kept as a module global
+#: so tests can point it at a temp file before constructing the app.
+CONFIG_FILE = _config_dir("FreedomHawk") / "settings.json"
 
 
 def all_views() -> list[tuple[str, str]]:
@@ -33,23 +29,11 @@ def all_views() -> list[tuple[str, str]]:
 DEFAULT_PAGE_ORDER = ["presets"] + [s.id for s in SLOT_LAYOUT] + ["tuner", "metronome", "drums"]
 
 
-class AppSettings:
+class AppSettings(_BaseSettings):
+    """Sequin's settings store plus FreedomHawk's tab-order logic."""
+
     def __init__(self) -> None:
-        self.data: dict = {}
-        self.load()
-
-    def load(self) -> None:
-        try:
-            self.data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            self.data = {}
-
-    def save(self) -> None:
-        try:
-            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            CONFIG_FILE.write_text(json.dumps(self.data, indent=2), encoding="utf-8")
-        except OSError:
-            pass
+        super().__init__(path=CONFIG_FILE)
 
     def page_order(self) -> list[str]:
         """The saved tab order, filtered to valid views and completed with any new ones."""
@@ -62,11 +46,4 @@ class AppSettings:
 
     def set_page_order(self, order: list[str]) -> None:
         self.data["page_order"] = list(order)
-        self.save()
-
-    def get(self, key: str, default=None):
-        return self.data.get(key, default)
-
-    def set(self, key: str, value) -> None:
-        self.data[key] = value
         self.save()

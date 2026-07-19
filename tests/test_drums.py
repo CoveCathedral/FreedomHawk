@@ -14,7 +14,7 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from firehawk.practice import drums
+from sequin.practice import drums
 
 
 def _write_int16_wav(path, samples, rate=44100, channels=1):
@@ -263,7 +263,7 @@ def test_pattern_library_size_and_uniqueness():
 
 
 def test_library_spans_many_genres():
-    from firehawk.practice import patternstore as ps
+    from sequin.practice import patternstore as ps
     cats = {ps.builtin_category(p.name) for p in drums.PATTERN_LIBRARY}
     assert "" not in cats                       # every pattern maps to a genre
     assert len(cats) >= 40                       # a broad spread of styles

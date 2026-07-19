@@ -4,8 +4,8 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from firehawk.practice import PATTERN_LIBRARY, Pattern
-from firehawk.practice.midifile import (
+from sequin.practice import PATTERN_LIBRARY, Pattern
+from sequin.practice.midifile import (
     GM_TO_ROLE,
     ROLE_TO_GM,
     midi_to_pattern,
@@ -14,7 +14,7 @@ from firehawk.practice.midifile import (
 
 
 def test_dynamics_round_trip_as_velocities():
-    from firehawk.practice import LEVEL_ACCENT, LEVEL_GHOST
+    from sequin.practice import LEVEL_ACCENT, LEVEL_GHOST
     p = Pattern("t", 16, 4, {"snare": [0, 4, 8]}, 4, 4, 1,
                 {"snare": {0: LEVEL_ACCENT, 8: LEVEL_GHOST}})
     back, _ = midi_to_pattern(pattern_to_midi(p, 120))

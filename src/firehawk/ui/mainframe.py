@@ -18,11 +18,11 @@ from ..device import DeviceSession
 from ..model import EditBuffer, ModelCatalog, Preset, PresetLibrary, SLOT_LAYOUT
 from ..transport import SerialTransport
 from ..transport.serialport import find_firehawk_ports, list_serial_ports
-from . import speech, theme
-from .accessibility import set_accessible_name
+from sequin.ui import speech, theme
+from sequin.ui.accessibility import set_accessible_name
 from .blockpanel import BlockPanel
-from .drumspanel import DrumsPanel
-from .metronomepanel import MetronomePanel
+from sequin.ui.drumspanel import DrumsPanel
+from sequin.ui.metronomepanel import MetronomePanel
 from .presetspanel import PresetsPanel
 from .tunerpanel import TunerPanel
 

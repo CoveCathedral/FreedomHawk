@@ -12,8 +12,8 @@ from typing import Callable
 import wx
 
 from ..model import ModelCatalog, Preset, PresetEntry, PresetLibrary, summarize_preset
-from . import speech
-from .accessibility import set_accessible_name
+from sequin.ui import speech
+from sequin.ui.accessibility import set_accessible_name
 
 
 class PresetsPanel(wx.Panel):

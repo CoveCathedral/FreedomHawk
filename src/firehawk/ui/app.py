@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import wx
 
-from . import theme
+from sequin.ui import theme
 from .mainframe import MainFrame
 
 

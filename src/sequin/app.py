@@ -3,10 +3,10 @@
 Runs the same Sequin that FreedomHawk embeds — the accessible drum machine / step
 sequencer (``ui.drumspanel.DrumsPanel`` over the pedal-independent ``practice`` engine) —
 in its own window, with its own menu.  This is the *tandem standalone* entry point: launch
-it with ``Sequin.bat`` or ``python -m firehawk.sequin``.
+it with ``Sequin.bat`` or ``python -m sequin``.
 
-It shares FreedomHawk's code for now; the eventual separate repo lifts ``practice`` plus the
-Sequin UI out wholesale (they only touch the rest of the app through settings/theme/speech).
+Sequin is its own package (``sequin``); FreedomHawk embeds it and depends on it, so a
+change here reaches both.  Launch standalone with ``Sequin.bat`` or ``python -m sequin``.
 """
 from __future__ import annotations
 

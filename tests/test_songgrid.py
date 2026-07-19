@@ -1,7 +1,7 @@
 """Tests for SongGrid — the flattened navigation model behind the song-wide beat editor."""
 
-from firehawk.practice.drums import Pattern
-from firehawk.practice.songgrid import SongGrid
+from sequin.practice.drums import Pattern
+from sequin.practice.songgrid import SongGrid
 
 
 def _song():
