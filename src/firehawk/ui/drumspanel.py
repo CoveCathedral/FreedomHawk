@@ -78,10 +78,12 @@ from ..practice.patternstore import (
     delete_song,
     line_pitch,
     lines_for_kit,
+    inline_record_from_pattern,
     make_line,
     make_record,
     make_song_record,
     normalize_section,
+    split_section_repeat,
     record_from_file_dict,
     record_to_file_dict,
     record_to_pattern,
@@ -97,6 +99,7 @@ from ..practice.patternstore import (
 )
 from ..practice.pitch import estimate_pitch, note_name_for_semitones
 from ..practice.patternstore import SYNTH_KIT_NAME
+from ..practice.songgrid import SongGrid
 from . import speech, theme
 from .accessibility import set_accessible_name
 
@@ -1864,6 +1867,9 @@ class SongDialog(wx.Dialog):
         self.play_btn = wx.Button(self, label="&Play")
         self.play_btn.Bind(wx.EVT_BUTTON, self._on_play)
         bottom.Add(self.play_btn, 0, wx.RIGHT, 8)
+        beat_btn = wx.Button(self, label="&Beat Editor...")
+        beat_btn.Bind(wx.EVT_BUTTON, lambda e: self._open_beat_editor())
+        bottom.Add(beat_btn, 0, wx.RIGHT, 8)
         cancel = wx.Button(self, wx.ID_CANCEL, "Close")
         cancel.Bind(wx.EVT_BUTTON, lambda e: self._on_close(e))
         bottom.Add(cancel, 0)
@@ -2244,6 +2250,26 @@ class SongDialog(wx.Dialog):
         if was_playing:
             self._start_playback(announce=False)
 
+    def _open_beat_editor(self) -> None:
+        """Open the song-wide beat editor on the whole arrangement; adopt its edits."""
+        if not self._sections:
+            speech.speak("Add a section first.")
+            return
+        was_playing = self._playing
+        self._stop()
+        dlg = SongBeatEditorDialog(self._panel, self._panel, self._sections, dark=self._dark)
+        ok = dlg.ShowModal() == wx.ID_OK and dlg.result_sections is not None
+        result = dlg.result_sections
+        dlg.Destroy()
+        if ok:
+            self._sections = [normalize_section(s) for s in result]
+            self._rebuild()
+            speech.speak(f"Beat editor changes applied. {len(self._sections)} sections, "
+                         f"{self._fmt(self._song_len())}.")
+            self._reaudition()
+        elif was_playing:
+            self._start_playback(announce=False)
+
     # -- playback & files -----------------------------------------------------
 
     def _render(self):
@@ -2493,6 +2519,391 @@ class SongDialog(wx.Dialog):
                     return
         self._stop()
         self.EndModal(wx.ID_CANCEL)
+
+
+class SongBeatEditorDialog(wx.Dialog):
+    """Edit a whole song on one spoken tracker grid — the section editor's grid expanded
+    across every section and repeat, for fine beat-by-beat control of an arrangement.
+
+    Navigation (the surface is big, so the ladder climbs by musical unit):
+      Left/Right = one step, Shift = beat, Ctrl = bar, Ctrl+Shift or PageUp/Down = section,
+      Home/End = the song's start/end, Up/Down = between parts.
+    Space cycles a hit (off -> on -> accent -> ghost), F cycles its ornament — both spoken.
+    Add Line brings any part of the full kit into the song.  Edit scope: "all repeats"
+    (default; the edit changes the section's pattern everywhere it repeats) or "this repeat
+    only" (that repeat splits off as its own section so you can vary it alone).
+    """
+
+    def __init__(self, parent: wx.Window, panel: "DrumsPanel", sections: list,
+                 dark: bool = True):
+        super().__init__(parent, title="Song Beat Editor", size=(780, 560),
+                         style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._panel = panel
+        self._settings = panel._settings
+        self._dark = dark
+        self._pos = 0
+        self._added: set[str] = set()      # parts added via Add Line (shown even if empty)
+        self._playing = False
+        self.result_sections = None        # the edited sections, set on Save
+        # Editable working copy: one entry per playable section, each with a private
+        # pattern copy so edits don't touch the shared library groove until Save.
+        self._did_split = False            # a split happened during the current edit
+        self._entries = []
+        for s in sections:
+            p = resolve_section_pattern(s, self._settings)
+            if p is None:
+                continue
+            # dirty=False: an untouched section (even one with an inline) is written back
+            # verbatim on Save, so its per-line kit/sample/tune/volume/choke are preserved.
+            # "base" is the original inline whose per-line properties an edit must keep.
+            self._entries.append({"section": dict(s), "pattern": p.copy(),
+                                  "base": s.get("inline"),
+                                  "name": s.get("pattern") or p.name or "section",
+                                  "dirty": False})
+        try:
+            if not self._entries:
+                raise ValueError("This song has no playable sections yet.")
+            self._build()
+        except Exception as exc:  # noqa: BLE001 - a swallowed error is a dead button
+            wx.MessageBox(f"Could not open the Song Beat Editor:\n{exc}",
+                          "Song Beat Editor", wx.OK | wx.ICON_ERROR, self)
+            self.EndModal(wx.ID_CANCEL)
+            return
+        self.Bind(wx.EVT_CLOSE, lambda e: self._on_cancel())
+        self.Bind(wx.EVT_CHAR_HOOK, self._on_char_hook)
+        theme.apply(self, dark)
+        wx.CallAfter(self.grid_list.SetFocus)
+
+    # -- model ----------------------------------------------------------------
+
+    def _reload_grid(self) -> None:
+        self._grid = SongGrid([(e["pattern"], e["section"].get("repeats", 1), e["name"])
+                               for e in self._entries])
+        roles = set(self._added) | set(CORE_ROLES)
+        for e in self._entries:
+            roles |= set(e["pattern"].hits)
+        self._parts = [r for r in ROLES if r in roles]
+
+    def _entry_at(self, pos: int) -> dict:
+        return self._entries[self._grid.section_of(pos)]
+
+    def _current_part(self) -> str | None:
+        sel = self.grid_list.GetSelection()
+        return self._parts[sel] if 0 <= sel < len(self._parts) else None
+
+    def _state_at(self, pattern: Pattern, part: str, step: int) -> str:
+        if step not in pattern.hits.get(part, []):
+            return "empty"
+        state = pattern.level_of(part, step) or "hit"
+        orn = pattern.ornament_of(part, step)
+        if orn:
+            state += f", {orn}"
+        chance = pattern.chance_of(part, step)
+        return f"{state}, {chance} percent chance" if chance else state
+
+    # -- UI -------------------------------------------------------------------
+
+    def _build(self) -> None:
+        self._reload_grid()
+        root = wx.BoxSizer(wx.VERTICAL)
+        root.Add(wx.StaticText(self, label=(
+            "One grid across the whole song. Left/Right move a step, Shift a beat, Ctrl a "
+            "bar, Ctrl+Shift or Page Up/Down a section; Home/End jump to the song's ends; "
+            "Up/Down pick a part. Space cycles a hit (on, accent, ghost, off); F cycles its "
+            "ornament. F1 lists the keys.")),
+            0, wx.ALL, 8)
+        self.grid_list = wx.ListBox(self, choices=[], style=wx.LB_SINGLE)
+        set_accessible_name(self.grid_list, "Song beat grid, parts")
+        root.Add(self.grid_list, 1, wx.EXPAND | wx.ALL, 8)
+
+        self.scope_cb = wx.CheckBox(self, label="Edit this repeat only (split it off as a variation)")
+        self.scope_cb.Bind(wx.EVT_CHECKBOX, self._on_scope)
+        root.Add(self.scope_cb, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
+        btns = wx.BoxSizer(wx.HORIZONTAL)
+        add_btn = wx.Button(self, label="&Add Line...")
+        add_btn.Bind(wx.EVT_BUTTON, lambda e: self._add_line())
+        btns.Add(add_btn, 0, wx.RIGHT, 8)
+        self.play_btn = wx.Button(self, label="&Play section")
+        self.play_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_play())
+        btns.Add(self.play_btn, 0, wx.RIGHT, 8)
+        save_btn = wx.Button(self, wx.ID_OK, "&Save")
+        save_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_save())
+        btns.Add(save_btn, 0, wx.RIGHT, 8)
+        cancel_btn = wx.Button(self, wx.ID_CANCEL, "Cancel")
+        cancel_btn.Bind(wx.EVT_BUTTON, lambda e: self._on_cancel())
+        btns.Add(cancel_btn, 0)
+        root.Add(btns, 0, wx.ALL, 10)
+        self.SetSizer(root)
+        self._rebuild_rows()
+        self.grid_list.SetSelection(0)
+
+    def _row_label(self, part: str) -> str:
+        total = sum(len(e["pattern"].hits.get(part, [])) for e in self._entries)
+        hits = "no hits" if total == 0 else ("1 hit" if total == 1 else f"{total} hits")
+        return f"{ROLE_LABELS.get(part, part)}: {hits} in the song"
+
+    def _rebuild_rows(self) -> None:
+        keep = max(0, self.grid_list.GetSelection())
+        self.grid_list.Set([self._row_label(p) for p in self._parts])
+        if self._parts:
+            self.grid_list.SetSelection(min(keep, len(self._parts) - 1))
+
+    def _refresh_part_row(self, part: str) -> None:
+        if part in self._parts:
+            self.grid_list.SetString(self._parts.index(part), self._row_label(part))
+
+    # -- navigation & speech --------------------------------------------------
+
+    def _speak_cursor(self) -> None:
+        part = self._current_part()
+        pat = self._entry_at(self._pos)["pattern"]
+        loc = self._grid.locate(self._pos)
+        state = self._state_at(pat, part, loc.step_in_pattern) if part else "empty"
+        label = ROLE_LABELS.get(part, part) if part else "no part"
+        speech.speak(f"{self._grid.describe(self._pos)}. {label}: {state}")
+
+    def _move(self, unit: str, direction: int) -> None:
+        mover = {"step": self._grid.step, "beat": self._grid.beat,
+                 "bar": self._grid.bar, "section": self._grid.section}[unit]
+        self._pos = mover(self._pos, direction)
+        self._speak_cursor()
+
+    def _move_part(self, delta: int) -> None:
+        if not self._parts:
+            return
+        sel = max(0, self.grid_list.GetSelection())
+        new = max(0, min(len(self._parts) - 1, sel + delta))
+        self.grid_list.SetSelection(new)
+        self._speak_cursor()
+
+    def _on_scope(self, event=None) -> None:
+        on = self.scope_cb.GetValue()
+        speech.speak("Editing this repeat only; the repeat you edit splits into its own "
+                     "section." if on else "Editing all repeats of the section.")
+
+    # -- editing --------------------------------------------------------------
+
+    def _target(self) -> tuple[Pattern, int] | None:
+        """The pattern an edit lands on and the step within it — honouring the edit scope.
+        In 'this repeat only' mode the current repeat is split off first."""
+        part = self._current_part()
+        if part is None:
+            return None
+        loc = self._grid.locate(self._pos)
+        entry = self._entries[loc.section]
+        if self.scope_cb.GetValue() and entry["section"].get("repeats", 1) > 1:
+            entry = self._split_here(loc)
+            loc = self._grid.locate(self._pos)
+        entry["dirty"] = True
+        return entry["pattern"], loc.step_in_pattern
+
+    def _split_here(self, loc) -> dict:
+        """Split the section under the cursor so the current repeat becomes its own entry,
+        rebuild the grid, land the cursor on that repeat's same step, and return the new
+        (variant) entry to edit.
+
+        The split is seeded from the LIVE edited pattern (folded into the section's inline
+        first), so any edits already made to this section in 'all repeats' mode carry into
+        every piece — nothing the user did is thrown away by the re-resolve.
+        """
+        si = loc.section
+        entry = self._entries[si]
+        seeded = dict(entry["section"])
+        seeded["inline"] = inline_record_from_pattern(entry["pattern"],
+                                                      base_record=entry.get("base"))
+        parts, variant_local = split_section_repeat([seeded], 0, loc.repeat, self._settings)
+        new_entries = []
+        for sd in parts:
+            p = resolve_section_pattern(sd, self._settings) or entry["pattern"]
+            new_entries.append({"section": dict(sd), "pattern": p.copy(),
+                                "base": sd.get("inline"),
+                                "name": sd.get("pattern") or entry["name"],
+                                "dirty": False})
+        self._entries[si:si + 1] = new_entries
+        self._reload_grid()
+        self._rebuild_rows()
+        # Land on the split-off variant's start plus the same in-pattern step.
+        variant = self._entries[si + variant_local]
+        self._pos = self._grid.section_start(si + variant_local) + loc.step_in_pattern
+        self._did_split = True             # the edit announcement will mention it
+        return variant
+
+    def _toggle(self) -> None:
+        part = self._current_part()
+        if part is None:
+            return
+        # Don't let a shared song cursor place a hit past a polymetric line's own loop
+        # length — it would be announced as placed but silently dropped on save.
+        loc = self._grid.locate(self._pos)
+        if loc.step_in_pattern >= self._entry_at(self._pos)["pattern"].line_length(part):
+            speech.speak(f"Past the {ROLE_LABELS.get(part, part)} loop length here; "
+                         "no hit placed.")
+            return
+        self._did_split = False
+        target = self._target()
+        if target is None:
+            return
+        pattern, step = target
+        steps = set(pattern.hits.get(part, []))
+        if step not in steps:
+            steps.add(step)
+            pattern.set_level(part, step, None)
+            spoken = "on"
+        else:
+            level = pattern.level_of(part, step)
+            if level is None:
+                pattern.set_level(part, step, LEVEL_ACCENT)
+                spoken = "accent"
+            elif level == LEVEL_ACCENT:
+                pattern.set_level(part, step, LEVEL_GHOST)
+                spoken = "ghost"
+            else:
+                steps.discard(step)
+                pattern.set_level(part, step, None)
+                pattern.set_ornament(part, step, None)
+                spoken = "off"
+        if steps:
+            pattern.hits[part] = sorted(steps)
+        else:
+            pattern.hits.pop(part, None)
+        self._refresh_part_row(part)
+        prefix = "Repeat split off as its own section. " if self._did_split else ""
+        speech.speak(f"{prefix}{ROLE_LABELS.get(part, part)} {spoken}, "
+                     f"{self._grid.describe(self._pos)}")
+
+    def _cycle_ornament(self) -> None:
+        part = self._current_part()
+        loc = self._grid.locate(self._pos)
+        pat = self._entry_at(self._pos)["pattern"]
+        if part is None or loc.step_in_pattern not in pat.hits.get(part, []):
+            speech.speak("No hit here. Space places one first.")
+            return
+        self._did_split = False
+        target = self._target()
+        if target is None:
+            return
+        pattern, step = target
+        order = [None] + list(ORNAMENTS)
+        cur = pattern.ornament_of(part, step)
+        new = order[(order.index(cur) + 1) % len(order)]
+        pattern.set_ornament(part, step, new)
+        self._refresh_part_row(part)
+        prefix = "Repeat split off as its own section. " if self._did_split else ""
+        speech.speak(f"{prefix}{ROLE_LABELS.get(part, part)} {new or 'plain stroke'}, "
+                     f"{self._grid.describe(self._pos)}")
+
+    def _add_line(self) -> None:
+        available = [r for r in ROLES if r not in self._parts]
+        if not available:
+            speech.speak("Every part is already in the song.")
+            return
+        labels = [ROLE_LABELS[r] for r in available]
+        dlg = wx.SingleChoiceDialog(self, "Which part to add to the song?", "Add line", labels)
+        theme.apply(dlg, self._dark)
+        if dlg.ShowModal() == wx.ID_OK:
+            role = available[dlg.GetSelection()]
+            self._added.add(role)
+            self._reload_grid()
+            self._rebuild_rows()
+            self.grid_list.SetSelection(self._parts.index(role))
+            speech.speak(f"Added {ROLE_LABELS[role]}. Space places its hits across the song.")
+        dlg.Destroy()
+
+    # -- playback & save ------------------------------------------------------
+
+    def _on_play(self) -> None:
+        if self._playing:
+            self._stop()
+            speech.speak("Stopped.")
+            return
+        if not self._panel.player.available or self._panel._kit is None:
+            speech.speak("Audio isn't available on this system.")
+            return
+        entry = self._entry_at(self._pos)
+        bpm = entry["section"].get("tempo") or self._panel.bpm
+        self._panel.stop()
+        wav = render_loop(entry["pattern"], self._panel._kit, bpm,
+                          volume=self._panel.volume_slider.GetValue() / 100.0,
+                          choke_groups=_auto_hat_choke(entry["pattern"]))
+        self._panel.player.play(wav, loop=True)
+        self._playing = True
+        self.play_btn.SetLabel("&Stop section")
+        speech.speak(f"Playing {entry['name']}.")
+
+    def _stop(self) -> None:
+        if self._playing:
+            self._panel.player.stop()
+            self._playing = False
+            self.play_btn.SetLabel("&Play section")
+
+    def _on_save(self) -> None:
+        out = []
+        for e in self._entries:
+            s = dict(e["section"])
+            if e["dirty"]:      # keep the original per-line source/tune/volume/choke
+                s["inline"] = inline_record_from_pattern(e["pattern"],
+                                                         base_record=e.get("base"))
+            out.append(s)
+        self.result_sections = out
+        self._stop()
+        self.EndModal(wx.ID_OK)
+
+    def _on_cancel(self) -> None:
+        self._stop()
+        self.EndModal(wx.ID_CANCEL)
+
+    # -- keys -----------------------------------------------------------------
+
+    def _keys_help(self) -> None:
+        wx.MessageBox(
+            "Song Beat Editor keys:\n\n"
+            "Left/Right — move one step\n"
+            "Shift+Left/Right — one beat\n"
+            "Ctrl+Left/Right — one bar\n"
+            "Ctrl+Shift+Left/Right, or Page Up/Down — one section\n"
+            "Home/End — start / end of the song\n"
+            "Up/Down — choose a part\n"
+            "Space — cycle a hit: on, accent, ghost, off\n"
+            "F — cycle the hit's ornament: flam, drag, roll\n"
+            "Add Line — add any part of the kit to the song\n"
+            "'Edit this repeat only' checkbox — edit one repeat as its own variation\n"
+            "Save / Cancel — keep or discard your edits",
+            "Song Beat Editor — Keys", wx.OK | wx.ICON_INFORMATION, self)
+
+    def _on_char_hook(self, event: wx.KeyEvent) -> None:
+        if wx.Window.FindFocus() is not self.grid_list:
+            event.Skip()
+            return
+        code = event.GetKeyCode()
+        ctrl, shift = event.ControlDown(), event.ShiftDown()
+        if code == wx.WXK_LEFT or code == wx.WXK_RIGHT:
+            direction = 1 if code == wx.WXK_RIGHT else -1
+            unit = ("section" if ctrl and shift else "bar" if ctrl
+                    else "beat" if shift else "step")
+            self._move(unit, direction)
+        elif code == wx.WXK_UP:
+            self._move_part(-1)
+        elif code == wx.WXK_DOWN:
+            self._move_part(1)
+        elif code == wx.WXK_PAGEUP:
+            self._move("section", -1)
+        elif code == wx.WXK_PAGEDOWN:
+            self._move("section", 1)
+        elif code == wx.WXK_HOME:
+            self._pos = self._grid.home()
+            self._speak_cursor()
+        elif code == wx.WXK_END:
+            self._pos = self._grid.end()
+            self._speak_cursor()
+        elif code == wx.WXK_SPACE:
+            self._toggle()
+        elif code in (ord("F"), ord("f")):
+            self._cycle_ornament()
+        elif code == wx.WXK_F1:
+            self._keys_help()
+        else:
+            event.Skip()
 
 
 class DrumsPanel(wx.Panel):

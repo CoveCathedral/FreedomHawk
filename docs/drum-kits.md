@@ -312,6 +312,38 @@ by cycle, so it already fits its own length regardless of the toggle.
 unsaved work asks before replacing it — time spent arranging never vanishes on an
 accidental Escape.
 
+### The Song Beat Editor (Beat Editor… — fine control across the whole song)
+
+The **Beat Editor** button opens the same spoken tracker grid you know from the Pattern
+Editor, but stretched across the **entire song** — every section, every repeat — so you can
+get in and place hits beat by beat wherever you are in the arrangement.
+
+Because the surface is much bigger, the cursor moves by **musical unit**:
+
+| Key | Moves |
+|-----|-------|
+| **Left / Right** | one step |
+| **Shift + Left / Right** | one beat |
+| **Ctrl + Left / Right** | one bar |
+| **Ctrl+Shift + Left / Right**, or **Page Up / Down** | one section |
+| **Home / End** | the start / end of the whole song |
+| **Up / Down** | choose a part |
+
+Every move is spoken with where you are — e.g. *"Chorus, repeat 2, bar 1, beat 3. Snare:
+hit"*. **Space** cycles the hit under the cursor (on → accent → ghost → off) and **F**
+cycles its ornament (flam → drag → roll), exactly as in the Pattern Editor. **F1** lists
+the keys.
+
+- **Add Line…** brings any part of the full kit into the song (a floor tom, a cowbell, a
+  second crash), ready to place across any section.
+- **Edit scope** — by default an edit changes the section's pattern **everywhere it
+  repeats**. Check **"Edit this repeat only"** to vary a single pass: the repeat you edit
+  **splits off into its own section** so your change lands there alone and the other
+  repeats keep playing as they were.
+- **Play section** auditions the section under the cursor as a loop; **Save** applies your
+  edits back to the arrangement (edited sections become their own inline patterns, so the
+  shared library grooves are never touched), **Cancel** discards them.
+
 **Play** (always at the bottom) renders the song end to end and **plays it through once, then
 ends** — a song has an ending. Sections can even be in different meters (a 4/4 verse into a
 7/8 bridge); each is rendered at its own meter and stitched gapless. Song mode is in both

@@ -224,6 +224,70 @@ def test_song_store_resolve_save_load(tmp_path, monkeypatch):
     assert ps.delete_song(s, "Song 1") and ps.user_songs(s) == []
 
 
+def test_inline_record_round_trips_a_pattern():
+    p = Pattern("Verse", 16, 4, {"kick": [0, 8], "snare": [4, 12]}, 4, 4, 1,
+                {"snare": {4: ps.LEVEL_ACCENT}})
+    rec = ps.inline_record_from_pattern(p)
+    back = ps.record_to_pattern(rec)
+    assert back.hits["kick"] == [0, 8] and back.hits["snare"] == [4, 12]
+    assert back.levels.get("snare") == {4: ps.LEVEL_ACCENT}
+    assert back.steps == 16 and back.meter_label() == "4/4"
+
+
+def test_split_section_repeat_isolates_one_repeat():
+    p = Pattern("Verse", 16, 4, {"kick": [0]}, 4, 4, 1)
+    sections = [{"pattern": "Verse", "repeats": 4, "inline": ps.inline_record_from_pattern(p)}]
+    new, vi = ps.split_section_repeat(sections, 0, 1)   # split off the 2nd repeat
+    assert [s["repeats"] for s in new] == [1, 1, 2]     # before x1, variant x1, after x2
+    assert vi == 1 and new[vi]["inline"] is not None
+    # Editing the variant's inline pattern must not change the before/after repeats.
+    variant_pat = ps.record_to_pattern(new[vi]["inline"])
+    variant_pat.hits["snare"] = [8]
+    new[vi]["inline"] = ps.inline_record_from_pattern(variant_pat)
+    assert "snare" not in ps.resolve_section_pattern(new[0], None).hits
+    assert ps.resolve_section_pattern(new[vi], None).hits.get("snare") == [8]
+    # Splitting the first repeat yields no "before" section.
+    new2, vi2 = ps.split_section_repeat(sections, 0, 0)
+    assert [s["repeats"] for s in new2] == [1, 3] and vi2 == 0
+
+
+def test_split_section_repeat_preserves_fractional_repeats():
+    # A x2.5 section must not lose its half when a repeat is split off — the pieces still
+    # add up to 2.5, so the song's length is unchanged.
+    p = Pattern("Verse", 16, 4, {"kick": [0]}, 4, 4, 1)
+    sections = [{"pattern": "Verse", "repeats": 2.5,
+                 "inline": ps.inline_record_from_pattern(p)}]
+    new, vi = ps.split_section_repeat(sections, 0, 1)
+    assert [s["repeats"] for s in new] == [1, 1, 0.5] and vi == 1
+    assert sum(s["repeats"] for s in new) == 2.5
+    new0, vi0 = ps.split_section_repeat(sections, 0, 0)
+    assert [s["repeats"] for s in new0] == [1, 1.5] and vi0 == 0
+    # Splitting from the fractional TAIL (repeat index == whole) isolates the half itself,
+    # not the last whole repeat — and the total still adds to 2.5.
+    tail, vt = ps.split_section_repeat(sections, 0, 2)
+    assert [s["repeats"] for s in tail] == [2, 0.5] and vt == 1
+    assert sum(s["repeats"] for s in tail) == 2.5
+
+
+def test_inline_record_preserves_per_line_properties():
+    # A song-wide beat edit changes hits, but must NOT wipe a line's kit/sample/tune/etc.
+    base = ps.make_record(
+        "Chorus", "Song", 4, 4, 4, 1,
+        [dict(ps.make_line("808"), sample="my808.wav", tune=2, gain_db=-3, choke=2)],
+        Pattern("x", 16, 4, {"808": [0, 8]}))
+    edited = ps.record_to_pattern(base)
+    edited.hits["808"] = [0, 4, 8, 12]                 # the beat editor changed the hits
+    rec = ps.inline_record_from_pattern(edited, base_record=base)
+    line = next(ln for ln in rec["lines"] if ln["id"] == "808")
+    assert line["sample"] == "my808.wav" and line["tune"] == 2 and line["gain_db"] == -3
+    assert line["choke"] == 2
+    assert line["steps"] == [0, 4, 8, 12]              # the edit landed
+    # A part the edit newly introduced gets a fresh line.
+    edited.hits["cowbell"] = [4]
+    rec2 = ps.inline_record_from_pattern(edited, base_record=base)
+    assert any(ln["id"] == "cowbell" and ln["steps"] == [4] for ln in rec2["lines"])
+
+
 def test_builtin_category():
     assert ps.builtin_category("Rock") == "Rock"
     assert ps.builtin_category("Rock 04 fill") == "Rock"

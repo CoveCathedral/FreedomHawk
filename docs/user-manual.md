@@ -268,6 +268,13 @@ bridge, and so on. It has three tabs:
   (**Alt+P** also plays/pauses inside the Pattern Editor.)
 - **My Songs** — a list of your saved arrangements: Load one into Arrange, Play it, or
   Delete it; plus Save Current Song and Export as WAV.
+- **Beat Editor** — opens the whole song on one spoken tracker grid for fine, beat-by-beat
+  editing across every section. The cursor climbs by musical unit (Left/Right = step,
+  Shift = beat, Ctrl = bar, Ctrl+Shift or Page Up/Down = section, Home/End = the song's
+  ends, Up/Down = parts), each move spoken as "section, repeat, bar, beat". Space cycles a
+  hit, F its ornament, Add Line brings in any kit part, and "Edit this repeat only" varies
+  a single repeat (it splits off as its own section). See the drum-kits guide for the full
+  key list, or press F1 in the editor.
 
 **Play** (at the bottom) renders the whole song end to end (gapless, sections can even be in
 different meters) and **plays it through once, then ends**.

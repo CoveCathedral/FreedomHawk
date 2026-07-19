@@ -366,6 +366,75 @@ def resolve_section_pattern(section: dict, settings) -> Pattern | None:
     return resolve_pattern_by_name(str(section.get("pattern", "")), settings)
 
 
+def inline_record_from_pattern(pattern: Pattern, kit=None, kit_name: str | None = None,
+                               base_record: dict | None = None) -> dict:
+    """Serialize a Pattern into a section's inline record (so a song-wide beat edit can be
+    stored back on the section without touching the shared library groove).
+
+    Pass *base_record* — the section's existing inline — to **preserve every per-line
+    property the Pattern can't hold** (a line's kit/sample source, tune, volume, choke).
+    Only the hits, dynamics, chances, ornaments and lengths (what the beat editor actually
+    changes) are taken from *pattern*; a part the edit newly introduced gets a fresh line.
+    Without a base record, the lines are derived fresh from the pattern's parts.
+    """
+    if base_record and base_record.get("lines"):
+        lines = [dict(ln) for ln in base_record["lines"]]
+        have = {ln.get("id") for ln in lines}
+        for role in pattern.hits:                    # a part Add Line introduced
+            if role not in have:
+                lines.append({"id": role, "label": ROLE_LABELS.get(role, role),
+                              "role": role if role in ROLES else "perc",
+                              "kit": None, "sample": None, "steps": []})
+    else:
+        lines = lines_for_kit(pattern, kit, kit_name)
+    return make_record(pattern.name or "section", "Song", pattern.beats_per_bar,
+                       pattern.beat_unit, pattern.steps_per_beat, pattern.bars,
+                       lines, pattern)
+
+
+def split_section_repeat(sections: list, index: int, repeat: int,
+                         settings=None) -> tuple[list, int]:
+    """Split ``sections[index]`` so its ``repeat``-th pass (0-based) becomes its own
+    one-repeat section, carrying an **inline copy** of the pattern so editing that repeat
+    alone never touches the others.  Returns ``(new_sections, variant_index)`` — the index
+    of the split-off section in the new list.  The repeats before and after keep the
+    original groove reference and play exactly as they did.
+    """
+    s = sections[index]
+    reps = max(0.5, round(float(s.get("repeats", 1)) * 2) / 2)   # halves preserved
+    whole = int(reps)
+    frac = reps - whole                                          # 0 or 0.5
+    if whole < 1:                                                # nothing to split off
+        return list(sections), index
+    # Valid repeat indices are the whole repeats 0..whole-1, plus the fractional tail
+    # (index == whole) when there is a half — so a cursor sitting in the .5 tail splits
+    # THAT half off, not the last whole repeat.
+    tail = whole if frac > 0 else -1
+    repeat = max(0, min(whole - 1 if frac == 0 else whole, int(repeat)))
+    pattern = resolve_section_pattern(s, settings)
+
+    variant = dict(s)
+    if pattern is not None:
+        variant["inline"] = inline_record_from_pattern(pattern, base_record=s.get("inline"))
+    if repeat == tail:                          # split the fractional tail off (a 0.5 section)
+        before_reps, variant["repeats"], after_reps = whole, frac, 0
+    else:
+        before_reps, variant["repeats"] = repeat, 1
+        after_reps = (whole - repeat - 1) + frac
+    before = dict(s, repeats=before_reps)
+    after = dict(s, repeats=int(after_reps) if after_reps == int(after_reps) else after_reps)
+
+    out = list(sections[:index])
+    if before_reps > 0:
+        out.append(before)
+    variant_index = len(out)
+    out.append(variant)
+    if after_reps > 0:
+        out.append(after)
+    out.extend(sections[index + 1:])
+    return out, variant_index
+
+
 def song_sections(record: dict, settings) -> list:
     """Resolve to ``[(Pattern, repeats, tempo, kit_name), ...]``; skip missing patterns."""
     out = []

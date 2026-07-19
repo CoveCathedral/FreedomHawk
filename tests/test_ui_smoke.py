@@ -859,6 +859,131 @@ def test_song_builder_mark_and_bulk_edit(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_song_beat_editor_navigate_edit_and_save(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog
+    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    d = frame.drums_page
+    sections = [normalize_section({"pattern": "Rock", "repeats": 2}),
+                normalize_section({"pattern": "Funk", "repeats": 1})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)   # not shown modally in tests
+    try:
+        rock = resolve_section_pattern(sections[0], d._settings)
+        funk = resolve_section_pattern(sections[1], d._settings)
+        # One grid across both sections, mixed lengths allowed.
+        assert dlg._grid.total_steps == rock.steps * 2 + funk.steps
+        assert "kick" in dlg._parts and "snare" in dlg._parts   # union of used + core
+        # End lands in the Funk section; Home back to the top.
+        dlg._pos = dlg._grid.end()
+        assert dlg._grid.section_of(dlg._pos) == 1
+        # Char-hook navigation (routes only while the grid has focus).
+        monkeypatch.setattr(wx.Window, "FindFocus", staticmethod(lambda: dlg.grid_list))
+        dlg._pos = 0
+        dlg._on_char_hook(_Key(wx.WXK_RIGHT))
+        assert dlg._pos == 1
+        dlg._on_char_hook(_Key(wx.WXK_RIGHT, shift=True))       # +1 beat
+        assert dlg._pos == 1 + rock.steps_per_beat
+        # Edit: put a snare hit at an empty step in the first section (all-repeats scope).
+        dlg.grid_list.SetSelection(dlg._parts.index("snare"))
+        dlg._pos = 2
+        dlg._toggle()
+        assert 2 in dlg._entries[0]["pattern"].hits["snare"] and dlg._entries[0]["dirty"]
+        # Save writes the edited section back as an inline pattern.
+        dlg._on_save()
+        assert dlg.result_sections is not None
+        edited = resolve_section_pattern(dlg.result_sections[0], d._settings)
+        assert 2 in edited.hits["snare"]
+        assert dlg.result_sections[1].get("inline") is None     # untouched section stays a reference
+    finally:
+        dlg.Destroy()
+
+
+def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog
+    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    d = frame.drums_page
+    sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)   # not shown modally in tests
+    try:
+        rock = resolve_section_pattern(sections[0], d._settings)
+        # Add Line brings a new kit part into the whole song.
+        from firehawk.practice import ROLES
+        assert "cowbell" not in dlg._parts
+        avail = [r for r in ROLES if r not in dlg._parts]
+        monkeypatch.setattr(wx.SingleChoiceDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(wx.SingleChoiceDialog, "GetSelection",
+                            lambda self: avail.index("cowbell"))
+        dlg._add_line()
+        assert "cowbell" in dlg._parts
+        # "Edit this repeat only": editing the 2nd repeat splits it off as its own section.
+        dlg.scope_cb.SetValue(True)
+        dlg.grid_list.SetSelection(dlg._parts.index("cowbell"))
+        dlg._pos = rock.steps + 0            # top of repeat 2 (0-based repeat 1)
+        dlg._toggle()
+        assert len(dlg._entries) == 3        # before x1, variant x1, after x1
+        assert [e["section"].get("repeats") for e in dlg._entries] == [1, 1, 1]
+        # The cowbell hit lands only on the split-off variant, not the other repeats.
+        assert dlg._entries[1]["pattern"].hits.get("cowbell") == [0]
+        assert "cowbell" not in dlg._entries[0]["pattern"].hits
+        dlg._on_save()
+        assert len(dlg.result_sections) == 3
+    finally:
+        dlg.Destroy()
+
+
+def test_song_beat_editor_edit_then_split_keeps_earlier_edits(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongBeatEditorDialog
+    from firehawk.practice.patternstore import normalize_section, resolve_section_pattern
+    d = frame.drums_page
+    sections = [normalize_section({"pattern": "Rock", "repeats": 3})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)
+    try:
+        # 1) All-repeats edit: add a snare at an empty step (applies to every repeat).
+        dlg.grid_list.SetSelection(dlg._parts.index("snare"))
+        dlg._pos = 2
+        dlg._toggle()
+        assert 2 in dlg._entries[0]["pattern"].hits["snare"]
+        # 2) Now split off the 2nd repeat and edit only it — the earlier snare must survive
+        #    on every piece (the split was the bug that used to discard it).
+        rock = resolve_section_pattern(sections[0], d._settings)
+        dlg.scope_cb.SetValue(True)
+        dlg._pos = rock.steps + 4                 # repeat 2, a fresh step
+        dlg._toggle()
+        assert len(dlg._entries) == 3
+        for e in dlg._entries:                    # the all-repeats snare is on all pieces
+            assert 2 in e["pattern"].hits.get("snare", [])
+        dlg._on_save()
+        for s in dlg.result_sections:
+            assert 2 in resolve_section_pattern(s, d._settings).hits["snare"]
+    finally:
+        dlg.Destroy()
+
+
+def test_song_beat_editor_leaves_untouched_inline_intact(frame, monkeypatch, _silence_audio):
+    # Opening the editor and saving without editing a section must NOT re-serialize its
+    # inline (which would drop per-line kit/sample/tune/volume/choke).
+    from firehawk.ui.drumspanel import SongBeatEditorDialog
+    from firehawk.practice.patternstore import make_line, make_record, normalize_section
+    from firehawk.practice.drums import Pattern
+    d = frame.drums_page
+    rich = make_record("Chorus", "Song", 4, 4, 4, 1,
+                       [dict(make_line("808"), sample="my808.wav", tune=2, choke=3)],
+                       Pattern("x", 16, 4, {"808": [0, 8]}))
+    sections = [normalize_section({"pattern": "Chorus", "repeats": 1, "inline": rich})]
+    dlg = SongBeatEditorDialog(d, d, sections, dark=True)
+    monkeypatch.setattr(dlg, "EndModal", lambda code: None)
+    try:
+        assert not dlg._entries[0]["dirty"]           # untouched -> not dirty
+        dlg._on_save()
+        line = next(ln for ln in dlg.result_sections[0]["inline"]["lines"]
+                    if ln["id"] == "808")
+        assert line["sample"] == "my808.wav" and line["tune"] == 2 and line["choke"] == 3
+    finally:
+        dlg.Destroy()
+
+
 def test_song_builder_unsaved_close_guard(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import SongDialog
     from firehawk.practice.patternstore import delete_song, make_song_record, save_song
