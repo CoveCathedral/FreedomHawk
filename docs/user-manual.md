@@ -194,6 +194,11 @@ It's a tracker-style grid: one line per drum, and a time cursor on the arrow key
   cut each other's ring, like a closed hat choking an open hat: put both hats in group 1
   and each closed hit silences the open hat's tail. Works for cymbal chokes too. Saved
   with the pattern.
+- **Number keys** (`1`–`9`, `0`) — set the cursor hit's **play chance**: 5 makes it a 50%
+  "sometimes" hit that **rolls fresh on every pass**, so the loop varies itself like a
+  real drummer decorating a groove. 0 returns it to always. Spoken everywhere the cursor
+  reads, counted in the row ("8 hits (2 by chance)"), shown half-filled on the visual
+  track, and saved with the pattern. Songs re-roll every repeat of a section.
 - The **Kit** applies to the whole pattern; lines follow it unless you give one its own
   source. Use **Kit Sounds…** to set which sample a part uses across the whole kit at
   once (e.g. reassign every kick to one sound).

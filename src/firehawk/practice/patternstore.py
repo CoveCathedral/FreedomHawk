@@ -140,6 +140,7 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
     hits = {}
     levels: dict = {}
     lengths: dict = {}
+    probs: dict = {}
     for ln in lines:
         length = ln.get("length") or total  # per-line loop length (polymeter)
         steps = sorted(s for s in ln.get("steps", []) if 0 <= s < length)
@@ -157,7 +158,18 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
                 line_levels[s] = LEVEL_GHOST
         if line_levels:
             levels[ln["id"]] = line_levels
-    return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths)
+        line_probs = {}                  # JSON round-trips dict keys as strings
+        for s_key, c in (ln.get("chances") or {}).items():
+            try:
+                s, c = int(s_key), int(c)
+            except (TypeError, ValueError):
+                continue
+            if s in steps and 0 < c < 100:
+                line_probs[s] = c
+        if line_probs:
+            probs[ln["id"]] = line_probs
+    return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths,
+                   probs=probs)
 
 
 def resolve_line_voice(line: dict, kits_dir, base_kit: DrumKit | None,
@@ -262,6 +274,8 @@ def make_record(name: str, category: str, beats: int, unit: int, grid: int,
         line_levels = pattern.levels.get(ln["id"], {})
         entry["accents"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_ACCENT)
         entry["ghosts"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_GHOST)
+        entry["chances"] = {str(s): c for s, c in
+                            sorted(pattern.probs.get(ln["id"], {}).items())}
         entry["length"] = pattern.lengths.get(ln["id"])  # None = default (synced)
         out_lines.append(entry)
     return {"name": name, "category": category, "beats": beats, "unit": unit,

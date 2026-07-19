@@ -144,7 +144,14 @@ All screen-reader-first, native controls only.
   meter-aware, dependency-free SMF in `practice/midifile.py`). See `docs/drum-kits.md`.
   **Feel:** per-hit dynamics (accent/ghost, Space-cycled and spoken; baked into all 200
   library grooves), **swing/shuffle**, and **humanize** — all through the whole pipeline
-  (render, transforms, improviser, saves, MIDI velocities). **Per-line polymeter**
+  (render, transforms, improviser, saves, MIDI velocities); swing + humanize now live IN
+  the editor and **save per-groove** (a shuffle keeps its shuffle; per-section in songs).
+  **Chance steps** (number keys give a hit a 10–90% play chance, spoken and half-filled on
+  the visual track; a chance loop bakes four fresh-rolled passes so it varies while
+  looping; songs re-roll every repeat; through transforms/saves/round-trips). **Hybrid
+  kits** (Kit Sounds' From-kit dropdown sources any part from any sibling kit, or fills a
+  part the kit never shipped; stored as "Kit/file.wav" in the kit's choices). **Per-line
+  polymeter**
   (`-`/`+` set each line's own loop length; parts phase and realign over the LCM,
   `flatten_polymeter`; shared pulse; saved + exported). **Per-line tuning + by-ear pitch
   detection** (`[`/`]` tune a line, Shift = octave; baked into the voice by resampling;
@@ -169,9 +176,11 @@ All screen-reader-first, native controls only.
   **Sequin**; `Sequin.bat` / `python -m firehawk.sequin` runs it on its own (`SequinFrame`,
   now a two-tab window with a **metronome**); tandem separate-repo release planned after a
   milestone / when a contributor joins.
-  **Planned next (Kaylea approved):** audition-step & speak-rhythm keys · **MIDI controller
-  input** (craft beats from a keyboard). Long-term: extract Sequin to its own repo (engine
-  already firehawk-independent).
+  Song Builder **Preview Groove** (audition a groove in the Add tab before adding it);
+  **F5** plays/stops the current tab from anywhere (spoken).
+  **Planned next (Kaylea approved):** flams/drags/rolls · editor undo/redo · audition-step
+  & speak-rhythm keys · **MIDI controller input** (craft beats from a keyboard). Long-term:
+  extract Sequin to its own repo (engine already firehawk-independent).
 - **Customizable tab order** — DONE. Settings → Arrange Tabs (Alt+Up/Down); persists to
   `%APPDATA%/FreedomHawk/settings.json`. Practice tools default to the bottom.
 - **Low-vision visual accessibility** — DONE (the primary user is low-vision, not fully

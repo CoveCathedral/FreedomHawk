@@ -327,6 +327,41 @@ def test_grid_space_cycles_dynamics(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_grid_number_keys_set_chance(frame, _silence_audio):
+    # Number keys give the cursor hit a play chance: 5 = 50%, 0 = always. Spoken,
+    # in the row label and cursor state, cleared when the hit is turned off.
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        idx = _line_index(dlg, "kick")
+        dlg.grid_list.SetSelection(idx)
+        dlg._cursor = 0                              # the Rock kick has a hit at 0
+        dlg._on_grid_key(_Key(ord("5")))
+        assert dlg.pattern.chance_of("kick", 0) == 50
+        assert "50 percent chance" in spoken[-1]
+        assert "(1 by chance)" in dlg.grid_list.GetString(idx)
+        assert dlg._state_at("kick", 0).endswith("50 percent chance")
+        dlg._on_grid_key(_Key(ord("0")))             # back to always
+        assert dlg.pattern.chance_of("kick", 0) is None
+        assert "always plays" in spoken[-1]
+        # On an empty step, the key explains itself instead of doing nothing.
+        dlg._cursor = 1
+        dlg._on_grid_key(_Key(ord("5")))
+        assert "No hit at this step" in spoken[-1]
+        assert dlg.pattern.chance_of("kick", 1) is None
+        # Turning a chance hit off clears its chance with it.
+        dlg._cursor = 0
+        dlg._on_grid_key(_Key(ord("3")))
+        for _ in range(4):                           # cycle to off from any dynamic
+            if 0 not in dlg.pattern.hits.get("kick", []):
+                break
+            dlg._on_grid_key(_Key(wx.WXK_SPACE))
+        assert 0 not in dlg.pattern.hits.get("kick", [])
+        assert not dlg.pattern.probs
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_polymeter_line_length(frame, _silence_audio):
     # Minus/plus set a line's own loop length; the cursor stays inside that line's cycle.
     spoken = _silence_audio

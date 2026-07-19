@@ -269,13 +269,24 @@ class _VisualTrack(wx.ScrolledWindow):
 
             hits = set(p.hits.get(lid, []))
             levels = p.levels.get(lid, {})
+            chances = p.probs.get(lid, {})
             line_len = p.line_length(lid)
             for s in range(steps):
                 x = self.GUTTER + s * self.CELL
                 on = s in hits and s < line_len
                 dc.SetPen(wx.Pen(self.BG))
-                dc.SetBrush(wx.Brush(self._cell_colour(on, levels.get(s), silenced)))
-                dc.DrawRectangle(x + 1, y + 1, self.CELL - 2, self.ROW_H - 6)
+                colour = self._cell_colour(on, levels.get(s), silenced)
+                if on and s in chances:
+                    # A chance step is drawn half-filled — literally a "maybe".
+                    dc.SetBrush(wx.Brush(self.EMPTY))
+                    dc.DrawRectangle(x + 1, y + 1, self.CELL - 2, self.ROW_H - 6)
+                    half = max(3, (self.ROW_H - 6) // 2)
+                    dc.SetBrush(wx.Brush(colour))
+                    dc.DrawRectangle(x + 1, y + 1 + (self.ROW_H - 6 - half),
+                                     self.CELL - 2, half)
+                else:
+                    dc.SetBrush(wx.Brush(colour))
+                    dc.DrawRectangle(x + 1, y + 1, self.CELL - 2, self.ROW_H - 6)
                 if s % per_bar == 0:                      # bar / beat separators
                     dc.SetPen(wx.Pen(self.BAR, 2))
                     dc.DrawLine(x, y - 2, x, y + self.ROW_H - 2)
@@ -341,7 +352,8 @@ class PatternEditorDialog(wx.Dialog):
             "move between lines; Left/Right move by step, Ctrl by beat, Ctrl+Shift "
             "by bar; Space toggles a hit; Enter picks the line's sample (or None); "
             "Left/Right brackets tune the line (Shift for an octave); "
-            "comma and period set its volume; C sets a choke group; "
+            "comma and period set its volume; C sets a choke group; number keys set "
+            "a hit's chance (0 = always); "
             "Delete removes a line; P previews; F1 speaks the keys."))
         intro.Wrap(620)
         root.Add(intro, 0, wx.ALL, 10)
@@ -478,6 +490,9 @@ class PatternEditorDialog(wx.Dialog):
     def _row_label(self, line: dict) -> str:
         n = len(self.pattern.hits.get(line["id"], []))
         hits = "no hits" if n == 0 else ("1 hit" if n == 1 else f"{n} hits")
+        nch = len(self.pattern.probs.get(line["id"], {}))
+        if nch:
+            hits += f" ({nch} by chance)"
         length = self.pattern.line_length(line["id"])
         poly = f", length {length} steps" if length != self.pattern.steps else ""
         tune = clamp_tune(line.get("tune"))
@@ -566,11 +581,14 @@ class PatternEditorDialog(wx.Dialog):
     _QUIETER_KEYS = frozenset({ord(","), ord("<")})     # Shift for a bigger step
     _LOUDER_KEYS = frozenset({ord("."), ord(">")})
     _CHOKE_KEYS = frozenset({ord("C"), ord("c")})       # cycle this line's choke group
+    _CHANCE_KEYS = frozenset(range(ord("0"), ord("9") + 1)) | frozenset(
+        range(wx.WXK_NUMPAD0, wx.WXK_NUMPAD9 + 1))      # 1-9 = 10-90% chance, 0 = always
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
                             ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
-        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS | _CHOKE_KEYS
+        | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS | _CHOKE_KEYS \
+        | _CHANCE_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Route grid keys only while the grid list has focus; everything else (Tab,
@@ -619,6 +637,9 @@ class PatternEditorDialog(wx.Dialog):
             self._change_gain(6 if shift else 1)
         elif code in self._CHOKE_KEYS and not ctrl:   # plain C; leave Ctrl+C alone
             self._cycle_choke()
+        elif code in self._CHANCE_KEYS and not ctrl:
+            digit = code - (ord("0") if ord("0") <= code <= ord("9") else wx.WXK_NUMPAD0)
+            self._set_chance(digit * 10)
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -634,7 +655,10 @@ class PatternEditorDialog(wx.Dialog):
                 "in decibels, Shift for a bigger step, to balance the mix. C cycles "
                 "this line's choke group: lines in the same group cut each other off, "
                 "so put an open hat and a closed hat in one group and the closed hat "
-                "chokes the open one. Enter picks this line's sample or None. "
+                "chokes the open one. Number keys set a hit's chance: one through "
+                "nine is ten to ninety percent, zero makes it always play — a chance "
+                "hit rolls fresh on every pass, so the loop varies itself. "
+                "Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
                 "and Cancel.")
@@ -745,6 +769,7 @@ class PatternEditorDialog(wx.Dialog):
             else:  # ghost -> off
                 steps.discard(self._cursor)
                 self.pattern.set_level(line_id, self._cursor, None)
+                self.pattern.set_chance(line_id, self._cursor, None)
                 spoken = "off"
         if steps:
             self.pattern.hits[line_id] = sorted(steps)
@@ -754,10 +779,28 @@ class PatternEditorDialog(wx.Dialog):
         speech.speak(f"{line['label']} {spoken}, {step_label(self.pattern, self._cursor)}")
         self._reaudition()
 
+    def _set_chance(self, percent: int) -> None:
+        """Number keys set the cursor hit's play chance: 1-9 = 10-90 percent, 0 =
+        always.  A "sometimes" hit rolls fresh on every pass, so the loop breathes."""
+        line = self._current_line()
+        if line is None:
+            return
+        line_id = line["id"]
+        if self._cursor not in self.pattern.hits.get(line_id, []):
+            speech.speak("No hit at this step. Space places one first.")
+            return
+        self.pattern.set_chance(line_id, self._cursor, percent or None)
+        self._refresh_row(line)
+        what = f"{percent} percent chance" if percent else "always plays"
+        speech.speak(f"{line['label']} {what}, {step_label(self.pattern, self._cursor)}")
+        self._reaudition()
+
     def _state_at(self, line_id: str, step: int) -> str:
         if step not in self.pattern.hits.get(line_id, []):
             return "empty"
-        return self.pattern.level_of(line_id, step) or "hit"
+        state = self.pattern.level_of(line_id, step) or "hit"
+        chance = self.pattern.chance_of(line_id, step)
+        return f"{state}, {chance} percent chance" if chance else state
 
     # -- line management -------------------------------------------------------
 
@@ -987,7 +1030,8 @@ class PatternEditorDialog(wx.Dialog):
                        p.beats_per_bar, p.beat_unit, p.bars,
                        {r: dict(m) for r, m in p.levels.items() if r not in self.silenced},
                        {r: L for r, L in p.lengths.items() if r not in self.silenced},
-                       p.swing, p.humanize)
+                       p.swing, p.humanize,
+                       {r: dict(m) for r, m in p.probs.items() if r not in self.silenced})
 
     def _on_play(self, event: wx.CommandEvent) -> None:
         if self._auditioning:
@@ -2415,7 +2459,8 @@ class DrumsPanel(wx.Panel):
             p.beats_per_bar, p.beat_unit, p.bars,
             {r: dict(m) for r, m in p.levels.items() if r not in self._muted},
             {r: L for r, L in p.lengths.items() if r not in self._muted},
-            p.swing, p.humanize)
+            p.swing, p.humanize,
+            {r: dict(m) for r, m in p.probs.items() if r not in self._muted})
         return flatten_polymeter(effective)
 
     def _apply_fills(self, effective: Pattern) -> Pattern:

@@ -77,6 +77,7 @@ Beat 3.2, hit"):
 | **Left / Right bracket** (`[` / `]`) | **Tune** this line down / up a semitone; hold **Shift** for a whole octave. Spoken with the resulting note ("Kick tuned +2, A1"). See below. |
 | **Comma / Period** (`,` / `.`) | **Volume** for this line, down / up in decibels (Shift for a 6 dB step). Balance the mix — pull a boomy kick back so it doesn't wash the others out. Spoken ("Kick volume −6 dB"). |
 | **C** | Cycle this line's **choke group** (none → 1 → … → none). Lines in the same group cut each other's ring — see below. |
+| **Number keys** (`1`–`9`, `0`) | Set the cursor hit's **play chance**: 1–9 is 10–90%, 0 makes it always play. A "sometimes" hit **rolls fresh on every pass**, so the groove varies itself — see below. Spoken ("Hi-hat 50 percent chance, Beat 2.3"). |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 
@@ -134,6 +135,25 @@ doesn't click), and the setting saves and shares with the pattern.
 **Built-in grooves that play both an open and a closed hat come pre-choked** (both hats in
 group 1), so open hats close naturally like on a real kit. Press **C** on either hat line
 to change or clear it.
+
+### Chance steps ("sometimes" hits)
+
+Give any hit a **play chance** with the number keys: cursor on the hit, press **5** and it
+becomes a 50% hit — sometimes it plays, sometimes it sits out, **re-rolled on every pass**
+so the loop never sounds stamped out. `1`–`9` set 10–90%, **0** returns it to always.
+It's how real drummers work: the backbone (kick, snare backbeat) solid, the decoration
+(extra hat taps, ghost snares, a perc flourish) coming and going.
+
+- The state is spoken everywhere the cursor reads ("hit, 30 percent chance"), the line's
+  row counts its chance steps ("8 hits (2 by chance)"), and the visual track draws them
+  half-filled — literally a "maybe".
+- A loop with chance steps bakes **four varying passes** into itself, so the variation is
+  audible even while a single WAV loops; songs re-roll **every repeat** of a section.
+  Fills, feel, dynamics and polymeter all combine with it, and it saves, shares, and
+  exports with the pattern (WAV renders roll like playback; MIDI exports the hits as
+  written).
+- Try it: load any groove, add 2–3 extra hi-hat or perc hits, set them to 30–50%. The
+  groove starts breathing.
 
 ### Visual track (low-vision grid view)
 

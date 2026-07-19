@@ -47,6 +47,24 @@ def test_lines_pattern_round_trip():
     assert back.levels == {"kick": {0: LEVEL_ACCENT}, "snare": {12: LEVEL_GHOST}}
 
 
+def test_chance_steps_save_with_the_pattern():
+    # Per-step probability survives the record round trip — including the JSON habit
+    # of turning dict keys into strings (settings and .fhdrum.json files).
+    import json
+    lines = [ps.make_line("kick")]
+    lines[0]["steps"] = [0, 8]
+    p = ps.lines_to_pattern(lines, 4, 4, 4, 1, name="maybe")
+    p.set_chance("kick", 8, 60)
+    rec = ps.make_record("maybe", "Test", 4, 4, 4, 1, lines, p)
+    assert rec["lines"][0]["chances"] == {"8": 60}
+    rt = json.loads(json.dumps(rec))          # a JSON round trip, like settings storage
+    back = ps.record_to_pattern(rt)
+    assert back.chance_of("kick", 8) == 60 and back.chance_of("kick", 0) is None
+    # Old records without the key read as always-play, not an error.
+    del rt["lines"][0]["chances"]
+    assert not ps.record_to_pattern(rt).probs
+
+
 def test_feel_saves_with_the_pattern():
     # Swing/humanize are a groove's own feel; they must survive the record round trip.
     lines = [ps.make_line("kick")]

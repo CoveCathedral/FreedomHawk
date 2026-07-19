@@ -472,6 +472,7 @@ class Pattern:
     lengths: dict = field(default_factory=dict)  # role -> per-line loop length (polymeter)
     swing: float = 0.0        # 0..1 shuffle feel, saved with the groove (edited in the editor)
     humanize: float = 0.0     # 0..1 subtle timing/level drift, saved with the groove
+    probs: dict = field(default_factory=dict)    # role -> {step: chance %}; absent = always
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -494,6 +495,20 @@ class Pattern:
         else:
             self.levels.setdefault(role, {})[step] = level
 
+    def chance_of(self, role: str, step: int) -> int | None:
+        """A hit's play chance in percent; None means it always plays."""
+        return self.probs.get(role, {}).get(step)
+
+    def set_chance(self, role: str, step: int, percent: int | None) -> None:
+        """Set a hit's play chance (10..90); None (or 100) makes it always play."""
+        if percent is None or not (0 < percent < 100):
+            if role in self.probs:
+                self.probs[role].pop(step, None)
+                if not self.probs[role]:
+                    del self.probs[role]
+        else:
+            self.probs.setdefault(role, {})[step] = int(percent)
+
     def line_length(self, role: str) -> int:
         """A line's own loop length in steps (defaults to the full pattern length)."""
         return self.lengths.get(role, self.steps)
@@ -514,6 +529,10 @@ class Pattern:
             self.levels[role] = {s: lv for s, lv in self.levels[role].items() if s < length}
             if not self.levels[role]:
                 del self.levels[role]
+        if role in self.probs:
+            self.probs[role] = {s: c for s, c in self.probs[role].items() if s < length}
+            if not self.probs[role]:
+                del self.probs[role]
 
     def is_polymetric(self) -> bool:
         return any(L != self.steps for L in self.lengths.values())
@@ -523,7 +542,8 @@ class Pattern:
                        {r: list(s) for r, s in self.hits.items()},
                        self.beats_per_bar, self.beat_unit, self.bars,
                        {r: dict(m) for r, m in self.levels.items()},
-                       dict(self.lengths), self.swing, self.humanize)
+                       dict(self.lengths), self.swing, self.humanize,
+                       {r: dict(m) for r, m in self.probs.items()})
 
 
 #: Grid resolutions as (label, steps-per-quarter-note).
@@ -552,11 +572,13 @@ def flatten_polymeter(p: Pattern) -> Pattern:
     render_len = max(per_bar, (render_len // per_bar) * per_bar)  # keep whole bars
     hits: dict = {}
     levels: dict = {}
+    probs: dict = {}
     for role, steps in p.hits.items():
         length = p.line_length(role)
         base = [s for s in steps if 0 <= s < length]
         line_levels = p.levels.get(role, {})
-        tiled, tiled_levels = [], {}
+        line_probs = p.probs.get(role, {})
+        tiled, tiled_levels, tiled_probs = [], {}, {}
         for cycle in range(0, render_len, length):
             for s in base:
                 pos = cycle + s
@@ -564,13 +586,17 @@ def flatten_polymeter(p: Pattern) -> Pattern:
                     tiled.append(pos)
                     if s in line_levels:
                         tiled_levels[pos] = line_levels[s]
+                    if s in line_probs:
+                        tiled_probs[pos] = line_probs[s]
         if tiled:
             hits[role] = sorted(tiled)
             if tiled_levels:
                 levels[role] = tiled_levels
+            if tiled_probs:
+                probs[role] = tiled_probs
     return Pattern(p.name, render_len, p.steps_per_beat, hits, p.beats_per_bar,
                    p.beat_unit, max(1, render_len // per_bar), levels,
-                   swing=p.swing, humanize=p.humanize)
+                   swing=p.swing, humanize=p.humanize, probs=probs)
 
 
 def steps_per_bar(beats_per_bar: int, beat_unit: int, grid: int) -> int:
@@ -834,13 +860,16 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
     old_per_bar = max(1, p.steps // old_bars)
     name = f"{beats}/{unit}"
     levels: dict = {}
+    probs: dict = {}
 
     if per_bar == old_per_bar and grid == p.steps_per_beat and not p.is_polymetric():
         hits: dict = {}
         for role, steps in p.hits.items():
             out = set()
             src_levels = p.levels.get(role, {})
+            src_probs = p.probs.get(role, {})
             new_levels: dict = {}
+            new_probs: dict = {}
             for b in range(bars):
                 src = b % old_bars
                 lo, hi = src * old_per_bar, (src + 1) * old_per_bar
@@ -850,30 +879,40 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
                         out.add(dst)
                         if s in src_levels:
                             new_levels[dst] = src_levels[s]
+                        if s in src_probs:
+                            new_probs[dst] = src_probs[s]
             if out:
                 hits[role] = sorted(out)
                 if new_levels:
                     levels[role] = new_levels
+                if new_probs:
+                    probs[role] = new_probs
         return Pattern(name, total, grid, hits, beats, unit, bars, levels,
-                   swing=p.swing, humanize=p.humanize)
+                       swing=p.swing, humanize=p.humanize, probs=probs)
 
     # Time-preserving remap: place each hit at the same fraction of the loop.
     old_total = max(1, p.steps)
     hits = {}
     for role, steps in p.hits.items():
         src_levels = p.levels.get(role, {})
+        src_probs = p.probs.get(role, {})
         chosen: dict = {}  # new step -> level (None if the hit here had no dynamic)
+        new_probs = {}
         for s in steps:
             ns = max(0, min(total - 1, round(s / old_total * total)))
             if src_levels.get(s) is not None or ns not in chosen:
                 chosen[ns] = src_levels.get(s, chosen.get(ns))
+            if s in src_probs:
+                new_probs[ns] = src_probs[s]
         if chosen:
             hits[role] = sorted(chosen)
             role_levels = {ns: lv for ns, lv in chosen.items() if lv}
             if role_levels:
                 levels[role] = role_levels
+            if new_probs:
+                probs[role] = new_probs
     return Pattern(name, total, grid, hits, beats, unit, bars, levels,
-                   swing=p.swing, humanize=p.humanize)
+                   swing=p.swing, humanize=p.humanize, probs=probs)
 
 
 def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
@@ -893,10 +932,13 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
         order = [0] * total_bars
     hits: dict = {}
     levels: dict = {}
+    probs: dict = {}
     for role, steps in p.hits.items():
         out = []
         src_levels = p.levels.get(role, {})
+        src_probs = p.probs.get(role, {})
         new_levels: dict = {}
+        new_probs: dict = {}
         for dst, src in enumerate(order):
             if role == "crash" and src == 0 and dst != 0:
                 # A first-bar crash marks the post-fill downbeat (the loop restart);
@@ -909,13 +951,17 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
                     out.append(d)
                     if s in src_levels:
                         new_levels[d] = src_levels[s]
+                    if s in src_probs:
+                        new_probs[d] = src_probs[s]
         if out:
             hits[role] = sorted(out)
             if new_levels:
                 levels[role] = new_levels
+            if new_probs:
+                probs[role] = new_probs
     return Pattern(p.name, per_bar * total_bars, p.steps_per_beat, hits,
                    p.beats_per_bar, p.beat_unit, total_bars, levels,
-                   swing=p.swing, humanize=p.humanize)
+                   swing=p.swing, humanize=p.humanize, probs=probs)
 
 
 # -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
@@ -984,6 +1030,7 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     total_steps = per_bar * total_bars
     hits: dict = {}
     levels: dict = {}
+    probs: dict = {}
 
     def copy_bar(src: int, dst: int) -> None:
         lo, hi = src * per_bar, (src + 1) * per_bar
@@ -991,12 +1038,15 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
             if role == "crash":
                 continue  # crashes are re-placed on cycle downbeats below
             src_levels = p.levels.get(role, {})
+            src_probs = p.probs.get(role, {})
             for s in steps:
                 if lo <= s < hi:
                     d = s - lo + dst * per_bar
                     hits.setdefault(role, []).append(d)
                     if s in src_levels:
                         levels.setdefault(role, {})[d] = src_levels[s]
+                    if s in src_probs:
+                        probs.setdefault(role, {})[d] = src_probs[s]
 
     for c in range(max(1, cycles)):
         base = c * cycle_bars
@@ -1012,6 +1062,9 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
             if role in levels:
                 levels[role] = {s: lv for s, lv in levels[role].items()
                                 if s < zone_start or s >= zone_start + fill_len}
+            if role in probs:
+                probs[role] = {s: c for s, c in probs[role].items()
+                               if s < zone_start or s >= zone_start + fill_len}
         for role, offsets in fill_hits.items():
             hits.setdefault(role, []).extend(zone_start + o for o in offsets)
         for role, offset_levels in fill_levels.items():
@@ -1022,9 +1075,10 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
 
     hits = {r: sorted(set(s)) for r, s in hits.items() if s}
     levels = {r: m for r, m in levels.items() if m and r in hits}
+    probs = {r: m for r, m in probs.items() if m and r in hits}
     return Pattern(f"{p.name} improv", total_steps, p.steps_per_beat, hits,
                    p.beats_per_bar, p.beat_unit, total_bars, levels,
-                   swing=p.swing, humanize=p.humanize)
+                   swing=p.swing, humanize=p.humanize, probs=probs)
 
 
 # -- rendering (the compensator) -------------------------------------------------
@@ -1174,6 +1228,9 @@ def _mix_pattern(pattern: Pattern, kit: DrumKit, bpm: float, rate: int,
     length = max(1, int(round(pattern.steps * step_s * rate)))
     buf = np.zeros(length, dtype=np.float32)
     rng = random.Random(seed) if humanize > 0 else None
+    # Per-step probability ("sometimes" hits): its own RNG stream, so seeded humanize
+    # renders stay reproducible and chance-free patterns stay byte-identical.
+    roll = random.Random(None if seed is None else seed ^ 0x9E3779B9) if pattern.probs else None
     group_of = choke_groups or {}
     cutoffs = _choke_cutoffs(pattern, group_of, step_s, rate) if group_of else {}
 
@@ -1191,11 +1248,15 @@ def _mix_pattern(pattern: Pattern, kit: DrumKit, bpm: float, rate: int,
         if voice is None or len(voice) == 0:
             continue
         role_levels = pattern.levels.get(role, {})
+        role_probs = pattern.probs.get(role, {})
         group = group_of.get(role)
         scaled = {None: voice}
         for step in steps_on:
             if not 0 <= step < pattern.steps:
                 continue
+            chance = role_probs.get(step) if roll is not None else None
+            if chance is not None and roll.random() * 100.0 >= chance:
+                continue                 # this pass, the hit sits out
             gain = _LEVEL_GAIN.get(role_levels.get(step), 1.0)
             if rng is not None:
                 v = voice * (gain * (1.0 + rng.uniform(-1.0, 1.0) * humanize * _HUMANIZE_MAX_GAIN))
@@ -1232,7 +1293,8 @@ def _buf_to_wav(buf, volume: float, rate: int) -> bytes:
 def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
                 volume: float = 1.0, swing: float | None = None,
                 humanize: float | None = None,
-                seed: int | None = None, choke_groups: dict | None = None) -> bytes:
+                seed: int | None = None, choke_groups: dict | None = None,
+                passes: int | None = None) -> bytes:
     """Pre-mix one loop of *pattern* played on *kit* at *bpm* into a 16-bit mono WAV.
 
     *volume* (0..1) scales the finished mix.  *swing* and *humanize* default to the
@@ -1242,12 +1304,24 @@ def render_loop(pattern: Pattern, kit: DrumKit, bpm: float, rate: int = RATE,
     per-hit timing and level drift so a looped groove doesn't sound stamped out.
     *choke_groups* maps a role to a group id; within a group a new hit cuts the previous
     one's ring (an open hat closed by the hat).
+
+    A pattern with **chance steps** (``pattern.probs``) is mixed *passes* times (default
+    4) with fresh rolls each pass and the passes concatenated — a looping WAV repeats
+    its buffer verbatim, so the variation has to be baked into the loop itself.
+    Chance-free patterns render a single pass, byte-identical to before.
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
     sw = pattern.swing if swing is None else swing
     hm = pattern.humanize if humanize is None else humanize
-    buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, seed, choke_groups)
+    n = passes if passes and passes > 0 else (4 if pattern.probs else 1)
+    if n == 1:
+        buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, seed, choke_groups)
+    else:
+        buf = np.concatenate([
+            _mix_pattern(pattern, kit, bpm, rate, sw, hm,
+                         None if seed is None else seed + i, choke_groups)
+            for i in range(n)])
     return _buf_to_wav(buf, volume, rate)
 
 
@@ -1275,9 +1349,14 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
     for pattern, repeats, bpm, kit in sections:
         sw = pattern.swing if swing is None else swing
         hm = pattern.humanize if humanize is None else humanize
-        buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
-                           _auto_hat_choke(pattern))
-        parts.extend([buf] * max(1, int(repeats)))
+        reps = max(1, int(repeats))
+        if pattern.probs:                # chance steps: fresh rolls every repeat
+            parts.extend(_mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
+                                      _auto_hat_choke(pattern)) for _ in range(reps))
+        else:
+            buf = _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
+                               _auto_hat_choke(pattern))
+            parts.extend([buf] * reps)
     whole = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
     return _buf_to_wav(whole, volume, rate)
 

@@ -594,6 +594,51 @@ def test_render_loop_inherits_the_patterns_own_feel():
     assert drums.retime_pattern(off, 4, 4, 4, 2).swing == 1.0
 
 
+def test_chance_steps_roll_fresh_but_seeds_reproduce():
+    kit = drums.synth_kit()
+    p = drums.Pattern("t", 16, 4, {"hihat": list(range(0, 16, 2))}, 4, 4, 1)
+    for s in range(0, 16, 2):
+        p.set_chance("hihat", s, 50)
+    a = drums.render_loop(p, kit, 120, seed=1, passes=1)
+    b = drums.render_loop(p, kit, 120, seed=2, passes=1)
+    assert a != b                                             # different rolls
+    assert a == drums.render_loop(p, kit, 120, seed=1, passes=1)  # seed reproduces
+    # Clearing the chances restores plain determinism (and the always path).
+    for s in range(0, 16, 2):
+        p.set_chance("hihat", s, None)
+    assert not p.probs
+    assert drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120)
+
+
+def test_chance_loop_bakes_four_varying_passes():
+    # A looping WAV repeats its buffer verbatim, so a chance pattern renders four
+    # passes with fresh rolls baked into one loop.
+    import io
+    import wave
+    kit = drums.synth_kit()
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "hihat": [4]}, 4, 4, 1)
+    p.set_chance("hihat", 4, 50)
+    w = wave.open(io.BytesIO(drums.render_loop(p, kit, 120)))
+    assert w.getnframes() == pytest.approx(4 * p.loop_seconds(120) * 44100, rel=0.01)
+    # Chance-free patterns stay a single pass.
+    plain = drums.Pattern("t", 16, 4, {"kick": [0, 8]}, 4, 4, 1)
+    w = wave.open(io.BytesIO(drums.render_loop(plain, kit, 120)))
+    assert w.getnframes() == pytest.approx(p.loop_seconds(120) * 44100, rel=0.01)
+
+
+def test_chance_survives_transforms():
+    p = drums.Pattern("t", 16, 4, {"kick": [0, 8], "snare": [4]}, 4, 4, 1)
+    p.set_chance("snare", 4, 30)
+    assert p.copy().chance_of("snare", 4) == 30
+    assert drums.retime_pattern(p, 4, 4, 4, 2).chance_of("snare", 4) == 30  # bar tile
+    assert drums.retime_pattern(p, 4, 4, 2, 1).probs["snare"]              # grid remap
+    assert drums.expand_with_fill(p, 4).chance_of("snare", 4) == 30
+    assert drums.flatten_polymeter(p).chance_of("snare", 4) == 30
+    # Space-off semantics: clearing the hit's chance removes the entry entirely.
+    p.set_chance("snare", 4, None)
+    assert not p.probs
+
+
 def test_render_song_uses_per_section_feel():
     # Two sections, same groove/tempo/kit but one swung: the mixes must differ, proving
     # render_song reads each section pattern's own feel (not a single song-wide value).
