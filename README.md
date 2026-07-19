@@ -194,4 +194,29 @@ conventions.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**Copyright © 2026 Kaylea Fox.**
+
+FreedomHawk is free software, licensed under the **GNU Affero General Public License v3.0 or
+later (AGPL-3.0-or-later)** — see [LICENSE](LICENSE).
+
+**In plain English:**
+
+- ✅ **Use it freely, for anything**, including professionally. It's your hardware; this is
+  the tool that makes it usable without sight.
+- ✅ **Read, modify, learn from, and share the code.**
+- ⚠️ **If you distribute a modified version** — or run one as a network service — **you must
+  release your source under this same license and keep the copyright notice.** You cannot
+  close the source, rebrand it, and ship it as your own product.
+- 🔗 **Credit:** if you build on FreedomHawk or reuse its code, please credit **Kaylea Fox**
+  and link back to [this repository](https://github.com/CoveCathedral/FreedomHawk).
+
+**Commercial / proprietary licensing:** if you want to use this code in a closed-source
+product, that's negotiable — the copyright holder can grant a separate commercial license.
+Open an issue or get in touch.
+
+**What this license does _not_ cover:** Line 6's data. FreedomHawk ships **none** of it — no
+amp/cab/effect models, no preset data, no decompiled Line 6 code. You generate that locally,
+once, from a copy of the discontinued Firehawk Remote app that you lawfully own, and it never
+leaves your machine. This project is independent interoperability and assistive-technology
+work; "Line 6" and "Firehawk" are trademarks of their respective owner and are used here only
+to say what hardware this controls.

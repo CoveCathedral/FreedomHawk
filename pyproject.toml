@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "Accessible, screen-reader-first Windows controller for the Line 6 Firehawk FX pedal"
 readme = "README.md"
 requires-python = ">=3.10"
-authors = [{ name = "Firehawk Accessible Controller project" }]
-license = { text = "MIT" }
+authors = [{ name = "Kaylea Fox", email = "kaylielynnfox@gmail.com" }]
+license = { text = "AGPL-3.0-or-later" }
 # Sequin (the accessible sequencer / drum machine + its practice engine and a11y helpers)
 # now lives in its own sibling repo and is consumed as an editable install:
 #   pip install -e ../Sequin      (github.com/CoveCathedral/sequin-drum-sequencer)

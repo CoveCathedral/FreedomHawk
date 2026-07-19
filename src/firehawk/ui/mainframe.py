@@ -815,6 +815,11 @@ class MainFrame(wx.Frame):
             f"Loaded {len(self.catalog)} models.\n\n"
             "Editing and practice tools work offline now; live pedal control is in\n"
             "progress. Free the hardware from the dead cloud.\n\n"
-            "github.com/CoveCathedral/FreedomHawk (MIT)",
+            "Copyright (c) 2026 Kaylea Fox.\n"
+            "Free software under the GNU Affero General Public License, version 3 or\n"
+            "later. It comes with ABSOLUTELY NO WARRANTY. You may use it for anything,\n"
+            "including paid work; if you distribute a modified version you must share\n"
+            "your source under the same license.\n\n"
+            "Source code: github.com/CoveCathedral/FreedomHawk",
             "About FreedomHawk", wx.ICON_INFORMATION,
         )

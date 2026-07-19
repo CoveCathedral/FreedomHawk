@@ -366,6 +366,13 @@ brackets `[`/`]` tune the line (Shift = octave) · comma/period `,`/`.` line vol
 
 ## Getting help and contributing
 
-FreedomHawk is open source (MIT):
+FreedomHawk is free software:
 [github.com/CoveCathedral/FreedomHawk](https://github.com/CoveCathedral/FreedomHawk).
 Issues and pull requests are welcome — screen-reader testing feedback most of all.
+
+**Licensing.** Copyright © 2026 Kaylea Fox, under the GNU Affero General Public License v3
+or later. **You may use FreedomHawk for anything, including paid work.** If you distribute a
+modified version, you must share your source under the same license and keep the credit. For
+closed-source or commercial use, a separate commercial license can be arranged — get in
+touch. FreedomHawk ships none of Line 6's data; you generate that locally from an app copy
+you lawfully own.
