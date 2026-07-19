@@ -574,22 +574,29 @@ POLY_MAX_LINE = 64       # longest a single polymetric line may be
 POLY_MAX_RENDER = 512    # cap the phased (LCM) loop so it stays a sane length
 
 
-def flatten_polymeter(p: Pattern) -> Pattern:
+def flatten_polymeter(p: Pattern, render_len: int | None = None) -> Pattern:
     """Expand a polymetric pattern into a plain one by tiling each line over the loop.
 
     Lines with their own lengths repeat independently; the flattened loop runs for the
     least common multiple of every line length (and the base), so all parts realign —
     capped at POLY_MAX_RENDER whole bars.  A pattern without custom lengths is returned
-    unchanged.
+    unchanged (unless an explicit *render_len* asks for a specific tiling).
+
+    Pass *render_len* to tile to exactly that many steps instead of the LCM — the Song
+    Builder uses this to cut polymetric lines off at a section's end so an odd-length
+    line never pushes the next section off its count.
     """
-    if not p.is_polymetric():
+    if not p.is_polymetric() and render_len is None:
         return p
     per_bar = max(1, p.steps // max(1, p.bars))
-    render_len = p.steps
-    for role in p.hits:
-        render_len = math.lcm(render_len, p.line_length(role))
-    render_len = min(render_len, POLY_MAX_RENDER)
-    render_len = max(per_bar, (render_len // per_bar) * per_bar)  # keep whole bars
+    if render_len is None:
+        render_len = p.steps
+        for role in p.hits:
+            render_len = math.lcm(render_len, p.line_length(role))
+        render_len = min(render_len, POLY_MAX_RENDER)
+        render_len = max(per_bar, (render_len // per_bar) * per_bar)  # keep whole bars
+    else:
+        render_len = max(1, render_len)
     hits: dict = {}
     levels: dict = {}
     probs: dict = {}
@@ -1414,7 +1421,8 @@ def _auto_hat_choke(pattern: Pattern) -> dict | None:
 
 
 def render_song(sections, rate: int = RATE, volume: float = 1.0,
-                swing: float | None = None, humanize: float | None = None) -> bytes:
+                swing: float | None = None, humanize: float | None = None,
+                contain_polymeter: bool = True) -> bytes:
     """Render a song — ordered ``(pattern, repeats, bpm, kit)`` sections — end to end.
 
     Each section is mixed **at its own tempo, kit, and feel** (each groove's saved
@@ -1423,6 +1431,13 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
     together so levels stay even across sections.  Sections may differ in meter, tempo, kit,
     feel and length; hats auto-choke per section.  Pass *swing*/*humanize* to force one feel
     across the whole song instead of per-section.  A song plays through once.
+
+    *contain_polymeter* (default on) keeps a polymetric section exactly as long as its
+    pattern's nominal length times its repeats: odd-length lines cycle continuously
+    through the whole section and are cut off at its end, so the next section always
+    starts on its own count.  Turn it off to let each repeat run the full realignment
+    (LCM) loop instead — the pre-containment behavior, where an extended line pushes
+    everything after it.
     """
     if np is None:
         raise RuntimeError("numpy is required for the drum looper")
@@ -1434,6 +1449,18 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
         # whole passes then a truncated tail pass.
         reps = max(0.5, round(float(repeats) * 2) / 2)
         whole, frac = int(reps), reps - int(reps)
+
+        if contain_polymeter and pattern.is_polymetric():
+            # One continuous performance the exact nominal length of the section:
+            # lines keep cycling across repeats (the polymeter phrasing carries
+            # through the section) and stop dead at the section boundary.
+            flat = flatten_polymeter(pattern,
+                                     render_len=math.ceil(pattern.steps * reps))
+            buf = _mix_pattern(flat, kit, bpm, rate, sw, hm, None,
+                               _auto_hat_choke(pattern))
+            exact = int(round(pattern.loop_seconds(bpm) * reps * rate))
+            parts.append(buf[: max(1, exact)])
+            continue
 
         def mix():
             return _mix_pattern(pattern, kit, bpm, rate, sw, hm, None,
@@ -1450,10 +1477,20 @@ def render_song(sections, rate: int = RATE, volume: float = 1.0,
     return _buf_to_wav(whole, volume, rate)
 
 
-def song_seconds(sections) -> float:
+def section_seconds(pattern: Pattern, repeats, bpm: float,
+                    contain_polymeter: bool = True) -> float:
+    """One section's playing time.  Contained (default), a polymetric section lasts
+    exactly its nominal length times its repeats; uncontained, each repeat runs the
+    full realignment (LCM) loop — matching :func:`render_song` either way."""
+    reps = max(0.5, round(float(repeats) * 2) / 2)
+    p = pattern if contain_polymeter else flatten_polymeter(pattern)
+    return p.loop_seconds(bpm) * reps
+
+
+def song_seconds(sections, contain_polymeter: bool = True) -> float:
     """Total playing time of ``(pattern, repeats, bpm, kit)`` sections (each at its
     tempo; repeats may be fractional in halves)."""
-    return sum(p.loop_seconds(bpm) * max(0.5, round(float(r) * 2) / 2)
+    return sum(section_seconds(p, r, bpm, contain_polymeter)
                for p, r, bpm, _kit in sections)
 
 

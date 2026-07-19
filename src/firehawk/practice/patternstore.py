@@ -341,9 +341,15 @@ def normalize_section(s: dict) -> dict:
     }
 
 
-def make_song_record(name: str, sections: list) -> dict:
-    """A song record from section dicts (pattern/repeats/tempo/kit/inline)."""
-    return {"name": name, "sections": [normalize_section(s) for s in sections]}
+def make_song_record(name: str, sections: list, poly_tails: bool = False) -> dict:
+    """A song record from section dicts (pattern/repeats/tempo/kit/inline).
+
+    *poly_tails* saves the song-wide choice to let polymetric lines run past a
+    section's end (default off: lines cut off at the boundary so the next section
+    starts on its own count).
+    """
+    return {"name": name, "sections": [normalize_section(s) for s in sections],
+            "poly_tails": bool(poly_tails)}
 
 
 def resolve_section_pattern(section: dict, settings) -> Pattern | None:

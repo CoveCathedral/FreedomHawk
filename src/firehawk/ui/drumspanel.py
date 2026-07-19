@@ -55,6 +55,7 @@ from ..practice.drums import (
     load_sample,
     render_count_in,
     render_song,
+    section_seconds,
     song_seconds,
     split_kit_choice,
     tempo_ramp,
@@ -1636,6 +1637,7 @@ class SongDialog(wx.Dialog):
         self._playing = False
         self._previewing = False           # auditioning a groove in the Add tab
         self._end_timer: wx.CallLater | None = None
+        self._poly_tails = False           # let polymeter lines run past section ends
         try:
             self._build()
         except Exception as exc:  # noqa: BLE001 - a swallowed error is a dead button
@@ -1643,6 +1645,7 @@ class SongDialog(wx.Dialog):
                           wx.OK | wx.ICON_ERROR, self)
             self.EndModal(wx.ID_CANCEL)
             return
+        self._baseline = self._state_key()   # for the unsaved-changes close prompt
         self.Bind(wx.EVT_CLOSE, self._on_close)
         # Alt shortcuts that DON'T move focus (NVDA stays on the list you're working):
         # Alt+1/2/3 switch tabs, Alt+P plays/stops the song, Alt+V previews a groove.
@@ -1757,6 +1760,14 @@ class SongDialog(wx.Dialog):
         props2.Add(self.sec_fill_amt, 0)
         av.Add(props2, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
+        # Song-wide: by default an odd-length (polymetric) line is cut off at its
+        # section's end so the next section starts on its own count; this lets it
+        # run over instead (the old behavior, for deliberately loose composing).
+        self.poly_tails = wx.CheckBox(
+            arrange, label="Polymeter lines push past section ends")
+        self.poly_tails.Bind(wx.EVT_CHECKBOX, self._on_poly_tails)
+        av.Add(self.poly_tails, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
+
         self.song_track = _SongTrack(arrange, self)
         self.song_track.SetMinSize((-1, 92))
         av.Add(self.song_track, 0, wx.EXPAND | wx.ALL, 8)
@@ -1795,6 +1806,13 @@ class SongDialog(wx.Dialog):
         set_accessible_name(self.add_fill, "Fill style for the added section")
         self.add_fill.SetSelection(0)
         grid.Add(self.add_fill, 0)
+        # Where the new section lands: the end by default, or before any existing
+        # section (rebuilt as the song changes; "Before 1" is the start of the song).
+        grid.Add(wx.StaticText(addp, label="Insert at:"), 0, wx.ALIGN_CENTER_VERTICAL)
+        self.add_pos = wx.Choice(addp, choices=["End of song"])
+        set_accessible_name(self.add_pos, "Where in the song to insert the new section")
+        self.add_pos.SetSelection(0)
+        grid.Add(self.add_pos, 0, wx.EXPAND)
         ap.Add(grid, 0, wx.EXPAND | wx.ALL, 10)
         add_row = wx.BoxSizer(wx.HORIZONTAL)
         add_btn = wx.Button(addp, label="&Add Section")
@@ -1871,28 +1889,37 @@ class SongDialog(wx.Dialog):
                     self._kit_cache[name] = self._panel._kit
         return self._kit_cache[name]
 
+    def _resolve_one(self, s: dict):
+        """One section resolved to (Pattern, repeats, bpm) with tempo/swing/fill overrides
+        applied — or None if its groove is missing.  Shared by render and the timeline so
+        the drawn block length always matches the audio (an improvised-fill section renders
+        as one nominal-length pattern, not its polymetric LCM)."""
+        pattern = resolve_section_pattern(s, self._settings)
+        if pattern is None:
+            return None
+        bpm = s.get("tempo") or self._panel.bpm
+        reps = max(0.5, float(s["repeats"]))
+        if s.get("swing") is not None:          # override the groove's own saved feel
+            pattern = pattern.copy()
+            pattern.swing = s["swing"] / 100.0
+        if s.get("fill") == "improv":
+            # Each repeat becomes a cycle ending in a freshly generated fill; the section
+            # renders as one long pattern (same total length as the repeats).  Fills need
+            # whole cycles, so half repeats round here.
+            pattern = improvised_loop(
+                pattern, max(1, pattern.bars), max(1, int(round(reps))),
+                fill_amount=(s.get("fill_amount") or 0) / 100.0)
+            reps = 1
+        return pattern, reps, bpm
+
     def _resolved(self) -> list:
         """[(Pattern, repeats, bpm, kit)] for render — per-section tempo, kit, swing
         and fill overrides applied."""
         out = []
         for s in self._sections:
-            pattern = resolve_section_pattern(s, self._settings)
-            if pattern is None:
-                continue
-            bpm = s.get("tempo") or self._panel.bpm
-            reps = max(0.5, float(s["repeats"]))
-            if s.get("swing") is not None:      # override the groove's own saved feel
-                pattern = pattern.copy()
-                pattern.swing = s["swing"] / 100.0
-            if s.get("fill") == "improv":
-                # Each repeat becomes a cycle ending in a freshly generated fill; the
-                # section renders as one long pattern (same total length as the repeats).
-                # Fills need whole cycles, so half repeats round here.
-                pattern = improvised_loop(
-                    pattern, max(1, pattern.bars), max(1, int(round(reps))),
-                    fill_amount=(s.get("fill_amount") or 0) / 100.0)
-                reps = 1
-            out.append((pattern, reps, bpm, self._resolve_kit(s.get("kit"))))
+            r = self._resolve_one(s)
+            if r is not None:
+                out.append((*r, self._resolve_kit(s.get("kit"))))
         return out
 
     @staticmethod
@@ -1901,7 +1928,7 @@ class SongDialog(wx.Dialog):
         return f"{m}:{s:02d}" if m else f"{s} seconds"
 
     def _song_len(self) -> float:
-        return song_seconds(self._resolved())
+        return song_seconds(self._resolved(), contain_polymeter=not self._poly_tails)
 
     def _section_label(self, s: dict) -> str:
         base = (s.get("pattern") or "pattern") + (" (edited)" if s.get("inline") else "")
@@ -1922,9 +1949,9 @@ class SongDialog(wx.Dialog):
         sel = self.list.GetSelection()
         blocks = []
         for i, s in enumerate(self._sections):
-            pattern = resolve_section_pattern(s, self._settings)
-            bpm = s.get("tempo") or self._panel.bpm
-            secs = pattern.loop_seconds(bpm) * s["repeats"] if pattern is not None else 0.0
+            r = self._resolve_one(s)              # same resolution the audio uses
+            secs = (section_seconds(r[0], r[1], r[2], not self._poly_tails)
+                    if r is not None else 0.0)
             label = (s.get("pattern") or "pattern") + (" (edit)" if s.get("inline") else "")
             blocks.append((f"{label} x{s['repeats']}", secs, i == sel))
         return blocks
@@ -1939,12 +1966,27 @@ class SongDialog(wx.Dialog):
         self.list.Set([f"{i + 1}. {self._section_label(s)}" for i, s in enumerate(self._sections)])
         if self._sections:
             self.list.SetSelection(min(keep, len(self._sections) - 1))
+        # The Add tab's insert positions track the arrangement; back to the
+        # predictable default so a stale "Before N" never surprises a later add.
+        self.add_pos.Set(["End of song"] + [
+            f"Before {i + 1}: {s.get('pattern') or 'section'}"
+            for i, s in enumerate(self._sections)])
+        self.add_pos.SetSelection(0)
         self._refresh_visual()
         self._sync_section_props()
 
     def _selected(self) -> int:
         i = self.list.GetSelection()
         return i if 0 <= i < len(self._sections) else -1
+
+    def _select(self, i: int) -> None:
+        """Move the list highlight to *i* and keep the property row and timeline in
+        sync.  A programmatic SetSelection fires no EVT_LISTBOX, so without this the
+        Tempo/Kit/Swing/Fill controls would keep announcing the previously-selected
+        section's values while edits landed on the newly-highlighted one."""
+        self.list.SetSelection(i)
+        self._sync_section_props()
+        self._refresh_visual()
 
     def _add(self) -> None:
         i = self.groove.GetSelection()
@@ -1954,16 +1996,18 @@ class SongDialog(wx.Dialog):
         r = self.repeats.GetSelection() + 1
         self._stop_preview()             # done auditioning; it's a section now
         sw_sel = self.add_swing.GetSelection()
-        self._sections.append(normalize_section({
+        pos = self.add_pos.GetSelection()      # 0 = end; n = before section n
+        at = len(self._sections) if pos <= 0 else min(pos - 1, len(self._sections))
+        self._sections.insert(at, normalize_section({
             "pattern": name, "repeats": r,
             "swing": None if sw_sel <= 0 else (sw_sel - 1) * 10,
             "fill": "improv" if self.add_fill.GetSelection() == 1 else None,
         }))
         self._rebuild()
-        self.list.SetSelection(len(self._sections) - 1)
-        speech.speak(f"Added {name}, {r} repeat{'s' if r != 1 else ''}. "
-                     f"{len(self._sections)} section{'s' if len(self._sections) != 1 else ''}, "
-                     f"{self._fmt(self._song_len())}.")
+        self._select(at)
+        speech.speak(f"Added {name} at position {at + 1} of {len(self._sections)}, "
+                     f"{r} repeat{'s' if r != 1 else ''}. "
+                     f"{self._fmt(self._song_len())} total.")
         self._reaudition()
 
     @staticmethod
@@ -1995,8 +2039,9 @@ class SongDialog(wx.Dialog):
             return
         self._sections[i], self._sections[j] = self._sections[j], self._sections[i]
         self._rebuild()
-        self.list.SetSelection(j)
-        speech.speak(f"{self._sections[j].get('pattern', 'section')} moved to position {j + 1}")
+        self._select(j)
+        speech.speak(f"{self._sections[j].get('pattern', 'section')} moved to "
+                     f"position {j + 1} of {len(self._sections)}")
         self._reaudition()
 
     def _remove(self) -> None:
@@ -2114,6 +2159,17 @@ class SongDialog(wx.Dialog):
         speech.speak("Fill amount default." if amt is None else f"Fill amount {amt} percent.")
         self._reaudition()
 
+    def _on_poly_tails(self, event) -> None:
+        """Song-wide toggle: contained polymeter (default) vs let-lines-run-over."""
+        self._poly_tails = self.poly_tails.GetValue()
+        self._refresh_visual()
+        speech.speak(
+            "Polymeter lines now push past section ends: each repeat runs the full "
+            "realignment loop." if self._poly_tails else
+            "Polymeter lines now cut off at section ends; the next section starts "
+            "on its own count.")
+        self._reaudition()
+
     def _edit_section(self) -> None:
         """Open the Pattern Editor on the selected section; store the tweak inline."""
         i = self._selected()
@@ -2152,7 +2208,8 @@ class SongDialog(wx.Dialog):
         # Each section carries its own feel (its groove's saved swing/humanize), so
         # render_song reads them per section — no song-wide feel override here.
         return render_song(resolved,
-                           volume=self._panel.volume_slider.GetValue() / 100.0)
+                           volume=self._panel.volume_slider.GetValue() / 100.0,
+                           contain_polymeter=not self._poly_tails)
 
     def _start_playback(self, announce: bool) -> None:
         wav = self._render()
@@ -2235,6 +2292,32 @@ class SongDialog(wx.Dialog):
             self._previewing = False
             self.preview_btn.SetLabel("Pre&view Groove")
 
+    def _state_key(self) -> str:
+        """The current arrangement as a comparable snapshot (for unsaved-changes checks)."""
+        return repr((self._sections, self._poly_tails))
+
+    def _unsaved(self) -> bool:
+        return bool(self._sections) and self._state_key() != self._baseline
+
+    def _poly_note(self) -> str:
+        """A spoken clause naming the polymeter mode when it's the non-default (so a
+        load that flips it isn't silent) — empty when containment is on (the default)."""
+        return " Polymeter lines push past section ends." if self._poly_tails else ""
+
+    def _confirm_discard(self, what: str) -> bool:
+        """True when it's OK to drop the current arrangement (asks only if unsaved).
+
+        Stops playback first so the drum mix doesn't talk over NVDA reading the prompt,
+        and defaults to the SAFE answer (No, keep my song) so a reflexive Enter can't
+        discard unsaved work.
+        """
+        if not self._unsaved():
+            return True
+        self._stop()
+        return wx.MessageBox(
+            f"Your current song has unsaved changes. {what}",
+            "Song Builder", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION, self) == wx.YES
+
     def _save(self) -> None:
         if not self._sections:
             speech.speak("Nothing to save yet.")
@@ -2246,7 +2329,9 @@ class SongDialog(wx.Dialog):
             name = dlg.GetValue().strip()
         if not name:
             return
-        save_song(self._settings, make_song_record(name, self._sections))
+        save_song(self._settings,
+                  make_song_record(name, self._sections, self._poly_tails))
+        self._baseline = self._state_key()
         self._rebuild_songs()
         speech.speak(f"Saved song {name}.")
 
@@ -2264,18 +2349,28 @@ class SongDialog(wx.Dialog):
         i = self.songs_list.GetSelection()
         return songs[i] if 0 <= i < len(songs) else None
 
+    def _adopt_record(self, rec: dict) -> None:
+        """Make *rec* the current arrangement (sections + song-wide settings)."""
+        self._sections = [normalize_section(s) for s in rec.get("sections", [])]
+        self._poly_tails = bool(rec.get("poly_tails"))
+        self.poly_tails.SetValue(self._poly_tails)
+        self._rebuild()
+        self._baseline = self._state_key()   # a just-loaded song is saved by definition
+
     def _load_selected(self) -> None:
         rec = self._selected_song()
         if rec is None:
             speech.speak("No saved songs yet." if not user_songs(self._settings)
                          else "Select a song first.")
             return
-        self._sections = [normalize_section(s) for s in rec.get("sections", [])]
-        self._rebuild()
+        if not self._confirm_discard("Load anyway and replace it?"):
+            speech.speak("Load cancelled; your song is untouched.")
+            return
+        self._adopt_record(rec)
         self.notebook.SetSelection(0)        # jump to Arrange to see it
         wx.CallAfter(self.list.SetFocus)
         speech.speak(f"Loaded {rec.get('name', 'song')}, {len(self._sections)} sections, "
-                     f"{self._fmt(self._song_len())}.")
+                     f"{self._fmt(self._song_len())}.{self._poly_note()}")
         self._reaudition()
 
     def _play_selected(self) -> None:
@@ -2283,10 +2378,16 @@ class SongDialog(wx.Dialog):
         if rec is None:
             speech.speak("Select a song first.")
             return
-        self._sections = [normalize_section(s) for s in rec.get("sections", [])]
-        self._rebuild()
+        if not self._confirm_discard("Playing this saved song replaces it. Continue?"):
+            speech.speak("Cancelled; your song is untouched.")
+            return
+        self._adopt_record(rec)
         self._stop()
-        self._start_playback(announce=True)
+        # Announce here (not via _start_playback) so the polymeter mode rides along —
+        # loading a poly-tails song must never flip that setting silently.
+        self._start_playback(announce=False)
+        speech.speak(f"Playing {rec.get('name', 'song')}, "
+                     f"{self._fmt(self._song_len())}.{self._poly_note()}")
 
     def _delete_selected(self) -> None:
         rec = self._selected_song()
@@ -2315,6 +2416,32 @@ class SongDialog(wx.Dialog):
             wx.MessageBox(f"Could not export:\n{exc}", "Export", wx.ICON_ERROR, self)
 
     def _on_close(self, event) -> None:
+        # Time spent arranging must never vanish on an accidental Escape: an unsaved
+        # song gets a Save / Don't Save / Cancel prompt (an empty one just closes).
+        # Buttons are self-labeled so NVDA reads "Save"/"Don't Save"/"Cancel" — not a
+        # bare Yes/No the user has to map to the question. Not calling EndModal keeps
+        # the dialog open on Cancel.
+        if self._unsaved():
+            was_playing = self._playing
+            self._stop()                 # don't let the mix talk over the prompt
+            dlg = wx.MessageDialog(
+                self, "This song hasn't been saved. Save it before closing?",
+                "Song Builder", wx.YES_NO | wx.CANCEL | wx.ICON_QUESTION)
+            dlg.SetYesNoCancelLabels("&Save", "Do&n't Save", "&Cancel")
+            choice = dlg.ShowModal()
+            dlg.Destroy()
+            if choice == wx.ID_CANCEL:
+                speech.speak("Staying in the Song Builder.")
+                if was_playing:
+                    self._start_playback(announce=False)
+                return
+            if choice == wx.ID_YES:
+                self._save()
+                if self._unsaved():      # she backed out of the name prompt
+                    speech.speak("Not saved. Staying in the Song Builder.")
+                    if was_playing:
+                        self._start_playback(announce=False)
+                    return
         self._stop()
         self.EndModal(wx.ID_CANCEL)
 

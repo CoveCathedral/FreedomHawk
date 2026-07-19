@@ -203,6 +203,14 @@ def test_song_store_resolve_save_load(tmp_path, monkeypatch):
         {"pattern": "Ghost", "repeats": 4}])           # missing -> skipped
     ps.save_song(s, song)
     assert [r["name"] for r in ps.user_songs(s)] == ["Song 1"]
+    # Song-wide polymeter-tails choice round-trips; contained (False) is the default.
+    assert ps.user_songs(s)[0]["poly_tails"] is False
+    loose = ps.make_song_record("Song 2", [{"pattern": "Rock", "repeats": 1}],
+                                poly_tails=True)
+    ps.save_song(s, loose)
+    assert next(r for r in ps.user_songs(s)
+                if r["name"] == "Song 2")["poly_tails"] is True
+    ps.delete_song(s, "Song 2")
     saved = ps.user_songs(s)[0]["sections"]
     assert saved[0]["tempo"] == 150 and saved[1]["inline"] is not None
     # Swing 0 is a real override (force straight), distinct from None (groove's own);

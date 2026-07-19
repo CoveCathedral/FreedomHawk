@@ -503,6 +503,51 @@ def test_render_song_concatenates_sections():
     assert len(drums.render_song([])) > 44                  # empty song is a valid tiny WAV
 
 
+def test_song_polymeter_contained_by_default():
+    # An odd-length line must not push the next section off its count: the section
+    # lasts exactly its nominal length x repeats, the line cut off at the boundary.
+    kit = drums.synth_kit()
+    poly = drums.Pattern("P", 16, 4, {"kick": [0], "hihat": [0, 4, 8, 12]}, 4, 4, 1)
+    poly.set_line_length("kick", 7)
+    after = drums.Pattern("B", 16, 4, {"snare": [0]}, 4, 4, 1)
+    sections = [(poly, 2, 120, kit), (after, 1, 120, kit)]
+    wav = drums.render_song(sections)
+    expect_s = poly.loop_seconds(120) * 2 + after.loop_seconds(120)
+    assert len(_frames(wav)) == pytest.approx(expect_s * drums.RATE, rel=0.001)
+    assert drums.song_seconds(sections) == pytest.approx(expect_s, abs=0.001)
+    # Fractional repeats stay exact too.
+    wav = drums.render_song([(poly, 1.5, 120, kit)])
+    assert len(_frames(wav)) == pytest.approx(
+        poly.loop_seconds(120) * 1.5 * drums.RATE, rel=0.001)
+
+
+def test_song_polymeter_line_cycles_across_repeats():
+    # Contained doesn't mean per-repeat restart: the 7-step kick keeps cycling
+    # through the whole section (0, 7, 14, ... across two 16-step repeats).
+    p = drums.Pattern("P", 16, 4, {"kick": [0]}, 4, 4, 1)
+    p.set_line_length("kick", 7)
+    flat = drums.flatten_polymeter(p, render_len=32)
+    assert flat.steps == 32
+    assert flat.hits["kick"] == [0, 7, 14, 21, 28]
+
+
+def test_song_polymeter_tails_toggle_restores_lcm():
+    # The escape hatch: contain_polymeter=False renders each repeat as the full
+    # realignment (LCM) loop — the pre-containment behavior.
+    kit = drums.synth_kit()
+    p = drums.Pattern("P", 16, 4, {"kick": [0], "hihat": [0, 4, 8, 12]}, 4, 4, 1)
+    p.set_line_length("kick", 7)
+    sections = [(p, 1, 120, kit)]
+    loose = drums.render_song(sections, contain_polymeter=False)
+    lcm_s = drums.flatten_polymeter(p).loop_seconds(120)   # 112 steps, not 16
+    assert lcm_s > p.loop_seconds(120)
+    assert len(_frames(loose)) == pytest.approx(lcm_s * drums.RATE, rel=0.001)
+    assert drums.song_seconds(sections, contain_polymeter=False) == pytest.approx(
+        lcm_s, abs=0.001)
+    assert drums.section_seconds(p, 1, 120) == pytest.approx(
+        p.loop_seconds(120), abs=0.001)
+
+
 def test_tempo_ramp_sequence():
     assert drums.tempo_ramp(100, 120, 5) == [100, 105, 110, 115, 120]
     assert drums.tempo_ramp(100, 118, 5) == [100, 105, 110, 115, 118]   # last jump clamps

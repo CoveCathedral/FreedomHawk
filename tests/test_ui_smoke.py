@@ -777,6 +777,139 @@ def test_song_builder_my_songs_and_plays_once(frame, monkeypatch, _silence_audio
         dlg.Destroy()
 
 
+def test_song_builder_insert_position(frame, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        dlg.groove.SetStringSelection("Rock")
+        dlg.repeats.SetSelection(0)
+        dlg._add()
+        dlg.groove.SetStringSelection("Funk")
+        dlg._add()
+        # The Add tab's position dropdown tracks the arrangement: end + before each.
+        assert dlg.add_pos.GetString(0) == "End of song"
+        assert dlg.add_pos.GetCount() == 3
+        assert dlg.add_pos.GetString(1).startswith("Before 1: Rock")
+        # "Before 1" inserts at the start of the song and selects what landed.
+        dlg.add_pos.SetSelection(1)
+        dlg.groove.SetStringSelection("Funk")
+        dlg._add()
+        assert [s["pattern"] for s in dlg._sections] == ["Funk", "Rock", "Funk"]
+        assert dlg.list.GetSelection() == 0
+        # Back to the predictable default so a stale choice can't surprise later.
+        assert dlg.add_pos.GetSelection() == 0 and dlg.add_pos.GetCount() == 4
+        # The property row must follow the NEW selection, not the kept index — else
+        # NVDA would read one section's tempo while edits landed on another. Give the
+        # first section a distinctive tempo, then insert a default section before the
+        # second and confirm the Tempo control reflects the inserted (default) section.
+        dlg.list.SetSelection(0)
+        dlg.sec_tempo.SetStringSelection("150")
+        dlg._on_section_tempo(None)                  # section 0 now 150 BPM
+        dlg.add_pos.SetSelection(2)                  # Before 2
+        dlg.groove.SetStringSelection("Rock")
+        dlg._add()
+        assert dlg.list.GetSelection() == 1
+        assert dlg._sections[1].get("tempo") is None
+        assert dlg.sec_tempo.GetStringSelection() == "Song tempo"
+    finally:
+        dlg.Destroy()
+
+
+def test_song_builder_unsaved_close_guard(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    from firehawk.practice.patternstore import delete_song, make_song_record, save_song
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        ended = []
+        monkeypatch.setattr(dlg, "EndModal", lambda code: ended.append(code))
+        # The close prompt is a self-labeled MessageDialog (Save / Don't Save / Cancel),
+        # not a bare Yes/No box — stub its ShowModal so it never really pops.
+        close = {"answer": wx.ID_CANCEL, "calls": 0}
+        monkeypatch.setattr(wx.MessageDialog, "ShowModal",
+                            lambda self: (close.__setitem__("calls", close["calls"] + 1),
+                                          close["answer"])[1])
+        # An empty song just closes — no prompt to annoy.
+        dlg._on_close(None)
+        assert ended == [wx.ID_CANCEL] and close["calls"] == 0
+        ended.clear()
+        # An unsaved arrangement prompts; Cancel stays in the Song Builder.
+        dlg.groove.SetStringSelection("Rock")
+        dlg._add()
+        close["answer"] = wx.ID_CANCEL
+        dlg._on_close(None)
+        assert close["calls"] == 1 and ended == []
+        # Don't Save closes.
+        close["answer"] = wx.ID_NO
+        dlg._on_close(None)
+        assert ended == [wx.ID_CANCEL]
+        ended.clear()
+        # Loading over an unsaved song asks too, and the discard prompt defaults to the
+        # SAFE answer (No) so a reflexive Enter can't wipe the work — assert wx.NO_DEFAULT
+        # is in the style. Declining (No) leaves the current song untouched.
+        save_song(d._settings, make_song_record(
+            "Other", [{"pattern": "Funk", "repeats": 1}]))
+        dlg._rebuild_songs()
+        dlg.songs_list.SetStringSelection("Other")
+        box = {"answer": wx.NO, "styles": []}
+        monkeypatch.setattr(wx, "MessageBox",
+                            lambda *a, **k: (box["styles"].append(
+                                a[2] if len(a) > 2 else k.get("style", 0)),
+                                box["answer"])[1])
+        dlg._load_selected()                          # answers NO -> keep current
+        assert [s["pattern"] for s in dlg._sections] == ["Rock"]
+        assert box["styles"] and (box["styles"][-1] & wx.NO_DEFAULT)
+        box["answer"] = wx.YES
+        dlg._load_selected()
+        assert [s["pattern"] for s in dlg._sections] == ["Funk"]
+        # A just-loaded song counts as saved: closing needs no prompt now.
+        close["calls"] = 0
+        dlg._on_close(None)
+        assert ended == [wx.ID_CANCEL] and close["calls"] == 0
+        delete_song(d._settings, "Other")
+    finally:
+        dlg.Destroy()
+
+
+def test_song_builder_polymeter_containment_toggle(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import SongDialog
+    from firehawk.practice.patternstore import delete_song, make_song_record, save_song
+    d = frame.drums_page
+    dlg = SongDialog(d, d, dark=True)
+    try:
+        # Contained is the default: an odd-length line never pushes the next section.
+        assert not dlg.poly_tails.GetValue() and not dlg._poly_tails
+        dlg.poly_tails.SetValue(True)
+        dlg._on_poly_tails(None)
+        assert dlg._poly_tails
+        # The song-wide choice rides the song record and comes back on load.
+        save_song(d._settings, make_song_record(
+            "Loose", [{"pattern": "Rock", "repeats": 1}], poly_tails=True))
+        dlg._rebuild_songs()
+        dlg.poly_tails.SetValue(False)
+        dlg._poly_tails = False
+        dlg.songs_list.SetStringSelection("Loose")
+        monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+        dlg._load_selected()
+        assert dlg._poly_tails and dlg.poly_tails.GetValue()
+        delete_song(d._settings, "Loose")
+        # The timeline measures a section with the SAME resolution the audio uses, so an
+        # improvised-fill section's block is its rendered (nominal) length, never a
+        # polymetric LCM that the audio wouldn't play.
+        from firehawk.practice.drums import section_seconds
+        from firehawk.practice.patternstore import normalize_section
+        dlg._sections = [normalize_section(
+            {"pattern": "Rock", "repeats": 2, "fill": "improv"})]
+        dlg._rebuild()
+        r = dlg._resolve_one(dlg._sections[0])
+        (_, secs, _), = dlg._section_blocks()
+        assert secs == pytest.approx(
+            section_seconds(r[0], r[1], r[2], not dlg._poly_tails), abs=0.001)
+    finally:
+        dlg.Destroy()
+
+
 def test_visual_track_toggles_paints_and_persists(frame, _silence_audio):
     dlg = _grid_dialog(frame)
     try:

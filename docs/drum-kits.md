@@ -274,14 +274,32 @@ The **Song Builder** has three tabs so it doesn't crowd:
   moving your focus**, so NVDA stays on the section you're working.
 - **Add** — narrow the **Category** dropdown to a genre first (so you're not scrolling all
   500), choose the **Groove**, set **Repeats** (plus starting **Swing** and **Fills** for
-  the new section, editable later on Arrange), press **Add Section**. **Preview Groove**
-  (or **Alt+V**) loops the selected groove (on the current kit and tempo) so you can
-  **hear it before you add it**; press it again — or Add Section — to stop. (Sections
-  reference grooves by name — built-in or your saved patterns — so **save your own pattern
-  as a preset first** to use it in a song.)
+  the new section, editable later on Arrange), pick **Insert at** — **End of song** (the
+  default) or **before any existing section** ("Before 1" is the very start) — then press
+  **Add Section**. Where it landed is spoken ("Added Funk at position 2 of 5"), and the
+  position resets to End of song after each add so a stale choice never surprises you.
+  **Preview Groove** (or **Alt+V**) loops the selected groove (on the current kit and
+  tempo) so you can **hear it before you add it**; press it again — or Add Section — to
+  stop. (Sections reference grooves by name — built-in or your saved patterns — so **save
+  your own pattern as a preset first** to use it in a song.)
 - **My Songs** — a list of your saved arrangements: select one and **Load** it into Arrange,
   **Play** it, or **Delete** it. **Save Current Song** stores what you've built, and **Export
   as WAV** writes the whole thing as one audio file.
+
+**Polymeter stays inside its section.** A line with its own odd length (the per-line
+polymeter from the Pattern Editor) keeps cycling through the whole section — the phrasing
+carries across the section's repeats — and is **cut off cleanly at the section's end**, so
+the next section always starts on its own count. Odd meters stay expressive without
+wrecking the math downstream. Prefer the old loose behavior? Check **"Polymeter lines
+push past section ends"** on the Arrange tab (each repeat then runs the full realignment
+loop until every line comes back around); the choice saves with the song. This governs
+sections that play **as written**; a section set to **Improvised** fills is rebuilt cycle
+by cycle, so it already fits its own length regardless of the toggle.
+
+**Unsaved work is guarded.** Closing the Song Builder with an unsaved arrangement asks
+**Save / Don't save / Cancel** (an empty builder just closes), and **Load**/**Play** over
+unsaved work asks before replacing it — time spent arranging never vanishes on an
+accidental Escape.
 
 **Play** (always at the bottom) renders the song end to end and **plays it through once, then
 ends** — a song has an ending. Sections can even be in different meters (a 4/4 verse into a

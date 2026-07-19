@@ -251,8 +251,11 @@ bridge, and so on. It has three tabs:
   and busier). All of them apply **live while the song plays**.
 - **Add** — filter the **Category** to a genre first (so you're not scrolling all 500), pick
   the **Groove**, set Repeats (plus starting Swing/Fills), press **Add Section**.
-  **Preview Groove** (or **Alt+V**) loops the picked groove so you can hear it before
-  adding; press it again (or Add Section) to stop.
+  **Insert at** chooses where the new section lands — the end of the song (the default)
+  or before any existing section ("Before 1" is the start); what was added and where is
+  spoken, and the choice resets to "End of song" after each add. **Preview Groove** (or
+  **Alt+V**) loops the picked groove so you can hear it before adding; press it again
+  (or Add Section) to stop.
 - **Keyboard, from anywhere in the dialog:** **Alt+1/2/3** jump between the tabs (spoken),
   **Alt+P** plays or stops the song, **Alt+V** previews — all without moving your focus.
   (**Alt+P** also plays/pauses inside the Pattern Editor.)
@@ -261,6 +264,19 @@ bridge, and so on. It has three tabs:
 
 **Play** (at the bottom) renders the whole song end to end (gapless, sections can even be in
 different meters) and **plays it through once, then ends**.
+
+**Polymeter at section ends:** by default a line with its own odd length (a 7-step kick
+under a 4/4 groove, say) keeps cycling through its section and is **cut off cleanly at the
+section's end**, so the next section always starts on its own count — the odd meter stays
+inside its section instead of pushing everything after it. Want the old loose behavior for
+deliberately weird composing? Check **"Polymeter lines push past section ends"** on the
+Arrange tab (each repeat then runs the full realignment loop); the choice is saved with
+the song. (This applies to sections playing **as written** — a section set to
+**Improvised** fills is regenerated per cycle, so it always fits its own length.)
+
+**Your work is guarded:** closing the Song Builder with an unsaved arrangement asks
+whether to save first (Save / Don't save / Cancel), and loading a saved song over unsaved
+work asks before replacing it. An empty Song Builder just closes.
 
 Sections reference grooves by name (built-in or your saved patterns), so **save a pattern
 as a preset first** if you want your own groove in a song. Song Builder is in both
