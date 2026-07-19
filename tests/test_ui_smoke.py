@@ -932,6 +932,60 @@ def test_song_beat_editor_add_line_and_split_repeat(frame, monkeypatch, _silence
         dlg.Destroy()
 
 
+def test_pattern_editor_fill_span(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import _FillOptionsDialog
+    dlg = _grid_dialog(frame)
+    try:
+        monkeypatch.setattr(_FillOptionsDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(_FillOptionsDialog, "values", lambda self: (100, False))
+        monkeypatch.setattr(_FillOptionsDialog, "Destroy", lambda self: None)
+        # ; and ' mark a span, L fills it.
+        dlg._cursor = 4
+        dlg._on_grid_key(_Key(ord(";")))
+        dlg._cursor = 12
+        dlg._on_grid_key(_Key(ord("'")))
+        assert dlg._mark_start == 4 and dlg._mark_end == 12
+        n_before = len(dlg.lines)
+        dlg._on_grid_key(_Key(ord("L")))
+        # The fill added melodic content + a resolving crash, and gave new parts their own
+        # lines so they survive Save.
+        assert "crash" in dlg.pattern.hits
+        assert any(ln["id"] == "crash" for ln in dlg.lines)
+        assert dlg._mark_start is None and dlg._mark_end is None   # markers consumed
+        # No orphan hits: every part the fill placed has a line (so it saves).
+        have = {ln["id"] for ln in dlg.lines}
+        assert all(r in have for r in dlg.pattern.hits)
+        # It's undoable — the fill and its new lines both revert.
+        dlg._undo_last()
+        assert "crash" not in dlg.pattern.hits and len(dlg.lines) == n_before
+    finally:
+        dlg.Destroy()
+
+
+def test_pattern_editor_fill_respects_line_limit(frame, monkeypatch, _silence_audio):
+    from firehawk.ui.drumspanel import PatternEditorDialog, _FillOptionsDialog
+    from firehawk.practice.patternstore import MAX_LINES, make_line
+    from firehawk.practice.drums import Pattern
+    d = frame.drums_page
+    lines = []
+    for _ in range(MAX_LINES - 2):                 # already near the cap
+        lines.append(make_line("perc", existing=lines))
+    dlg = PatternEditorDialog(d, Pattern("t", 16, 4, {}, 4, 4, 1), lines, d._kits_dir(),
+                              set(), d.player, d.bpm, dark=True, settings=d._settings)
+    try:
+        monkeypatch.setattr(_FillOptionsDialog, "ShowModal", lambda self: wx.ID_OK)
+        monkeypatch.setattr(_FillOptionsDialog, "values", lambda self: (100, False))
+        monkeypatch.setattr(_FillOptionsDialog, "Destroy", lambda self: None)
+        dlg._do_fill()                             # whole-pattern fill, only 2 line slots left
+        assert len(dlg.lines) == MAX_LINES         # the cap holds
+        # No orphan hits: the parts that couldn't get a line were dropped, so what plays
+        # equals what saves (no silent loss).
+        have = {ln["id"] for ln in dlg.lines}
+        assert all(r in have for r in dlg.pattern.hits)
+    finally:
+        dlg.Destroy()
+
+
 def test_song_beat_editor_markers_fill_and_tempo(frame, monkeypatch, _silence_audio):
     from firehawk.ui.drumspanel import SongBeatEditorDialog, _FillOptionsDialog
     from firehawk.practice.patternstore import normalize_section

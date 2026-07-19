@@ -178,6 +178,18 @@ edge, and they save, share, and round-trip with the pattern. Roll spacing follow
 step length, so it stays musical at any tempo and grid. (MIDI export writes the main
 hits as written; grace strokes are an audio-render detail.)
 
+### Fills — mark a span, drop a fill
+
+Press **`;`** to set a start marker and **`'`** an end marker (a span across all lines,
+spoken as you set them), then **`L`** to carve an **improvised fill** across it — or across
+the whole pattern if nothing's marked. It asks a **complexity** (how busy — a sparse
+tom-and-snare run up to a dense roll) and **"let the fill spill past the end"** (off by
+default, so the fill resolves on the bar with a crash on the next downbeat). Fills roll
+down the full kit's toms, Tom 1 to the floor tom; any part the fill introduces (a tom, a
+crash) gets its own line automatically, and the whole thing is a single **Ctrl+Z** away.
+(This is the same fill you get in the Song Beat Editor, where the span keys are `[` and
+`]` since `;`/`'` aren't tuning there.)
+
 ### Visual track (low-vision grid view)
 
 Tick **Show visual track** for a large, high-contrast picture of the pattern beneath the

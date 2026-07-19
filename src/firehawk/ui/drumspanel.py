@@ -356,6 +356,10 @@ class PatternEditorDialog(wx.Dialog):
         self._dark = dark
         self._auditioning = False
         self._cursor = 0
+        self._mark_start = None   # ; and ' set a fill span across all lines
+        self._mark_end = None
+        self._fill_complexity = 50
+        self._fill_spill = False
         self._undo: list = []   # (what, snapshot) pairs; Ctrl+Z / Ctrl+Y
         self._redo: list = []
         self._preview = _PreviewPlayer()
@@ -610,12 +614,16 @@ class PatternEditorDialog(wx.Dialog):
     _ORNAMENT_KEYS = frozenset({ord("F"), ord("f")})    # cycle flam / drag / roll
     _RHYTHM_KEYS = frozenset({ord("R"), ord("r")})      # speak this line's rhythm
     _STEP_AUDITION_KEYS = frozenset({ord("S"), ord("s")})  # hear/name the cursor step
+    _MARK_START_KEYS = frozenset({ord(";"), ord(":")})  # start of a fill span (all lines)
+    _MARK_END_KEYS = frozenset({ord("'"), ord('"')})    # end of a fill span
+    _FILL_KEYS = frozenset({ord("L"), ord("l")})        # drop an improvised fill
     _GRID_KEYS = frozenset({wx.WXK_UP, wx.WXK_DOWN, wx.WXK_LEFT, wx.WXK_RIGHT,
                             wx.WXK_HOME, wx.WXK_END, wx.WXK_SPACE, wx.WXK_RETURN,
                             wx.WXK_NUMPAD_ENTER, wx.WXK_F1, wx.WXK_DELETE,
                             ord("P"), ord("p")}) | _LENGTHEN_KEYS | _SHORTEN_KEYS \
         | _TUNE_DOWN_KEYS | _TUNE_UP_KEYS | _QUIETER_KEYS | _LOUDER_KEYS | _CHOKE_KEYS \
-        | _CHANCE_KEYS | _ORNAMENT_KEYS | _RHYTHM_KEYS | _STEP_AUDITION_KEYS
+        | _CHANCE_KEYS | _ORNAMENT_KEYS | _RHYTHM_KEYS | _STEP_AUDITION_KEYS \
+        | _MARK_START_KEYS | _MARK_END_KEYS | _FILL_KEYS
 
     def _on_char_hook(self, event: wx.KeyEvent) -> None:
         # Alt+P plays/pauses the audition WITHOUT moving focus off the grid (the
@@ -685,6 +693,12 @@ class PatternEditorDialog(wx.Dialog):
             self._speak_rhythm()
         elif code in self._STEP_AUDITION_KEYS and not ctrl:
             self._audition_step()
+        elif code in self._MARK_START_KEYS:
+            self._set_fill_mark("start")
+        elif code in self._MARK_END_KEYS:
+            self._set_fill_mark("end")
+        elif code in self._FILL_KEYS and not ctrl:
+            self._do_fill()
         elif code in (ord("P"), ord("p")):
             self._preview_line()
         elif code == wx.WXK_F1:
@@ -709,7 +723,11 @@ class PatternEditorDialog(wx.Dialog):
                 "Control Y or Control Shift Z redoes. "
                 "R reads this line's whole rhythm as beat positions. "
                 "S names and plays everything landing on the cursor step, across "
-                "all lines. Alt P plays and pauses without leaving the grid. "
+                "all lines. Semicolon and apostrophe mark the start and end of a span "
+                "across all lines, and L drops an improvised fill across it — or the "
+                "whole pattern if nothing is marked — asking how busy the fill is and "
+                "whether it may spill past the end. Alt P plays and pauses without "
+                "leaving the grid. "
                 "Enter picks this line's sample or None. "
                 "Delete removes a line. P previews the line. Tab reaches Add Line, "
                 "Load Groove, Save as Preset, the meter controls, and Play, Save "
@@ -886,6 +904,61 @@ class PatternEditorDialog(wx.Dialog):
             state += f", {orn}"
         chance = self.pattern.chance_of(line_id, step)
         return f"{state}, {chance} percent chance" if chance else state
+
+    # -- fill span (; and ' mark it, L drops a fill) ---------------------------
+
+    def _set_fill_mark(self, which: str) -> None:
+        """; and ' set the start / end of a fill span (a step range across all lines)."""
+        if which == "start":
+            self._mark_start = self._cursor
+        else:
+            self._mark_end = self._cursor
+        speech.speak(f"{'Start' if which == 'start' else 'End'} marker at "
+                     f"{step_label(self.pattern, self._cursor)}.")
+
+    def _do_fill(self) -> None:
+        """L drops an improvised fill across the marked span (or the whole pattern),
+        after asking for complexity and whether it may spill past the end.  Undoable."""
+        dlg = _FillOptionsDialog(self, self._fill_complexity, self._fill_spill, self._dark)
+        if dlg.ShowModal() != wx.ID_OK:
+            dlg.Destroy()
+            speech.speak("Fill cancelled.")
+            return
+        self._fill_complexity, self._fill_spill = dlg.values()
+        dlg.Destroy()
+        if self._mark_start is not None and self._mark_end is not None:
+            lo, hi = sorted((self._mark_start, self._mark_end))
+            start, end, where = lo, min(self.pattern.steps, hi + 1), "the marked span"
+        else:
+            start, end, where = 0, self.pattern.steps, "the pattern"
+        self._push_undo("fill")
+        fill_span(self.pattern, start, end, self._fill_complexity / 100.0, self._fill_spill)
+        # A fill can bring in parts (toms, crash) that have no line yet — give each one a
+        # line so its hits are visible and survive Save (make_record only writes lines).
+        # If the line limit is already reached, drop those hits rather than orphan them
+        # (they'd play but vanish on Save), and say how many were left out.
+        have = {ln["id"] for ln in self.lines}
+        dropped = 0
+        for role in list(self.pattern.hits):
+            if role in have:
+                continue
+            if role in ROLES and len(self.lines) < MAX_LINES:
+                self.lines.append(make_line(role, existing=self.lines))
+                have.add(role)
+            else:
+                self.pattern.hits.pop(role, None)
+                for store in (self.pattern.levels, self.pattern.probs, self.pattern.ornaments):
+                    store.pop(role, None)
+                dropped += 1
+        self._rebuild_line_kit()
+        self._mark_start = self._mark_end = None
+        self._rebuild_rows()
+        spill = "spilling past the end" if self._fill_spill else "resolving on the bar"
+        limit = (f" {dropped} part{'s' if dropped != 1 else ''} left out; line limit reached."
+                 if dropped else "")
+        speech.speak(f"Fill dropped across {where}, complexity {self._fill_complexity} "
+                     f"percent, {spill}.{limit}")
+        self._reaudition()
 
     # -- line management -------------------------------------------------------
 
