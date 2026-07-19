@@ -78,6 +78,7 @@ Beat 3.2, hit"):
 | **Comma / Period** (`,` / `.`) | **Volume** for this line, down / up in decibels (Shift for a 6 dB step). Balance the mix — pull a boomy kick back so it doesn't wash the others out. Spoken ("Kick volume −6 dB"). |
 | **C** | Cycle this line's **choke group** (none → 1 → … → none). Lines in the same group cut each other's ring — see below. |
 | **Number keys** (`1`–`9`, `0`) | Set the cursor hit's **play chance**: 1–9 is 10–90%, 0 makes it always play. A "sometimes" hit **rolls fresh on every pass**, so the groove varies itself — see below. Spoken ("Hi-hat 50 percent chance, Beat 2.3"). |
+| **F** | Cycle the cursor hit's **ornament**: plain → **flam** (one soft grace stroke just before) → **drag** (two — a ruff) → **roll** (the stroke rebounds across its step, a ratchet) → plain. Spoken ("Snare flam, Beat 2"). See below. |
 | **P** | Preview this line's sound — and hear its musical key spoken when it has one. |
 | **F1** | Speak this key list. |
 
@@ -154,6 +155,24 @@ It's how real drummers work: the backbone (kick, snare backbeat) solid, the deco
   written).
 - Try it: load any groove, add 2–3 extra hi-hat or perc hits, set them to 30–50%. The
   groove starts breathing.
+
+### Ornaments — flams, drags, rolls
+
+Press **F** on a hit to cycle its ornament — the rudiments drummers decorate strokes with:
+
+- **Flam** — one soft grace stroke a hair before the main hit ("fla-DAM"). Fattens a
+  backbeat instantly.
+- **Drag** — two quick grace strokes leading in (a ruff): "bl-l-DAM".
+- **Roll** — the stroke rebounds across its step (what hardware boxes call a ratchet):
+  four rapid decaying strokes. Great on snare builds and hat stutters.
+
+Grace strokes whisper next to the main stroke and follow everything the hit does —
+tuning, volume trim, dynamics, swing, humanize, even a play chance (skip the hit, skip
+its ornament). The row counts them ("4 hits (1 ornamented)"), the cursor speaks them
+("accent, flam"), the visual track marks them with a bright tick on the cell's left
+edge, and they save, share, and round-trip with the pattern. Roll spacing follows the
+step length, so it stays musical at any tempo and grid. (MIDI export writes the main
+hits as written; grace strokes are an audio-render detail.)
 
 ### Visual track (low-vision grid view)
 

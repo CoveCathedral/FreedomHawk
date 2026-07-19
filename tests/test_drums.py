@@ -639,6 +639,35 @@ def test_chance_survives_transforms():
     assert not p.probs
 
 
+def test_ornaments_render_grace_strokes():
+    kit = drums.synth_kit()
+    plain = drums.Pattern("t", 16, 4, {"snare": [4]}, 4, 4, 1)
+    for orn in drums.ORNAMENTS:
+        p = plain.copy()
+        p.set_ornament("snare", 4, orn)
+        a, b = drums.render_loop(plain, kit, 120), drums.render_loop(p, kit, 120)
+        assert a != b, orn                       # the ornament is audible
+        assert len(a) == len(b)                  # and doesn't change the loop length
+    # A flam's grace stroke lands BEFORE the main hit.
+    p = plain.copy()
+    p.set_ornament("snare", 4, drums.ORNAMENT_FLAM)
+    assert _first_onset(drums.render_loop(p, kit, 120)) < _first_onset(
+        drums.render_loop(plain, kit, 120))
+    # Deterministic: no RNG involved.
+    assert drums.render_loop(p, kit, 120) == drums.render_loop(p, kit, 120)
+
+
+def test_ornaments_survive_transforms_and_clear_with_the_hit():
+    p = drums.Pattern("t", 16, 4, {"snare": [4]}, 4, 4, 1)
+    p.set_ornament("snare", 4, "drag")
+    assert p.copy().ornament_of("snare", 4) == "drag"
+    assert drums.retime_pattern(p, 4, 4, 4, 2).ornament_of("snare", 4) == "drag"
+    assert drums.expand_with_fill(p, 4).ornament_of("snare", 4) == "drag"
+    assert drums.flatten_polymeter(p).ornament_of("snare", 4) == "drag"
+    p.set_ornament("snare", 4, None)
+    assert not p.ornaments
+
+
 def test_render_song_uses_per_section_feel():
     # Two sections, same groove/tempo/kit but one swung: the mixes must differ, proving
     # render_song reads each section pattern's own feel (not a single song-wide value).

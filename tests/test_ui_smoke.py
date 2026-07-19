@@ -362,6 +362,31 @@ def test_grid_number_keys_set_chance(frame, _silence_audio):
         dlg.Destroy()
 
 
+def test_grid_f_cycles_ornaments(frame, _silence_audio):
+    # F cycles plain -> flam -> drag -> roll -> plain on the cursor hit, spoken.
+    spoken = _silence_audio
+    dlg = _grid_dialog(frame)
+    try:
+        idx = _line_index(dlg, "snare")
+        dlg.grid_list.SetSelection(idx)
+        dlg._cursor = 4                              # the Rock snare backbeat
+        for expect in ("flam", "drag", "roll"):
+            dlg._on_grid_key(_Key(ord("F")))
+            assert dlg.pattern.ornament_of("snare", 4) == expect
+            assert expect in spoken[-1]
+        assert "(1 ornamented)" in dlg.grid_list.GetString(idx)
+        assert "roll" in dlg._state_at("snare", 4)
+        dlg._on_grid_key(_Key(ord("F")))             # back to plain
+        assert dlg.pattern.ornament_of("snare", 4) is None
+        assert "plain stroke" in spoken[-1]
+        # No hit -> the key explains itself.
+        dlg._cursor = 1
+        dlg._on_grid_key(_Key(ord("F")))
+        assert "No hit at this step" in spoken[-1]
+    finally:
+        dlg.Destroy()
+
+
 def test_grid_polymeter_line_length(frame, _silence_audio):
     # Minus/plus set a line's own loop length; the cursor stays inside that line's cycle.
     spoken = _silence_audio

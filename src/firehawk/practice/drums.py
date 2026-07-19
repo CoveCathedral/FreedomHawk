@@ -473,6 +473,7 @@ class Pattern:
     swing: float = 0.0        # 0..1 shuffle feel, saved with the groove (edited in the editor)
     humanize: float = 0.0     # 0..1 subtle timing/level drift, saved with the groove
     probs: dict = field(default_factory=dict)    # role -> {step: chance %}; absent = always
+    ornaments: dict = field(default_factory=dict)  # role -> {step: "flam"|"drag"|"roll"}
 
     def step_seconds(self, bpm: float) -> float:
         return 60.0 / max(1.0, bpm) / max(1, self.steps_per_beat)
@@ -494,6 +495,19 @@ class Pattern:
                     del self.levels[role]
         else:
             self.levels.setdefault(role, {})[step] = level
+
+    def ornament_of(self, role: str, step: int) -> str | None:
+        """A hit's ornament ("flam" | "drag" | "roll"), or None for a plain stroke."""
+        return self.ornaments.get(role, {}).get(step)
+
+    def set_ornament(self, role: str, step: int, ornament: str | None) -> None:
+        if ornament is None:
+            if role in self.ornaments:
+                self.ornaments[role].pop(step, None)
+                if not self.ornaments[role]:
+                    del self.ornaments[role]
+        else:
+            self.ornaments.setdefault(role, {})[step] = ornament
 
     def chance_of(self, role: str, step: int) -> int | None:
         """A hit's play chance in percent; None means it always plays."""
@@ -533,6 +547,11 @@ class Pattern:
             self.probs[role] = {s: c for s, c in self.probs[role].items() if s < length}
             if not self.probs[role]:
                 del self.probs[role]
+        if role in self.ornaments:
+            self.ornaments[role] = {s: o for s, o in self.ornaments[role].items()
+                                    if s < length}
+            if not self.ornaments[role]:
+                del self.ornaments[role]
 
     def is_polymetric(self) -> bool:
         return any(L != self.steps for L in self.lengths.values())
@@ -543,7 +562,8 @@ class Pattern:
                        self.beats_per_bar, self.beat_unit, self.bars,
                        {r: dict(m) for r, m in self.levels.items()},
                        dict(self.lengths), self.swing, self.humanize,
-                       {r: dict(m) for r, m in self.probs.items()})
+                       {r: dict(m) for r, m in self.probs.items()},
+                       {r: dict(m) for r, m in self.ornaments.items()})
 
 
 #: Grid resolutions as (label, steps-per-quarter-note).
@@ -573,12 +593,14 @@ def flatten_polymeter(p: Pattern) -> Pattern:
     hits: dict = {}
     levels: dict = {}
     probs: dict = {}
+    ornaments: dict = {}
     for role, steps in p.hits.items():
         length = p.line_length(role)
         base = [s for s in steps if 0 <= s < length]
         line_levels = p.levels.get(role, {})
         line_probs = p.probs.get(role, {})
-        tiled, tiled_levels, tiled_probs = [], {}, {}
+        line_orns = p.ornaments.get(role, {})
+        tiled, tiled_levels, tiled_probs, tiled_orns = [], {}, {}, {}
         for cycle in range(0, render_len, length):
             for s in base:
                 pos = cycle + s
@@ -588,15 +610,20 @@ def flatten_polymeter(p: Pattern) -> Pattern:
                         tiled_levels[pos] = line_levels[s]
                     if s in line_probs:
                         tiled_probs[pos] = line_probs[s]
+                    if s in line_orns:
+                        tiled_orns[pos] = line_orns[s]
         if tiled:
             hits[role] = sorted(tiled)
             if tiled_levels:
                 levels[role] = tiled_levels
             if tiled_probs:
                 probs[role] = tiled_probs
+            if tiled_orns:
+                ornaments[role] = tiled_orns
     return Pattern(p.name, render_len, p.steps_per_beat, hits, p.beats_per_bar,
                    p.beat_unit, max(1, render_len // per_bar), levels,
-                   swing=p.swing, humanize=p.humanize, probs=probs)
+                   swing=p.swing, humanize=p.humanize, probs=probs,
+                   ornaments=ornaments)
 
 
 def steps_per_bar(beats_per_bar: int, beat_unit: int, grid: int) -> int:
@@ -861,6 +888,7 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
     name = f"{beats}/{unit}"
     levels: dict = {}
     probs: dict = {}
+    ornaments: dict = {}
 
     if per_bar == old_per_bar and grid == p.steps_per_beat and not p.is_polymetric():
         hits: dict = {}
@@ -868,8 +896,10 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
             out = set()
             src_levels = p.levels.get(role, {})
             src_probs = p.probs.get(role, {})
+            src_orns = p.ornaments.get(role, {})
             new_levels: dict = {}
             new_probs: dict = {}
+            new_orns: dict = {}
             for b in range(bars):
                 src = b % old_bars
                 lo, hi = src * old_per_bar, (src + 1) * old_per_bar
@@ -881,14 +911,19 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
                             new_levels[dst] = src_levels[s]
                         if s in src_probs:
                             new_probs[dst] = src_probs[s]
+                        if s in src_orns:
+                            new_orns[dst] = src_orns[s]
             if out:
                 hits[role] = sorted(out)
                 if new_levels:
                     levels[role] = new_levels
                 if new_probs:
                     probs[role] = new_probs
+                if new_orns:
+                    ornaments[role] = new_orns
         return Pattern(name, total, grid, hits, beats, unit, bars, levels,
-                       swing=p.swing, humanize=p.humanize, probs=probs)
+                       swing=p.swing, humanize=p.humanize, probs=probs,
+                       ornaments=ornaments)
 
     # Time-preserving remap: place each hit at the same fraction of the loop.
     old_total = max(1, p.steps)
@@ -896,14 +931,18 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
     for role, steps in p.hits.items():
         src_levels = p.levels.get(role, {})
         src_probs = p.probs.get(role, {})
+        src_orns = p.ornaments.get(role, {})
         chosen: dict = {}  # new step -> level (None if the hit here had no dynamic)
         new_probs = {}
+        new_orns = {}
         for s in steps:
             ns = max(0, min(total - 1, round(s / old_total * total)))
             if src_levels.get(s) is not None or ns not in chosen:
                 chosen[ns] = src_levels.get(s, chosen.get(ns))
             if s in src_probs:
                 new_probs[ns] = src_probs[s]
+            if s in src_orns:
+                new_orns[ns] = src_orns[s]
         if chosen:
             hits[role] = sorted(chosen)
             role_levels = {ns: lv for ns, lv in chosen.items() if lv}
@@ -911,8 +950,11 @@ def retime_pattern(p: Pattern, beats: int, unit: int, grid: int, bars: int) -> P
                 levels[role] = role_levels
             if new_probs:
                 probs[role] = new_probs
+            if new_orns:
+                ornaments[role] = new_orns
     return Pattern(name, total, grid, hits, beats, unit, bars, levels,
-                   swing=p.swing, humanize=p.humanize, probs=probs)
+                   swing=p.swing, humanize=p.humanize, probs=probs,
+                   ornaments=ornaments)
 
 
 def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
@@ -933,12 +975,15 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
     hits: dict = {}
     levels: dict = {}
     probs: dict = {}
+    ornaments: dict = {}
     for role, steps in p.hits.items():
         out = []
         src_levels = p.levels.get(role, {})
         src_probs = p.probs.get(role, {})
+        src_orns = p.ornaments.get(role, {})
         new_levels: dict = {}
         new_probs: dict = {}
+        new_orns: dict = {}
         for dst, src in enumerate(order):
             if role == "crash" and src == 0 and dst != 0:
                 # A first-bar crash marks the post-fill downbeat (the loop restart);
@@ -953,15 +998,20 @@ def expand_with_fill(p: Pattern, total_bars: int) -> Pattern:
                         new_levels[d] = src_levels[s]
                     if s in src_probs:
                         new_probs[d] = src_probs[s]
+                    if s in src_orns:
+                        new_orns[d] = src_orns[s]
         if out:
             hits[role] = sorted(out)
             if new_levels:
                 levels[role] = new_levels
             if new_probs:
                 probs[role] = new_probs
+            if new_orns:
+                ornaments[role] = new_orns
     return Pattern(p.name, per_bar * total_bars, p.steps_per_beat, hits,
                    p.beats_per_bar, p.beat_unit, total_bars, levels,
-                   swing=p.swing, humanize=p.humanize, probs=probs)
+                   swing=p.swing, humanize=p.humanize, probs=probs,
+                   ornaments=ornaments)
 
 
 # -- improvised fills (rule-bound randomness, Diablo-dungeon style) ----------------
@@ -1031,6 +1081,7 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     hits: dict = {}
     levels: dict = {}
     probs: dict = {}
+    ornaments: dict = {}
 
     def copy_bar(src: int, dst: int) -> None:
         lo, hi = src * per_bar, (src + 1) * per_bar
@@ -1039,6 +1090,7 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
                 continue  # crashes are re-placed on cycle downbeats below
             src_levels = p.levels.get(role, {})
             src_probs = p.probs.get(role, {})
+            src_orns = p.ornaments.get(role, {})
             for s in steps:
                 if lo <= s < hi:
                     d = s - lo + dst * per_bar
@@ -1047,6 +1099,8 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
                         levels.setdefault(role, {})[d] = src_levels[s]
                     if s in src_probs:
                         probs.setdefault(role, {})[d] = src_probs[s]
+                    if s in src_orns:
+                        ornaments.setdefault(role, {})[d] = src_orns[s]
 
     for c in range(max(1, cycles)):
         base = c * cycle_bars
@@ -1065,6 +1119,9 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
             if role in probs:
                 probs[role] = {s: c for s, c in probs[role].items()
                                if s < zone_start or s >= zone_start + fill_len}
+            if role in ornaments:
+                ornaments[role] = {s: o for s, o in ornaments[role].items()
+                                   if s < zone_start or s >= zone_start + fill_len}
         for role, offsets in fill_hits.items():
             hits.setdefault(role, []).extend(zone_start + o for o in offsets)
         for role, offset_levels in fill_levels.items():
@@ -1076,9 +1133,11 @@ def improvised_loop(p: Pattern, cycle_bars: int, cycles: int = 4,
     hits = {r: sorted(set(s)) for r, s in hits.items() if s}
     levels = {r: m for r, m in levels.items() if m and r in hits}
     probs = {r: m for r, m in probs.items() if m and r in hits}
+    ornaments = {r: m for r, m in ornaments.items() if m and r in hits}
     return Pattern(f"{p.name} improv", total_steps, p.steps_per_beat, hits,
                    p.beats_per_bar, p.beat_unit, total_bars, levels,
-                   swing=p.swing, humanize=p.humanize, probs=probs)
+                   swing=p.swing, humanize=p.humanize, probs=probs,
+                   ornaments=ornaments)
 
 
 # -- rendering (the compensator) -------------------------------------------------
@@ -1101,6 +1160,16 @@ def _mix_wrap(buf: "np.ndarray", v: "np.ndarray", offset: int) -> None:
 
 _HUMANIZE_MAX_JITTER_S = 0.014  # +/- 14 ms of timing drift at humanize = 1.0
 _HUMANIZE_MAX_GAIN = 0.28       # +/- 28% of level drift at humanize = 1.0
+
+#: Ornaments — drummer rudiments around a single hit, sequencer-style.
+ORNAMENT_FLAM = "flam"   # one soft grace stroke just before the hit
+ORNAMENT_DRAG = "drag"   # two grace strokes (a ruff) leading into the hit
+ORNAMENT_ROLL = "roll"   # the hit rebounds across its step (a ratchet/buzz)
+ORNAMENTS = [ORNAMENT_FLAM, ORNAMENT_DRAG, ORNAMENT_ROLL]
+_GRACE_GAIN = 0.42       # grace strokes whisper next to the main stroke
+_FLAM_S = 0.028          # flam grace lead time (fixed ms — drummer physics, not grid)
+_DRAG_S = 0.024          # drag grace spacing
+_ROLL_GAINS = (0.7, 0.5, 0.35)  # rebound decay across the step (main stroke = 1.0)
 
 
 def _swung_fraction(frac: float, swing: float) -> float:
@@ -1249,6 +1318,7 @@ def _mix_pattern(pattern: Pattern, kit: DrumKit, bpm: float, rate: int,
             continue
         role_levels = pattern.levels.get(role, {})
         role_probs = pattern.probs.get(role, {})
+        role_orns = pattern.ornaments.get(role, {})
         group = group_of.get(role)
         scaled = {None: voice}
         for step in steps_on:
@@ -1269,7 +1339,18 @@ def _mix_pattern(pattern: Pattern, kit: DrumKit, bpm: float, rate: int,
                 cut = cutoffs.get((group, step))
                 if cut is not None:
                     v = _truncate_voice(v, cut, rate)
-            _mix_wrap(buf, v, hit_offset(step))
+            off = hit_offset(step)
+            orn = role_orns.get(step)
+            if orn == ORNAMENT_FLAM:     # grace offsets are negative; _mix_wrap wraps
+                _mix_wrap(buf, v * _GRACE_GAIN, off - int(_FLAM_S * rate))
+            elif orn == ORNAMENT_DRAG:
+                _mix_wrap(buf, v * _GRACE_GAIN, off - int(2 * _DRAG_S * rate))
+                _mix_wrap(buf, v * _GRACE_GAIN, off - int(_DRAG_S * rate))
+            elif orn == ORNAMENT_ROLL:   # rebounds subdivide the step: tempo-aware
+                sub = max(1, int(round(step_s * rate / 4)))
+                for k, g in enumerate(_ROLL_GAINS, start=1):
+                    _mix_wrap(buf, v * g, off + k * sub)
+            _mix_wrap(buf, v, off)
     return buf
 
 

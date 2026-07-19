@@ -21,6 +21,7 @@ from pathlib import Path
 
 from .drums import (
     GENRE_PATTERNS,
+    ORNAMENTS,
     PATTERN_LIBRARY,
     LEVEL_ACCENT,
     LEVEL_GHOST,
@@ -141,6 +142,7 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
     levels: dict = {}
     lengths: dict = {}
     probs: dict = {}
+    ornaments: dict = {}
     for ln in lines:
         length = ln.get("length") or total  # per-line loop length (polymeter)
         steps = sorted(s for s in ln.get("steps", []) if 0 <= s < length)
@@ -168,8 +170,18 @@ def lines_to_pattern(lines: list[dict], beats: int, unit: int, grid: int,
                 line_probs[s] = c
         if line_probs:
             probs[ln["id"]] = line_probs
+        line_orns = {}
+        for s_key, o in (ln.get("ornaments") or {}).items():
+            try:
+                s = int(s_key)
+            except (TypeError, ValueError):
+                continue
+            if s in steps and o in ORNAMENTS:
+                line_orns[s] = o
+        if line_orns:
+            ornaments[ln["id"]] = line_orns
     return Pattern(name, total, grid, hits, beats, unit, bars, levels, lengths,
-                   probs=probs)
+                   probs=probs, ornaments=ornaments)
 
 
 def resolve_line_voice(line: dict, kits_dir, base_kit: DrumKit | None,
@@ -276,6 +288,8 @@ def make_record(name: str, category: str, beats: int, unit: int, grid: int,
         entry["ghosts"] = sorted(s for s, lv in line_levels.items() if lv == LEVEL_GHOST)
         entry["chances"] = {str(s): c for s, c in
                             sorted(pattern.probs.get(ln["id"], {}).items())}
+        entry["ornaments"] = {str(s): o for s, o in
+                              sorted(pattern.ornaments.get(ln["id"], {}).items())}
         entry["length"] = pattern.lengths.get(ln["id"])  # None = default (synced)
         out_lines.append(entry)
     return {"name": name, "category": category, "beats": beats, "unit": unit,

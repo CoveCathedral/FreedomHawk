@@ -65,6 +65,21 @@ def test_chance_steps_save_with_the_pattern():
     assert not ps.record_to_pattern(rt).probs
 
 
+def test_ornaments_save_with_the_pattern():
+    import json
+    lines = [ps.make_line("snare")]
+    lines[0]["steps"] = [4]
+    p = ps.lines_to_pattern(lines, 4, 4, 4, 1, name="ruff")
+    p.set_ornament("snare", 4, "drag")
+    rec = ps.make_record("ruff", "Test", 4, 4, 4, 1, lines, p)
+    assert rec["lines"][0]["ornaments"] == {"4": "drag"}
+    back = ps.record_to_pattern(json.loads(json.dumps(rec)))
+    assert back.ornament_of("snare", 4) == "drag"
+    # An unknown ornament name (a future version's?) is dropped, not crashed on.
+    rec["lines"][0]["ornaments"] = {"4": "sizzle"}
+    assert not ps.record_to_pattern(rec).ornaments
+
+
 def test_feel_saves_with_the_pattern():
     # Swing/humanize are a groove's own feel; they must survive the record round trip.
     lines = [ps.make_line("kick")]
